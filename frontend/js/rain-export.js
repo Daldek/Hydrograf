@@ -63,6 +63,7 @@
         link.click();
         link.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        Hydrograf.api.countDownload();
     }
 
     function csv() {

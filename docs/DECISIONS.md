@@ -62,11 +62,11 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted | 2026-03-25 |
 | [ADR-051](#adr-051-integracja-kanalizacji-deszczowej-2026-03-27) | Storm-sewer integration | amended by ADR-052 | 2026-03-27 |
 | [ADR-052](#adr-052-jawna-topologia-sieci-kanalizacyjnej-przebudowa) | Explicit storm-sewer topology (rebuild) | accepted | 2026-03-28 |
-| [ADR-053](#adr-053-feedback-testerow-z-opt-in-diagnostyka-po-stronie-klienta) | Tester feedback with opt-in client-side diagnostics | accepted | 2026-08-02 |
+| [ADR-053](#adr-053-feedback-testerow-z-opt-in-diagnostyka-po-stronie-klienta) | Tester feedback with opt-in client-side diagnostics | superseded by ADR-084 | 2026-08-02 |
 | [ADR-054](#adr-054-baza-odniesienia-dla-hydraulic_length_km--outlet_flow_dist_m) | Reference base of hydraulic_length_km: outlet_flow_dist_m | accepted | 2026-08-02 |
 | [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | accepted | 2026-09-28 |
 | [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
-| [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
+| [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | amended by ADR-084 | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066 and ADR-067 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
@@ -87,8 +87,9 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-079](decisions/0079-soil-groups-from-the-least-permeable-layer.md) | The soil groups are those of the least permeable SoilGrids layer of 0–100 cm | accepted | 2026-11-10 |
 | [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (seven times), noted 2026-11-11 (an option of „Wybierz zlewnię”) | 2026-11-10 |
 | [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted, amended 2026-11-11 | 2026-11-11 |
-| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | accepted | 2026-11-12 |
+| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | amended by ADR-084 | 2026-11-12 |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted | 2026-11-13 |
+| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted | 2026-11-13 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
@@ -1288,6 +1289,10 @@ Dodatkowe zmiany:
 ---
 
 ## ADR-053: Feedback testerow z opt-in diagnostyka po stronie klienta
+
+> **Superseded by ADR-084 (2026-11-13):** the form sends the text and the view's context
+> only (no contact, no page URL, no diagnostics, no event log); the server stores no
+> User-Agent; the limit of the form is the app's, not nginx's.
 
 **Data:** 2026-08-02
 **Status:** Przyjeta

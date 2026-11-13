@@ -25,7 +25,7 @@
 │  - Reverse Proxy                                                │
 │  - Static Files Serving                                         │
 │  - SSL Termination                                              │
-│  - Rate Limiting                                                │
+│  - Pages and /api/* passed to FastAPI (X-Accel-Redirect)        │
 └───────────┬─────────────────────────────┬───────────────────────┘
             │                             │
             │ /api/*                      │ /
@@ -38,6 +38,7 @@
 │  - Request Validation    │    │  - Chart.js (Plots)          │
 │  - Business Logic        │    │  - Nogat tokens (UI)         │
 │  - Error Handling        │    │  - Vanilla JavaScript        │
+│  - Request Limit, Stats  │    │                              │
 └───────────┬──────────────┘    └───────────────────────────────┘
             │
             │ SQL Queries
@@ -126,6 +127,7 @@ Summary of the key ADRs:
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; Bootstrap only in `/admin` |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product | PMAXTP's lines of Nogat DEV §20 from one module (`core/attribution.py`) in the responses, the hand-off and every export; the front end shows what a response or the results manifest carries |
+| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service | Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG; the request limit per client address and the daily totals in the API (one process), the pages through the API; logs without addresses in the journal, 14 days; the form with the text and the view's context |
 
 ---
 
@@ -138,6 +140,7 @@ backend/
 ├── api/
 │   ├── __init__.py
 │   ├── main.py                    # FastAPI app instance, lifespan, middleware
+│   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (CF-Connecting-IP through private hops), the request limit, the 429 page or problem, the daily totals
 │   ├── dependencies/
 │   │   ├── __init__.py
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
@@ -145,12 +148,14 @@ backend/
 │       ├── __init__.py
 │       ├── admin.py               # 13 /api/admin/* endpoints (dashboard, resources, cleanup, bootstrap, sewer)
 │       ├── depressions.py         # GET /depressions
-│       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI) for the app menu (ADR-082)
+│       ├── feedback.py            # POST /feedback (the text and the view's context), the admin list GET/PATCH/DELETE /admin/feedback
+│       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
 │       ├── identify.py            # GET /identify-point (core/point_info.py)
 │       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker; POST /delineate-network/preview (ADR-081): the same network composed on the catchment graph
+│       ├── site.py                # The pages answered with X-Accel-Redirect, /regulamin.html, GET /terms, POST /downloads (ADR-084)
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
@@ -162,7 +167,7 @@ backend/
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI (ADR-082)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit and the data_dir of the statistics
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
@@ -177,10 +182,13 @@ backend/
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
 │   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
+│   ├── request_limit.py           # Fixed windows of requests per client address, in memory; ended windows forgotten (ADR-084)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
 │   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
+│   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf (ADR-084)
+│   ├── usage.py                   # The daily totals (visitors by a salted HMAC, page views, analyses, downloads) and <data_dir>/hydrograf/stats.jsonl (DEV-15.11, ADR-084)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
 │   ├── zonal_stats.py             # Zonal statistics (bincount, max)
 │   └── boundary.py               # Vector boundary file handling (GPKG/GeoJSON/SHP), validation, bbox conversion (ADR-040)
@@ -215,7 +223,7 @@ backend/
 │   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 001–006: 001 the squashed initial schema, 006 drops land_cover.cn_value (ADR-075)
+│   └── versions/                  # 001–007: 001 the squashed initial schema, 006 drops land_cover.cn_value (ADR-075), 007 adds feedback.context (ADR-084)
 │
 ├── utils/
 │   ├── __init__.py
@@ -263,6 +271,27 @@ Response: 200 OK
 }
 ```
 The table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) that the deployment sets in `HYDROGRAF_GUI` (`docker-compose.yml`, `.env.example`): a registry name in lower case to an http or https URL or a path from `/` on this host; `{}` without it. The settings refuse any other value when they load (`gui_table()` of `core/config.py`), so the API does not start with it. `js/nogat.js` sets the table as the `apps` of the app menu of every page (§4.2.0).
+
+#### 2.2.1b The Public Service (ADR-084)
+```
+GET /api/terms
+Response: 200 OK
+{"url": "/regulamin.html", "operator_email": "kontakt@debever.pl"}   // both null without [nogat.operator]
+
+GET /regulamin.html            — the regulamin of the deployment (text/html); 404 without an operator
+POST /api/downloads            — 204: count one file the interface saved (the daily total downloads)
+
+POST /api/feedback
+{"message": "…", "context": {"view": "select", "station": null, "parameters": {...}}}
+Response: 200 {"id": 41, "status": "ok"}; any other member, at the top or in context: 400 validation_error
+
+Over a limit: 429, Retry-After: <s>; a page: a Polish HTML page; a route: the problem
+rate_limited, details {reason: request_limit|tile_limit|feedback_limit, retry_after_s,
+limit, window_s}
+```
+`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp` (and `imgw-terms`), `gugik`, `copernicus`, `isric`, `wody-polskie`, `osm` and `esri`. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
+
+The middleware `api/traffic.py` runs inside the request ID's. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -574,7 +603,7 @@ GET    /api/admin/sewer/status     — status of the sewer data
 DELETE /api/admin/sewer            — delete the sewer data
 PUT    /api/admin/sewer/config     — enabled, source file and layers, field_mapping and role_mapping (ADR-052)
 
-GET    /api/admin/feedback         — testers' reports, newest first (limit, offset), with unread_count
+GET    /api/admin/feedback         — reports, newest first (limit, offset), with unread_count; each {id, created_at, message, context, is_read, legacy}: legacy the contact, page_url, user_agent and diagnostics of a report of the old form, null for new reports
 PATCH  /api/admin/feedback/{id}    — {"is_read": true|false}: mark a report read or unread
 DELETE /api/admin/feedback/{id}    — delete a report
 ```
@@ -1107,10 +1136,13 @@ frontend/
 ├── admin.html               # Admin panel (ADR-034) — shell + Bootstrap 5.3.3 (grid, modal dialogs)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
-├── nogat/                    # Copies of Nogat's GUI kit 0.1.0 (design/kit/, ADR-082) — do NOT edit, copy them again
+├── nogat/                    # Copies of Nogat's GUI kit 0.4.0 (design/kit/, ADR-082, ADR-084) — do NOT edit, copy them again
 │   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
 │   ├── nogat-handoff.js      # The hand-off: labels, <subject>.handoff.json, text, clipboard with its fallback, download (ES module)
+│   ├── nogat-terms.html      # The regulamin template with its blocks, which core/terms.py fills (ADR-084)
+│   ├── nogat-terms.css       # Its styles, in the tokens
+│   ├── nogat-terms.md        # The regulamin's text for review
 │   ├── nogat-kit.json        # Kit version and SHA-256 of each file
 │   └── marks/                # The marks of the four GUIs (Nogat design/marks/): archiwista, hydrograf, hydrolog, obserwator
 ├── instrukcja/
@@ -1147,8 +1179,8 @@ frontend/
     ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
     ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
     ├── nogat.js              # ES module (index, admin, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
-    ├── diagnostics.js        # Session event log (ADR-053)
-    ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
+    ├── terms.js              # GET /api/terms: the footer under the map and in the guide (the statement and „Regulamin”), the menu's `terms`, the operator's e-mail under „Zgłoś uwagę” (ADR-084)
+    ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>): the text and the view's context, no contact (ADR-084)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the main-page top-bar "Instrukcja" button
     ├── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
@@ -1157,7 +1189,7 @@ frontend/
         ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
         ├── admin-bbox-picker.js # Map for choosing the area bbox
         ├── admin-sewer.js    # Card for managing the sewer network
-        ├── admin-feedback.js # List of the testers' reports
+        ├── admin-feedback.js # List of the reports with their context and the old form's fields
         └── admin-app.js      # Admin panel orchestrator
 ```
 
@@ -1212,7 +1244,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Panel width** — handles between the panels (left 260–560 px, right 340–720 px), kept in `localStorage`; the panels can be closed.
 - **Phone (≤ 860 px)** — a full-screen map, a bottom bar (Mapa and Logowanie) instead of the rail, with the top-bar guide/feedback/theme icons still accessible, and panels as sheets that slide up from the bottom (a handle at the top hides them too). The map bar has two rows: „Warstwy” and „Zlewnia” („Sieć” in the option „Sieć zlewni”), then the four modes across the full width (labels may wrap), so nothing lies off a 375 px screen; the options of „Wybierz zlewnię” span the top of the map.
 
-`/admin` and `/instrukcja` use the same shell (`chrome.css`) and the switch `theme-switch.js`. The form „Zgłoś uwagę” is a native `<dialog>`.
+`/admin` and `/instrukcja` use the same shell (`chrome.css`) and the switch `theme-switch.js`. The form „Zgłoś uwagę” is a native `<dialog>` with the text only: under it „Nie wpisuj danych osobowych.” and, with an operator, „Jeśli chcesz odpowiedzi, napisz na <e-mail>”; `feedback.js` sends the view's context with the text. With `GET /api/terms` giving an address, `terms.js` shows the footer `#site-footer` under the map (and in the guide) with the statement of Nogat DEV-15.8 and the link „Regulamin”, and gives the app menu its `terms` attribute, which ends its list with „Regulamin” (ADR-084).
 
 #### 4.2.1 Map (Leaflet.js)
 
@@ -1422,6 +1454,10 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
       HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
+      # The public service (ADR-084): the deployment's nogat.toml, mounted below
+      NOGAT_CONFIG: /config/nogat.toml
+      HYDROGRAF_REQUEST_LIMIT: ${HYDROGRAF_REQUEST_LIMIT:-300}
+      HYDROGRAF_REQUEST_WINDOW: ${HYDROGRAF_REQUEST_WINDOW:-60}
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
@@ -1429,6 +1465,11 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    # The host's journal keeps the logs 14 days (DEV-15.10, docker/journald.conf)
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
     deploy:
       resources:
         limits:
@@ -1439,7 +1480,9 @@ services:
       - ./data:/data
       - ./frontend/data:/frontend/data
       - ./frontend/tiles:/frontend/tiles
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+      - ./frontend/nogat:/frontend/nogat:ro              # the regulamin template
+      - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log
 
   nginx:
     image: nginx:alpine
@@ -1452,6 +1495,10 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
 
 volumes:
   postgres_data:
@@ -1473,7 +1520,8 @@ volumes:
 **Override pattern (dev/prod):**
 - `docker-compose.yml` — base file (db + api + nginx), without `--reload`, without a code bind mount
 - `docker-compose.override.yml` — loaded automatically in dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
-- `docker-compose.prod.yml` — production override: 2 uvicorn workers, `LOG_LEVEL=WARNING`, without `--reload`
+- `docker-compose.prod.yml` — production override: one uvicorn process (the request limit and the daily totals live in its memory, ADR-084), `LOG_LEVEL=WARNING`, without `--reload`
+- uvicorn always runs with `--no-access-log` (its access log would name the client); `api.main` logs every request without it
 
 **Healthcheck API:**
 - Container `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30 s interval)
@@ -1497,14 +1545,19 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
+    # Logs without the client's address (Nogat DEV-15.10, ADR-084)
+    log_format hydrograf '$time_iso8601 "$request_method $request_uri" $status '
+                         '$body_bytes_sent request_time=$request_time '
+                         'upstream_time=$upstream_response_time request_id=$request_id '
+                         '"$http_user_agent"';
+    access_log /dev/stdout hydrograf;
+    error_log /dev/stderr crit;
+
     gzip on;
     gzip_types text/plain text/css application/json application/geo+json
                application/javascript text/xml application/xml application/x-protobuf;
 
-    # Rate limiting zones
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;
-    limit_req_zone $binary_remote_addr zone=general_limit:10m rate=30r/s;
+    # No limit here: the API limits pages and routes per client address (api/traffic.py)
 
     upstream api_backend {
         server api:8000;
@@ -1519,14 +1572,13 @@ http {
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Content-Security-Policy "default-src 'self'; ..." always;
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-        # Tile proxy (^~ prevents regex .png match)
+        # Tile proxy (^~ prevents the regex .pbf match of the data files)
         location ^~ /api/tiles/ {
-            limit_req zone=tile_limit burst=200 nodelay;
             proxy_pass http://api_backend/api/tiles/;
+            proxy_set_header X-Request-ID $request_id;
+            proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 15s;
-            proxy_cache_valid 200 1d;
         }
 
         # Own code and styles, referenced as ?v=<content hash>
@@ -1536,17 +1588,28 @@ http {
             add_header Cache-Control "public, must-revalidate";
         }
 
-        # HTML pages — always revalidated (Cache-Control: no-cache + ETag)
+        # HTML pages pass through the API, which limits and counts them and answers
+        # X-Accel-Redirect to /_site/ (or the regulamin, or 429); with the API down
+        # nginx sends the file itself
         location ~* \.html$ {
+            proxy_pass http://api_backend;
+            proxy_set_header X-Request-ID $request_id;
+            proxy_set_header X-Real-IP $remote_addr;
+            error_page 502 504 = @page_file;
+        }
+        location ^~ /_site/ {
+            internal;
+            alias /usr/share/nginx/html/;
+            expires -1;
+        }
+        location @page_file {
             root /usr/share/nginx/html;
             expires -1;
         }
 
-        # Admin panel
+        # Admin panel (Cloudflare Access in front of it, with /api/admin/)
         location = /admin {
-            root /usr/share/nginx/html;
-            expires -1;
-            try_files /admin.html =404;
+            rewrite ^ /admin.html last;
         }
 
         # Frontend - static files
@@ -1559,7 +1622,7 @@ http {
         # Admin SSE stream (longer timeout for bootstrap)
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
-            proxy_set_header Host $host;
+            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
@@ -1568,22 +1631,21 @@ http {
 
         # API proxy
         location /api/ {
-            limit_req zone=api_limit burst=20 nodelay;
             proxy_pass http://api_backend/api/;
-            proxy_set_header Host $host;
+            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 120s;
         }
 
         # Health check endpoint
         location /health {
             proxy_pass http://api_backend/health;
-            proxy_set_header Host $host;
         }
     }
 }
 ```
+
+`X-Real-IP` is nginx's peer, never the client behind the tunnel: the API believes the client's address of `CF-Connecting-IP` only when that peer is a private hop (§2.2.1b). nginx does not read `CF-Connecting-IP` and writes no address in either log (`$remote_addr`, `$remote_user`, `$http_referer` are gone; nginx names the client in the errors of a request, which the `crit` level drops). `docker/nginx-ssl.conf.template` has the same locations and logs.
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
 - `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap in `/admin`); every library from a CDN has SRI (`integrity`).
@@ -1621,7 +1683,7 @@ http {
 │                      PRODUCTION                         │
 │  - docker compose -f ... -f docker-compose.prod.yml up -d│
 │  - Full preprocessing data                             │
-│  - WARNING+ logs, 2 workery uvicorn                    │
+│  - WARNING+ logs, one uvicorn process                  │
 │  - HTTPS enabled                                       │
 │  - Backups configured                                  │
 │  - Monitoring (Prometheus + Grafana)                   │
@@ -1649,14 +1711,14 @@ http {
 **Mitigations:**
 - ✅ Parameterised SQL queries (SQLAlchemy ORM)
 - ✅ Input validation (Pydantic)
-- ✅ Rate limiting (Nginx — 3 zones: api_limit, tile_limit, general_limit)
+- ✅ Request limit per client address in the API (300 in 60 s, tiles 3,000, the form 5 in 5 min; ADR-084)
 - ✅ CORS with restrictive origins (env var `CORS_ORIGINS`), `allow_credentials=False`
 - ✅ GZip middleware (FastAPI)
 - ✅ Request ID tracing (`X-Request-ID` header, structlog context)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
 - ✅ Admin API key auth (X-Admin-Key header, file-based or env var, ADR-034)
-- ✅ No user authentication needed (internal network only in MVP)
+- ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin.html` and `/api/admin/*`
 
 ---
 
@@ -1672,7 +1734,7 @@ http {
 ┌──────────────────────────▼──────────────────────────────┐
 │                 APPLICATION LAYER                       │
 │  - Input validation (Pydantic)                         │
-│  - Rate limiting (3 zones: api, tile, general)         │
+│  - Request limit per client address (FastAPI)          │
 │  - CORS (restrictive origins, no credentials)          │
 │  - GZip compression, X-Request-ID tracing              │
 │  - Security headers (CSP, HSTS, X-Frame-Options)       │
@@ -1725,7 +1787,7 @@ async def add_request_id(request, call_next):
     return response
 ```
 
-**Request correlation and log rotation.** nginx gives every request an `X-Request-ID` and logs `request_id`, `request_time` and `upstream_time` (the HTTP configuration and the HTTPS template); requests without the proxy get their own ID in nginx. For API requests nginx passes the same ID to FastAPI. The middleware `add_request_id` of `api/main.py` takes a forwarded ID of 32 hexadecimal characters (otherwise it makes `uuid4().hex`), binds it to the structlog context, returns it in the `X-Request-ID` header and writes `request_completed`, or `request_failed` when the application raises, with `method`, `path`, `status_code` and `duration_ms`. nginx writes to stdout/stderr; the logs of nginx, the API and PostgreSQL rotate as Docker `json-file` logs of 10 MiB × 50 files per container (README, „Service logs”).
+**Request correlation and log retention.** nginx gives every request an `X-Request-ID` and logs it with the time, method and URI, status, size, `request_time`, `upstream_time` and the User-Agent, never the client's address (DEV-15.10, ADR-084); its error log writes `crit` only. For pages and API requests nginx passes the same ID to FastAPI. The middleware `add_request_id` of `api/main.py` takes a forwarded ID of 32 hexadecimal characters (otherwise it makes `uuid4().hex`), binds it to the structlog context, returns it in the `X-Request-ID` header and writes `request_completed`, or `request_failed` when the application raises, with `method`, `path`, `status_code` and `duration_ms`, without the client; uvicorn runs with `--no-access-log`. nginx and the API log to the host's journal (Docker's `journald` driver, tag the container's name), which `docker/journald.conf` (`MaxRetentionSec=12day`, `MaxFileSec=1day`) limits to 14 days; PostgreSQL keeps Docker `json-file` logs of 10 MiB × 50 files (README, „Service logs”).
 
 **Log Levels:**
 
@@ -2119,11 +2181,12 @@ jobs:
 
 ---
 
-**Document version:** 2.16
+**Document version:** 2.17
 **Date of the last update:** 2026-11-13
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.17 (2026-11-13): the public service (ADR-084, plan `2026-11-13-public-gui`): §1.1 the pages through the API, the request limit and the totals in it; §1.2 ADR-084; §2.1 `api/traffic.py`, `api/endpoints/site.py`, `feedback.py`, `core/terms.py`, `core/request_limit.py`, `core/usage.py`, migration 007; §2.2.1b `GET /api/terms`, `/regulamin.html`, `POST /api/downloads`, `POST /api/feedback`, the 429; §2.2.8 `context` and `legacy` of the admin list; §4.1 kit 0.4.0, `js/terms.js`, without `js/diagnostics.js`; §4.2.0 the footer and the form; §5.1 NOGAT_CONFIG, journald, one process, `--no-access-log`; §5.2 nginx without `limit_req`, its logs without addresses, the pages through the API; §6 the limit in the API; §7.1 the logs and their 14 days
 - 2.16 (2026-11-13): the providers' lines (ADR-083, plan `2026-11-13-provider-attribution`): §1.2 ADR-083; §2.1 `core/attribution.py`, `provider_lines` of `core/analysis_results.py`; §2.2.3 `derived_from`, `attribution` and `terms_notice` of the hydrograph and its hand-off; §2.2.5 and §2.2.5a the lines of the results' water; §4.1 `js/attribution.js`; §4.2.0 the lines in the panel, the own series and the exports, and the manifest's `attribution` and `terms_notice`
 - 2.15 (2026-11-12): Nogat's GUI kit (ADR-082, plan `2026-11-12-nogat-kit`): §1.2 ADR-082; §2.1 `api/endpoints/gui.py` and `gui_table()` of `core/config.py`; §2.2.1a `GET /api/gui`; §4.1 `nogat/` (the kit and the marks), `js/nogat.js`, `js/handoff.js`, `tokens.css` of Nogat `7786271`; §4.2.0 the app menu „Aplikacje”; §5.1 `HYDROGRAF_GUI` in the environment of the API; §5.2 the versions of the imports of an ES module
 - 2.14 (2026-11-11): §4 „Sieć zlewni” is an option of the mode „Wybierz zlewnię” (the author's decision, ADR-080 note): four modes on the mode bar, the radio group „Co wyznaczyć” over the map, the module map and the phone layout

@@ -159,6 +159,7 @@
         if (!doc) return;
         hideFallback();
         var name = kit.downloadHandoff(doc);
+        Hydrograf.api.countDownload();
         setStatus(kit.TEXTS.saved(name) + ' ' + hydrologPath(kit.TEXTS.openFile));
     }
 

@@ -37,28 +37,68 @@ def _row(**kwargs):
 class TestListFeedback:
     def test_returns_items_and_unread_count(self, app):
         db = MagicMock()
-        item = _row(
-            id=1,
-            created_at=datetime(2026, 8, 2, 12, 0, tzinfo=UTC),
-            message="m",
+        context = {
+            "view": "select",
+            "station": None,
+            "parameters": {"map": {"zoom": 12}},
+            "app_version": "0.5.0.dev0",
+        }
+        new = _row(
+            id=2,
+            created_at=datetime(2026, 11, 13, 12, 0, tzinfo=UTC),
+            message="nowe",
+            context=context,
+            is_read=False,
             contact=None,
             page_url=None,
-            user_agent="UA",
+            user_agent=None,
             diagnostics=None,
-            is_read=False,
         )
-        db.execute.return_value.fetchall.return_value = [item]
-        db.execute.return_value.fetchone.return_value = _row(total=1, unread=1)
+        db.execute.return_value.fetchall.return_value = [new]
+        db.execute.return_value.fetchone.return_value = _row(total=2, unread=1)
         app.dependency_overrides[get_db] = lambda: db
 
         response = TestClient(app).get("/api/admin/feedback")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] == 1
-        assert data["unread_count"] == 1
-        assert data["items"][0]["message"] == "m"
-        assert data["items"][0]["created_at"].startswith("2026-08-02")
+        assert (data["total"], data["unread_count"]) == (2, 1)
+        assert data["items"][0] == {
+            "id": 2,
+            "created_at": "2026-11-13T12:00:00+00:00",
+            "message": "nowe",
+            "context": context,
+            "is_read": False,
+            "legacy": None,
+        }
+
+    def test_report_of_the_old_form_keeps_what_it_was_sent_with(self, app):
+        """The operator still sees the contact of an old report, to handle it."""
+        db = MagicMock()
+        old = _row(
+            id=1,
+            created_at=datetime(2026, 8, 2, 12, 0, tzinfo=UTC),
+            message="stare",
+            context=None,
+            is_read=True,
+            contact="Jan",
+            page_url="https://hydrograf.example/",
+            user_agent="UA",
+            diagnostics=None,
+        )
+        db.execute.return_value.fetchall.return_value = [old]
+        db.execute.return_value.fetchone.return_value = _row(total=1, unread=0)
+        app.dependency_overrides[get_db] = lambda: db
+
+        item = TestClient(app).get("/api/admin/feedback").json()["items"][0]
+
+        assert item["context"] is None
+        assert item["legacy"] == {
+            "contact": "Jan",
+            "page_url": "https://hydrograf.example/",
+            "user_agent": "UA",
+            "diagnostics": None,
+        }
 
 
 class TestUpdateFeedback:

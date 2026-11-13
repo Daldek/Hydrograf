@@ -445,6 +445,11 @@ _EXAMPLES: Final[dict[int, tuple[str, str, dict[str, Any]]]] = {
         "catchment_too_large",
         {"reason": "catchment_too_large", "area_km2": 312.4, "limit_km2": 250},
     ),
+    429: (
+        "rate_limited",
+        "request_limit",
+        {"reason": "request_limit", "retry_after_s": 12, "limit": 300, "window_s": 60},
+    ),
     500: ("internal_error", "internal_error", {"reason": "unexpected_exception"}),
     503: (
         "store_unavailable",
@@ -511,7 +516,8 @@ def _document_problems(schema: dict[str, Any]) -> None:
     """Add the problem schema and the problem responses to an OpenAPI document.
 
     FastAPI's 422 and its validation schemas are replaced by the 400 ``Problem`` that
-    the API sends, and every operation documents ``500``.
+    the API sends, every operation documents ``500``, and every operation under
+    ``/api/`` the ``429`` of the request limit (``api/traffic.py``).
     """
     schemas: dict[str, Any] = schema.setdefault("components", {}).setdefault(
         "schemas", {}
@@ -521,7 +527,7 @@ def _document_problems(schema: dict[str, Any]) -> None:
     definitions = Problem.model_json_schema(ref_template="#/components/schemas/{model}")
     schemas.update(definitions.pop("$defs", {}))
     schemas["Problem"] = definitions
-    for operations in schema.get("paths", {}).values():
+    for path, operations in schema.get("paths", {}).items():
         for operation in operations.values():
             responses: dict[str, Any] = operation.setdefault("responses", {})
             default = responses.get("422")
@@ -529,4 +535,6 @@ def _document_problems(schema: dict[str, Any]) -> None:
                 del responses["422"]
             if operation.get("requestBody") or operation.get("parameters"):
                 responses.setdefault("400", problem_responses(400)[400])
+            if path.startswith("/api/"):
+                responses.setdefault("429", problem_responses(429)[429])
             responses.setdefault("500", problem_responses(500)[500])

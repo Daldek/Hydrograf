@@ -1,15 +1,23 @@
 """
-Feedback endpoint.
+„Zgłoś uwagę”: reports of the interface's users (Nogat DEV-15.12, ADR-084).
 
-Accepts tester feedback with optional session diagnostics and stores
-it in the feedback table.
+A report is its text and the context the interface adds itself (the view, the station,
+the view's parameters) with the app version the server adds; never a contact, an IP
+address or the User-Agent. The operator lists, marks and deletes the reports at
+`/api/admin/feedback[/{id}]` (X-Admin-Key, and Cloudflare Access in front of it) and
+deletes each once handled.
+
+Reports sent with the form before ADR-084 keep what they were sent with (contact, page
+URL, User-Agent, diagnostics) in columns no new report fills; the admin list gives them
+as `legacy`, so that the operator can handle them, until migration of a later version
+drops those columns.
 """
 
 import json
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
@@ -17,59 +25,52 @@ from sqlalchemy.orm import Session
 from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
 from core.errors import HydrografError, InternalError, NotFoundError
+from core.version import get_version
 from models.schemas import FeedbackRequest, FeedbackResponse, FeedbackUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 admin_router = APIRouter(dependencies=[Depends(verify_admin_key)])
 
+# The columns of the form before ADR-084, which only its reports fill
+LEGACY_COLUMNS = ("contact", "page_url", "user_agent", "diagnostics")
+
 
 @router.post("/feedback", response_model=FeedbackResponse)
 def submit_feedback(
     payload: FeedbackRequest,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> FeedbackResponse:
     """
-    Store a feedback submission.
+    Store a report of „Zgłoś uwagę”.
 
     Parameters
     ----------
     payload : FeedbackRequest
-        Feedback text with optional contact and session diagnostics
+        The text and the view's context; any other member is refused (400).
 
     Returns
     -------
     FeedbackResponse
-        Id of the created record
+        Id of the created report
     """
+    context = {**payload.context.model_dump(), "app_version": get_version()}
     try:
-        query = text("""
-            INSERT INTO feedback
-            (message, contact, page_url, user_agent, diagnostics)
-            VALUES (:message, :contact, :page_url, :user_agent,
-                    CAST(:diagnostics AS JSONB))
-            RETURNING id
-        """)
-        params = {
-            "message": payload.message,
-            "contact": payload.contact,
-            "page_url": payload.page_url,
-            "user_agent": request.headers.get("user-agent", "")[:500],
-            "diagnostics": (
-                json.dumps(payload.diagnostics)
-                if payload.diagnostics is not None
-                else None
-            ),
-        }
-        row = db.execute(query, params).fetchone()
+        row = db.execute(
+            text("""
+                INSERT INTO feedback (message, context)
+                VALUES (:message, CAST(:context AS JSONB))
+                RETURNING id
+            """),
+            {"message": payload.message, "context": json.dumps(context)},
+        ).fetchone()
         db.commit()
         if row is None:
             raise RuntimeError("INSERT INTO feedback RETURNING id returned no row")
         return FeedbackResponse(id=row.id, status="ok")
     except Exception as e:
         db.rollback()
-        logger.error(f"Error storing feedback: {e}", exc_info=True)
+        logger.error("Error storing feedback: %s", type(e).__name__, exc_info=True)
         raise InternalError(
             "feedback_store_failed", reason="feedback_store_failed"
         ) from e
@@ -81,12 +82,17 @@ def list_feedback(
     offset: int = Query(0, ge=0, description="Items to skip"),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """List feedback submissions, newest first, with unread count."""
+    """List the reports, newest first, with the unread count.
+
+    Each item has `id`, `created_at`, `message`, `context` (null for a report of the
+    form before ADR-084), `is_read` and `legacy`: null for a new report, else the
+    `contact`, `page_url`, `user_agent` and `diagnostics` it was sent with.
+    """
     try:
         rows = db.execute(
             text("""
-                SELECT id, created_at, message, contact, page_url,
-                       user_agent, diagnostics, is_read
+                SELECT id, created_at, message, context, is_read,
+                       contact, page_url, user_agent, diagnostics
                 FROM feedback
                 ORDER BY created_at DESC
                 LIMIT :limit OFFSET :offset
@@ -107,20 +113,24 @@ def list_feedback(
                 "id": r.id,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "message": r.message,
-                "contact": r.contact,
-                "page_url": r.page_url,
-                "user_agent": r.user_agent,
-                "diagnostics": r.diagnostics,
+                "context": r.context,
                 "is_read": r.is_read,
+                "legacy": _legacy(r),
             }
             for r in rows
         ]
         return {"items": items, "total": counts.total, "unread_count": counts.unread}
     except Exception as e:
-        logger.error(f"Error listing feedback: {e}", exc_info=True)
+        logger.error("Error listing feedback: %s", type(e).__name__, exc_info=True)
         raise InternalError(
             "feedback_list_failed", reason="feedback_list_failed"
         ) from e
+
+
+def _legacy(row: Any) -> dict[str, Any] | None:
+    """Return what a report of the form before ADR-084 was sent with, or None."""
+    values = {column: getattr(row, column) for column in LEGACY_COLUMNS}
+    return values if any(v is not None for v in values.values()) else None
 
 
 @admin_router.patch("/feedback/{feedback_id}")

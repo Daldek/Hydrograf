@@ -181,6 +181,17 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 /* Own stacking context: Leaflet panes (z 400-1000) stay below the resizers and sheets */
 #map { position: absolute; inset: 0; z-index: 0; }
 
+/* The statement of the service and the link „Regulamin” under the map (DEV-15.7, DEV-15.8):
+ * it wraps and stays whole on every width, on phones above the bottom rail */
+.site-footer {
+    flex: none;
+    padding: var(--space-1) var(--space-3);
+    background: var(--surface); border-top: 1px solid var(--line);
+    font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2);
+}
+.site-footer p { margin: 0; }
+.site-footer a { color: var(--accent); }
+
 /* ---------- Leaflet, restyled with tokens ---------- */
 .map-wrap .leaflet-container {
     background: var(--surface-2);
@@ -730,14 +741,9 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 .counter { justify-self: end; font-size: var(--text-xs); color: var(--text-3); }
 .check { display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--text-sm); color: var(--text-2); }
 .check input { margin-top: 2px; flex: none; }
-#feedback-form input:disabled, #feedback-form textarea:disabled { background: var(--surface-2); color: var(--text-2); cursor: not-allowed; }
-.preview { margin: var(--space-3) 0 0; font-size: var(--text-sm); }
-.preview summary { color: var(--text-3); cursor: pointer; }
-.preview pre {
-    max-height: 200px; overflow: auto; margin: var(--space-2) 0 0; padding: var(--space-2);
-    background: var(--surface-2); border-radius: var(--radius-md);
-    font: var(--text-xs)/var(--line-height) var(--font-mono); white-space: pre-wrap; word-break: break-word;
-}
+#feedback-form textarea:disabled { background: var(--surface-2); color: var(--text-2); cursor: not-allowed; }
+#feedback-form .hint a { color: var(--accent); }
+.modal-body p.muted { color: var(--text-3); font-size: var(--text-sm); }
 .modal-body .feedback-status { margin: var(--space-3) 0 0; font-size: var(--text-sm); font-weight: var(--weight-bold); }
 .modal-body .feedback-status.ok { color: var(--ok-ink); }
 .modal-body .feedback-status.bad { color: var(--bad-ink); }

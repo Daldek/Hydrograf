@@ -6,23 +6,23 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # Logging
-    log_format hydrograf '$remote_addr - $remote_user [$time_local] "$request" '
-                        '$status $body_bytes_sent "$http_referer" "$http_user_agent" '
-                        'request_id=$request_id request_time=$request_time '
-                        'upstream_time=$upstream_response_time';
+    # Logs without the client's address (Nogat DEV-15.10, ADR-084): see nginx.conf. With
+    # TLS here nginx's peer is the client itself, so its error log takes `crit` and worse
+    # only (an error of a request names the client; limit_req and limit_conn would log at
+    # `error`, below it).
+    log_format hydrograf '$time_iso8601 "$request_method $request_uri" $status '
+                         '$body_bytes_sent request_time=$request_time '
+                         'upstream_time=$upstream_response_time request_id=$request_id '
+                         '"$http_user_agent"';
     access_log /dev/stdout hydrograf;
-    error_log /dev/stderr;
+    error_log /dev/stderr crit;
 
     # Gzip
     gzip on;
     gzip_types text/plain text/css application/json application/geo+json application/javascript text/xml application/xml application/x-protobuf;
 
-    # Rate limiting zones
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;
-    limit_req_zone $binary_remote_addr zone=admin_limit:1m rate=5r/s;
-    limit_req_zone $binary_remote_addr zone=feedback_limit:1m rate=1r/m;
+    # No limit here: the API limits pages and routes per client address, which nginx
+    # tells it in X-Real-IP (api/traffic.py, DEV-15.9).
 
     upstream api_backend {
         server api:8000;
@@ -68,8 +68,6 @@ http {
 
         # Tile proxy
         location ^~ /api/tiles/ {
-            limit_req zone=tile_limit burst=200 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/tiles/;
             proxy_set_header Host $host;
             proxy_set_header X-Request-ID $request_id;
@@ -87,10 +85,27 @@ http {
             add_header X-Content-Type-Options "nosniff" always;
         }
 
-        # HTML pages — always revalidated (ETag), so a deploy's new asset
-        # URLs reach the browser on the next load. `expires` instead of
-        # add_header keeps the server-level security headers inherited.
+        # HTML pages pass through the API, which limits and counts them (ADR-084):
+        # X-Accel-Redirect to the page's file under /_site/, the filled regulamin, or
+        # 429. While the API is down nginx sends the page's file itself.
         location ~* \.html$ {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Request-ID $request_id;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
+            error_page 502 504 = @page_file;
+        }
+
+        # The page files, always revalidated (ETag), so a deploy's new asset URLs
+        # reach the browser on the next load. `expires` instead of add_header keeps
+        # the server-level security headers inherited.
+        location ^~ /_site/ {
+            internal;
+            alias /usr/share/nginx/html/;
+            expires -1;
+        }
+        location @page_file {
             root /usr/share/nginx/html;
             expires -1;
         }
@@ -116,22 +131,17 @@ http {
             add_header X-Content-Type-Options "nosniff" always;
         }
 
-        # Admin panel
+        # Admin panel (Cloudflare Access in front of it, with /api/admin/)
         location = /admin {
-            root /usr/share/nginx/html;
-            expires -1;
-            try_files /admin.html =404;
+            rewrite ^ /admin.html last;
         }
 
-        # Admin API — stricter rate limiting
+        # Admin API
         location /api/admin/ {
-            limit_req zone=admin_limit burst=10 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/admin/;
             proxy_set_header Host $host;
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
@@ -143,40 +153,22 @@ http {
         }
 
         # Admin SSE stream (longer timeout for bootstrap)
-        # NOTE: exact match bypasses admin_limit rate limiting intentionally
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
             proxy_buffering off;
         }
 
-        # Feedback — strict rate limiting (anonymous write endpoint)
-        location = /api/feedback {
-            limit_req zone=feedback_limit burst=5 nodelay;
-            limit_req_status 429;
-            proxy_pass http://api_backend/api/feedback;
-            proxy_set_header X-Request-ID $request_id;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_read_timeout 30s;
-        }
-
         # API proxy
         location /api/ {
-            limit_req zone=api_limit burst=20 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/;
             proxy_set_header X-Request-ID $request_id;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;

@@ -24,7 +24,7 @@
     const ERROR_MESSAGES = {
         400: 'Nieprawidłowe żądanie. Sprawdź współrzędne i spróbuj ponownie.',
         404: 'Nie znaleziono linii spływu w tym miejscu. Kliknij bliżej linii spływu.',
-        429: 'Zbyt wiele żądań. Poczekaj chwilę i spróbuj ponownie.',
+        429: 'Zbyt wiele żądań. Spróbuj ponownie za chwilę.',
         500: 'Błąd serwera. Spróbuj ponownie za chwilę.',
     };
 
@@ -336,7 +336,8 @@
     /**
      * Submit user feedback.
      *
-     * @param {Object} payload - { message, contact, page_url, diagnostics }
+     * @param {Object} payload - { message, context: { view, station: null, parameters } };
+     *     the API refuses any other member and adds context.app_version itself
      * @returns {Promise<Object>} { id, status }
      */
     async function submitFeedback(payload) {
@@ -348,6 +349,17 @@
 
         if (!response.ok) await handleError(response);
         return response.json();
+    }
+
+    /**
+     * Count one file the interface saved (the daily statistic `downloads`).
+     * A beacon: keepalive outlives a page that navigates away, errors are
+     * ignored and the caller never waits for it.
+     */
+    function countDownload() {
+        try {
+            fetch('/api/downloads', { method: 'POST', keepalive: true }).catch(function () {});
+        } catch { /* no fetch, or refused synchronously: the count is not essential */ }
     }
 
     window.Hydrograf.api = {
@@ -362,5 +374,6 @@
         previewNetwork: previewNetwork,
         identifyPoint: identifyPoint,
         submitFeedback: submitFeedback,
+        countDownload: countDownload,
     };
 })();

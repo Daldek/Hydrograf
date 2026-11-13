@@ -7,8 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
 <link rel="stylesheet" href="../css/tokens.css?v=6f713b17c3">
 <link rel="stylesheet" href="../css/chrome.css?v=46a0b28957">
-<link rel="stylesheet" href="../nogat/nogat-app-menu.css?v=8bb318a9a6">
-<link rel="stylesheet" href="instrukcja.css?v=20732ab82a">
+<link rel="stylesheet" href="../nogat/nogat-app-menu.css?v=2c096d0122">
+<link rel="stylesheet" href="instrukcja.css?v=49a8fda7d5">
 </head>
 <body>
 <a class="skip" href="#tresc">Przejdź do treści</a>
@@ -138,6 +138,7 @@
     </div>
   </div>
   <p class="hint">Krawędź panelu przeciągnij, by zmienić szerokość; dwuklik przywraca domyślną, a przeglądarka zapamięta wybór. × w „Warstwach” zwija panel, × w „Zlewni” chowa go, a wynik zostaje na mapie (przycisk „Zlewnia” go przywraca); kosz w „Zlewni” czyści wynik.</p>
+  <p>W serwisie publicznym pod mapą jest stopka: oświadczenie o charakterze serwisu (niekomercyjny, bezpłatny, do celów badawczych i edukacyjnych, z danymi IMGW-PIB wykorzystywanymi niezarobkowo) i odnośnik „Regulamin”.</p>
 
 
 <section class="guide-subsection" id="tryby">
@@ -585,19 +586,21 @@
   <div class="split">
     <div class="steps-list">
       <div class="step"><span class="number">01</span><strong>Otwórz formularz</strong><p>Kliknij „Zgłoś uwagę” na górnym pasku strony z mapą; na telefonie to ikona dymka.</p></div>
-      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>Miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Opis jest wymagany (do 5000&nbsp;znaków), imię lub e-mail — nie.</p></div>
-      <div class="step"><span class="number">03</span><strong>Sprawdź diagnostykę</strong><p>„Dołącz dane diagnostyczne” (ostatnie akcje, błędy, parametry zapytań) jest zaznaczone; „Pokaż co zostanie wysłane” pokazuje treść. Możesz je odznaczyć.</p></div>
+      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>W polu „Wiadomość” podaj miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Wiadomość jest wymagana (do 5000&nbsp;znaków).</p></div>
+      <div class="step"><span class="number">03</span><strong>Bez danych osobowych</strong><p>Nie wpisuj danych osobowych. Jeśli chcesz odpowiedzi, napisz na adres e-mail operatora podany pod polem. Zgłoszenie zawiera tylko widok (tryb mapy), jego parametry i wersję aplikacji: bez kontaktu, bez adresu IP i bez danych przeglądarki.</p></div>
       <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” formularz się blokuje i pojawia się podziękowanie; okno zamknie się samo po 2&nbsp;s, chyba że w nim klikasz lub piszesz. „Anuluj”, × lub <kbd>Esc</kbd> zamykają je bez wysyłania.</p></div>
     </div>
-    <figure class="portrait"><a href="Hydrograf-feedback.png"><img class="app-shot fit-shot" src="Hydrograf-feedback.png" width="650" height="580" alt="Formularz Zgłoś uwagę: opis, opcjonalny kontakt, dane diagnostyczne, podgląd danych i przycisk Wyślij."></a><figcaption>Jak przekazać uwagę?. Kliknij obraz, aby powiększyć.</figcaption></figure>
+    <figure class="portrait"><a href="Hydrograf-feedback.png"><img class="app-shot fit-shot" src="Hydrograf-feedback.png" width="650" height="500" alt="Formularz Zgłoś uwagę: pole Wiadomość z licznikiem znaków, pod nim prośba o niewpisywanie danych osobowych z adresem e-mail operatora, informacja o widoku, parametrach i wersji aplikacji oraz przyciski Anuluj i Wyślij."></a><figcaption>Jak przekazać uwagę?. Kliknij obraz, aby powiększyć.</figcaption></figure>
   </div>
 
 <p class="back"><a href="#toc-title">↑ Spis treści</a></p></section>
 
-<section class="part" id="problemy"><p class="kicker">11 · Pomoc</p><h2>Gdy coś nie działa</h2><dl class="defs"><div><dt>„Nie znaleziono zlewni cząstkowej w tym punkcie”</dt><dd>Sprawdź obszar danych i włącz „Linie spływu” w panelu „Warstwy”. Przybliż mapę, a potem kliknij bliżej widocznej linii.</dd></div><div><dt>Dwa punkty sieci w tym samym węźle</dt><dd>Węzeł J już dzieli zlewnię na cieki, które się w nim łączą. Usuń drugi punkt albo przesuń go dalej niż 50 m od zbiegu; dotyczy to także przekroju zamykającego.</dd></div><div><dt>Charakterystyki sieci nieaktualne</dt><dd>Po przesunięciu, dodaniu lub usunięciu punktu oraz po zmianie progu spływu mapa wraca do podglądu. Naciśnij ponownie „Oblicz charakterystyki”, aby uaktualnić wynik i przekazanie.</dd></div><div><dt>Brak hietogramu i hydrogramu</dt><dd>Te sekcje powstają tylko dla zlewni do 250 km². Dla większej zlewni odczytaj pozostałe parametry lub wybierz mniejszą.</dd></div><div><dt>Nieprawidłowa własna seria opadu</dt><dd>Popraw pole lub wiersz wskazany czerwonym komunikatem: czas trwania ma być wielokrotnością kroku, wysokości opadu nie mogą być ujemne, a suma musi być dodatnia. Do poprawy hydrogram się nie przeliczy.</dd></div><div><dt>Mapa głębokości wody nie wygląda jak oficjalna mapa zagrożenia</dt><dd>Warstwa SFINCS to osobna symulacja dla Kamiennika, opadu 24 h i p = 1%, a nie mapa MZP Wód Polskich. Przeczytaj (i) przy nazwie warstwy i porównaj scenariusze przed wyciągnięciem wniosków.</dd></div><div><dt>Coś nadal działa źle?</dt><dd>Przycisk „Zgłoś uwagę” na górnym pasku otwiera formularz; podaj miejsce, kroki i oczekiwany wynik. Przed wysłaniem możesz sprawdzić i odznaczyć dane diagnostyczne.</dd></div></dl><p class="back"><a href="#toc-title">↑ Spis treści</a></p></section></div></main>
+<section class="part" id="problemy"><p class="kicker">11 · Pomoc</p><h2>Gdy coś nie działa</h2><dl class="defs"><div><dt>„Nie znaleziono zlewni cząstkowej w tym punkcie”</dt><dd>Sprawdź obszar danych i włącz „Linie spływu” w panelu „Warstwy”. Przybliż mapę, a potem kliknij bliżej widocznej linii.</dd></div><div><dt>Dwa punkty sieci w tym samym węźle</dt><dd>Węzeł J już dzieli zlewnię na cieki, które się w nim łączą. Usuń drugi punkt albo przesuń go dalej niż 50 m od zbiegu; dotyczy to także przekroju zamykającego.</dd></div><div><dt>Charakterystyki sieci nieaktualne</dt><dd>Po przesunięciu, dodaniu lub usunięciu punktu oraz po zmianie progu spływu mapa wraca do podglądu. Naciśnij ponownie „Oblicz charakterystyki”, aby uaktualnić wynik i przekazanie.</dd></div><div><dt>Brak hietogramu i hydrogramu</dt><dd>Te sekcje powstają tylko dla zlewni do 250 km². Dla większej zlewni odczytaj pozostałe parametry lub wybierz mniejszą.</dd></div><div><dt>Nieprawidłowa własna seria opadu</dt><dd>Popraw pole lub wiersz wskazany czerwonym komunikatem: czas trwania ma być wielokrotnością kroku, wysokości opadu nie mogą być ujemne, a suma musi być dodatnia. Do poprawy hydrogram się nie przeliczy.</dd></div><div><dt>Mapa głębokości wody nie wygląda jak oficjalna mapa zagrożenia</dt><dd>Warstwa SFINCS to osobna symulacja dla Kamiennika, opadu 24 h i p = 1%, a nie mapa MZP Wód Polskich. Przeczytaj (i) przy nazwie warstwy i porównaj scenariusze przed wyciągnięciem wniosków.</dd></div><div><dt>Coś nadal działa źle?</dt><dd>Przycisk „Zgłoś uwagę” na górnym pasku otwiera formularz; podaj miejsce, kroki i oczekiwany wynik, bez danych osobowych. Zgłoszenie zabiera ze sobą tylko widok, jego parametry i wersję aplikacji.</dd></div></dl><p class="back"><a href="#toc-title">↑ Spis treści</a></p></section></div></main>
+<footer class="site-footer" id="site-footer" hidden><p>Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB. <a href="/regulamin.html" id="terms-link">Regulamin</a></p></footer>
 <script defer="" src="../js/theme-switch.js?v=b1e53f98a8"></script>
 <script defer="" src="../js/instance.js?v=04b557b531"></script>
-<script type="module" src="../js/nogat.js?v=1a75bf5331"></script>
+<script defer="" src="../js/terms.js?v=c5ff20bdcc"></script>
+<script type="module" src="../js/nogat.js?v=101867399f"></script>
 
 
 

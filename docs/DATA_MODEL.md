@@ -708,37 +708,41 @@ COMMENT ON COLUMN sewer_network.source IS 'Źródło danych (np. plik, WFS, DB)'
 
 ### 3.11 Tabela: `feedback`
 
-**Opis:** Zgłoszenia testerów (uwagi, błędy, sugestie) z formularza na stronie głównej. Kolumna `diagnostics` przechowuje opcjonalny, opt-in pakiet diagnostyczny zebrany po stronie przeglądarki — wyłącznie po jawnej zgodzie użytkownika. Tabela świadomie BEZ adresu IP zgłaszającego (minimalizacja danych osobowych). Migracja 002.
+**Description:** the reports of „Zgłoś uwagę” (remarks, errors, suggestions) from the main page. Migration 002, `context` migration 007 (ADR-084). A report holds its text and the context the interface adds (Nogat DEV-15.12): no contact, no User-Agent, no address of the client. The columns `contact`, `page_url`, `user_agent` and `diagnostics` hold only what the reports of the form before ADR-084 sent (on production ids 11–40); no new report fills them, and a later migration drops them once the operator has handled those reports.
 
-**Schemat SQL:**
+**SQL schema:**
 ```sql
 CREATE TABLE feedback (
     id SERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 5000),
-    contact TEXT CHECK (length(contact) <= 200),
-    page_url TEXT,
-    user_agent TEXT,
-    diagnostics JSONB,
-    is_read BOOLEAN NOT NULL DEFAULT false
+    contact TEXT CHECK (length(contact) <= 200),   -- the old form only (migration 007 comment)
+    page_url TEXT,                                 -- the old form only
+    user_agent TEXT,                               -- the old form only
+    diagnostics JSONB,                             -- the old form only
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    context JSONB                                  -- migration 007
 );
 
--- Indeksy
+-- Indexes
 CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 ```
 
-**Kolumny - szczegóły:**
+**Columns:**
 
-| Kolumna | Typ | Nullable | Default | Opis |
+| Column | Type | Nullable | Default | Description |
 |---------|-----|----------|---------|------|
-| `id` | SERIAL | NO | auto | Unikalny identyfikator |
-| `created_at` | TIMESTAMPTZ | NO | now() | Data i czas zgłoszenia |
-| `message` | TEXT | NO | - | Treść zgłoszenia (1-5000 znaków) |
-| `contact` | TEXT | YES | NULL | Opcjonalny kontakt zwrotny do zgłaszającego (max 200 znaków) |
-| `page_url` | TEXT | YES | NULL | Adres strony, z której wysłano zgłoszenie |
-| `user_agent` | TEXT | YES | NULL | Nagłówek User-Agent przeglądarki (z żądania HTTP) |
-| `diagnostics` | JSONB | YES | NULL | Opt-in pakiet diagnostyczny z przeglądarki: dziennik do 50 ostatnich zdarzeń (`map_click`/`mode_change`/`layer_change`/`api_call` z `X-Request-ID`/`js_error`) + snapshot konfiguracji obszaru roboczego (mapa, tryb, zlewnia, parametry hydrogramu, linia profilu); limit 100 KB; świadomie BEZ adresu IP klienta |
-| `is_read` | BOOLEAN | NO | false | Flaga przeczytania zgłoszenia w panelu admina |
+| `id` | SERIAL | NO | auto | Identifier |
+| `created_at` | TIMESTAMPTZ | NO | now() | Time of the report |
+| `message` | TEXT | NO | - | Text of the report (1–5000 characters) |
+| `contact` | TEXT | YES | NULL | The old form's optional contact (at most 200 characters); NULL in every new report |
+| `page_url` | TEXT | YES | NULL | The old form's page address; NULL in every new report |
+| `user_agent` | TEXT | YES | NULL | The User-Agent the server stored with the old form; NULL in every new report |
+| `diagnostics` | JSONB | YES | NULL | The old form's opt-in diagnostics (the last 50 events, the workspace, the environment; ADR-053, superseded); NULL in every new report |
+| `is_read` | BOOLEAN | NO | false | Read in the admin panel |
+| `context` | JSONB | YES | NULL | `{view, station, parameters, app_version}`: the map mode, `null` (Hydrograf has no stations), the view's parameters (map, clicked point, watershed, hydrograph settings, profile line) and the app version the server adds; at most 100,000 characters; NULL in the reports of the old form |
+
+The admin list (`GET /api/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
 
 ---
 
@@ -1218,10 +1222,11 @@ migrations/
     ├── 003_outlet_flow_dist.py                     # outlet_flow_dist_m (ADR-054)
     ├── 004_flow_path_heads.py                      # flow path heads and overland segments (ADR-070)
     ├── 005_processing_runs.py                      # processing_runs, processing_units (ADR-071)
-    └── 006_drop_land_cover_cn_value.py             # drops land_cover.cn_value, valid_cn and idx_cn_value (ADR-075)
+    ├── 006_drop_land_cover_cn_value.py             # drops land_cover.cn_value, valid_cn and idx_cn_value (ADR-075)
+    └── 007_feedback_context.py                     # feedback.context, comments on the old form's columns (ADR-084)
 ```
 
-The migration numbers of the schema written before the squash (e.g. 003, 005 and 006 of `stream_network`, 014, 017, 021, 025) are the old migrations, now part of `001_initial_schema.py`; the numbers given with ADR-054 (003), ADR-070 (004), ADR-071 (005) and ADR-075 (006) are the files above.
+The migration numbers of the schema written before the squash (e.g. 003, 005 and 006 of `stream_network`, 014, 017, 021, 025) are the old migrations, now part of `001_initial_schema.py`; the numbers given with ADR-054 (003), ADR-070 (004), ADR-071 (005), ADR-075 (006) and ADR-084 (007) are the files above.
 
 **Przykład migracji (021 — bdot_streams + is_real_stream; before the squash, now part of `001_initial_schema.py`):**
 ```python
@@ -1345,8 +1350,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **12 tables:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg, bdot_streams, sewer_nodes, sewer_network (migration 001), feedback (002), processing_runs and processing_units (005); flow_network was dropped (ADR-028)
-- **6 Alembic migrations** (001–006; 001 is the squashed initial schema)
+- **12 tables:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg, bdot_streams, sewer_nodes, sewer_network (migration 001), feedback (002, `context` 007), processing_runs and processing_units (005); flow_network was dropped (ADR-028)
+- **7 Alembic migrations** (001–007; 001 is the squashed initial schema)
 - **Uklad wspolrzednych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii + partial indexes per threshold
 - **Walidacja** przez CHECK constraints

@@ -5,7 +5,6 @@ Defines data structures for watershed delineation and hydrograph
 generation API endpoints.
 """
 
-import json
 import math
 from typing import Annotated, Any, Literal
 
@@ -1653,29 +1652,56 @@ class IdentifyPointResponse(BaseModel):
 
 # ===================== FEEDBACK MODELS =====================
 
+# Most bytes a report's context may take as JSON (Nogat DEV-15.12: 100 KB)
+FEEDBACK_CONTEXT_MAX_BYTES = 100_000
+
+
+class FeedbackContext(BaseModel):
+    """What the interface adds to a report by itself (Nogat DEV-15.12).
+
+    The view and its parameters only: never a contact, an address, the browser or the
+    page's URL. The server adds ``app_version`` when it stores the report.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    view: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="The view the report was sent from: the map mode `browse`, "
+        "`select`, `network`, `profile` or `identify`",
+    )
+    station: str | None = Field(
+        None, max_length=200, description="The station of the view; null without one"
+    )
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The view's parameters: the map, the selected point, the "
+        "catchment and the hydrograph settings",
+    )
+
 
 class FeedbackRequest(BaseModel):
-    """Request model for tester feedback submission."""
+    """A report of „Zgłoś uwagę” (Nogat DEV-15.12): the text and the view's context.
+
+    Any other member, such as the `contact`, `page_url` or `diagnostics` of the form
+    before ADR-084, is refused.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     message: str = Field(
         ..., min_length=1, max_length=5000, description="Feedback text"
     )
-    contact: str | None = Field(
-        None, max_length=200, description="Optional name or email"
-    )
-    page_url: str | None = Field(
-        None, max_length=500, description="Page URL at submission time"
-    )
-    diagnostics: dict[str, Any] | None = Field(
-        None, description="Session diagnostics (events, workspace, env)"
-    )
+    context: FeedbackContext = Field(..., description="The view the report comes from")
 
-    @field_validator("diagnostics")
+    @field_validator("context")
     @classmethod
-    def diagnostics_size_limit(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        """Reject a diagnostics payload larger than 100 KB."""
-        if v is not None and len(json.dumps(v)) > 100_000:
-            raise ValueError("diagnostics payload exceeds 100 KB limit")
+    def context_size_limit(cls, v: FeedbackContext) -> FeedbackContext:
+        """Reject a context larger than 100 KB as JSON."""
+        if len(v.model_dump_json().encode("utf-8")) > FEEDBACK_CONTEXT_MAX_BYTES:
+            raise ValueError("Kontekst zgłoszenia przekracza 100 KB.")
         return v
 
 
@@ -1691,4 +1717,23 @@ class FeedbackUpdate(BaseModel):
 
     is_read: bool = Field(
         ..., strict=True, description="Whether the submission is read"
+    )
+
+
+# ===================== PUBLIC SERVICE MODELS =====================
+
+
+class TermsInfo(BaseModel):
+    """The regulamin of the deployment for the front end (Nogat DEV-15.7, ADR-084)."""
+
+    url: str | None = Field(
+        ...,
+        description="Address of the filled regulamin, `/regulamin.html`; null when the "
+        "deployment names no operator (`[nogat.operator]` of nogat.toml), and then "
+        "there is no footer link either",
+    )
+    operator_email: str | None = Field(
+        ...,
+        description="The operator's e-mail, named under „Zgłoś uwagę” for a reply "
+        "(DEV-15.12); null without the regulamin",
     )

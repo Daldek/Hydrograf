@@ -1,5 +1,9 @@
 # ADR-059: REST errors as problem+json with registry codes
 
+> **Amended by ADR-084 (2026-11-13):** the 429 is now the app's problem `rate_limited`
+> (with `Retry-After`) for every `/api/` operation; only the gateway errors of nginx stay
+> plain responses.
+
 **Date:** 2026-10-25
 **Status:** accepted
 

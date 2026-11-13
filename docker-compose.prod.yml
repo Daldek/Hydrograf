@@ -11,8 +11,10 @@ services:
     secrets:
       - db_password
       - admin_api_key
-    # 2 workers for production (no --reload)
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
+    # One process, no --reload: the request limit and the daily totals live in its
+    # memory (ADR-084); uvicorn's access log is off, api.main logs every request
+    # without its client
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --no-access-log
 
   db:
     environment:

@@ -42,25 +42,49 @@
         return container;
     }
 
+    function textLine(label, value) {
+        return el('p', 'small text-secondary', label + ': ' + value);
+    }
+
+    /** The view the report came from: {view, station, parameters, app_version}. */
+    function renderContext(context) {
+        var wrap = el('div');
+        wrap.appendChild(textLine('Widok', context.view || '—'));
+        if (context.station !== null && context.station !== undefined) {
+            wrap.appendChild(textLine('Stacja', context.station));
+        }
+        wrap.appendChild(textLine('Wersja aplikacji', context.app_version || '—'));
+        if (context.parameters) {
+            wrap.appendChild(el('h6', 'admin-section-title', 'Parametry'));
+            wrap.appendChild(el('pre', 'feedback-event-data',
+                JSON.stringify(context.parameters, null, 2)));
+        }
+        return wrap;
+    }
+
+    /** What the old form sent: {contact, page_url, user_agent, diagnostics}, each may be null. */
+    function renderLegacy(legacy) {
+        var wrap = el('div');
+        wrap.appendChild(el('h6', 'admin-section-title', 'Zgłoszenie ze starego formularza'));
+        if (legacy.contact) wrap.appendChild(textLine('Kontakt', legacy.contact));
+        if (legacy.page_url) wrap.appendChild(textLine('URL', legacy.page_url));
+        if (legacy.user_agent) wrap.appendChild(textLine('Przeglądarka', legacy.user_agent));
+        var diagnostics = legacy.diagnostics;
+        if (diagnostics && diagnostics.workspace) {
+            wrap.appendChild(el('h6', 'admin-section-title', 'Obszar roboczy'));
+            wrap.appendChild(el('pre', 'feedback-event-data',
+                JSON.stringify(diagnostics.workspace, null, 2)));
+        }
+        wrap.appendChild(el('h6', 'admin-section-title', 'Zdarzenia'));
+        wrap.appendChild(renderEventsTimeline(diagnostics));
+        return wrap;
+    }
+
     function renderDetails(item) {
         var wrap = el('div', 'feedback-details');
         wrap.appendChild(el('p', 'small feedback-message', item.message));
-        if (item.contact) {
-            wrap.appendChild(el('p', 'small text-secondary', 'Kontakt: ' + item.contact));
-        }
-        if (item.page_url) {
-            wrap.appendChild(el('p', 'small text-secondary', 'URL: ' + item.page_url));
-        }
-        if (item.user_agent) {
-            wrap.appendChild(el('p', 'small text-secondary', 'Przeglądarka: ' + item.user_agent));
-        }
-        if (item.diagnostics && item.diagnostics.workspace) {
-            wrap.appendChild(el('h6', 'admin-section-title', 'Obszar roboczy'));
-            wrap.appendChild(el('pre', 'feedback-event-data',
-                JSON.stringify(item.diagnostics.workspace, null, 2)));
-        }
-        wrap.appendChild(el('h6', 'admin-section-title', 'Zdarzenia'));
-        wrap.appendChild(renderEventsTimeline(item.diagnostics));
+        if (item.context) wrap.appendChild(renderContext(item.context));
+        if (item.legacy) wrap.appendChild(renderLegacy(item.legacy));
         return wrap;
     }
 

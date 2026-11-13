@@ -119,9 +119,18 @@ body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-si
 .compare th, .compare td { padding: var(--space-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
 .compare thead th { color: var(--tool-hydrograf); }
 .compare tbody tr:nth-child(odd) { background: var(--surface-2); }
+/* The statement of the service and the link „Regulamin” (DEV-15.7, DEV-15.8), js/terms.js */
+.site-footer {
+    padding: var(--space-3) var(--space-6);
+    background: var(--surface); border-top: 1px solid var(--line);
+    font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2);
+}
+.site-footer p { max-width: var(--container-max); margin: 0 auto; }
+.site-footer a { color: var(--accent); }
 @media (max-width: 1050px) {
     .guide { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'head' 'toc' 'text'; padding: var(--space-6) var(--space-4) var(--space-12); }
     .guide-toc { position: static; max-height: none; overflow: visible; margin-bottom: var(--space-6); }
+    .site-footer { padding: var(--space-3) var(--space-4); }
 }
 @media (max-width: 860px) {
     html { scroll-padding-top: 56px; }
