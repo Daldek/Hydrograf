@@ -334,6 +334,28 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .notice.has-action { flex-direction: column; }
 .notice svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
+/* Provider lines (attribution.js): the source and the terms of use of the data, next to them in
+   the panels, the legends, the point card, the profile drawer and the (i) texts (Nogat DEV §20) */
+.provider-lines { margin: 0 0 var(--space-3); font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2); overflow-wrap: anywhere; }
+.provider-lines p { margin: 0; }
+.provider-lines p + p { margin-top: 2px; }
+.provider-attribution + .provider-terms { margin-top: var(--space-1); }
+.provider-lines a { color: var(--accent); }
+.provider-lines a:hover { color: var(--accent-hover); }
+.custom-rain .provider-lines { margin-bottom: var(--space-2); }
+.profile-drawer .provider-lines { margin: 0; padding: 0 var(--space-3) var(--space-3); }
+.identify-section .provider-lines { margin: var(--space-1) 0 0; }
+.info-tip .provider-lines { margin: var(--space-2) 0 0; }
+/* A legend with lines is wider, so they take fewer rows (also on phones) */
+.layer-legend.has-provider-lines { width: min(280px, calc(100vw - 2 * var(--space-3))); }
+.layer-legend .provider-lines { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); }
+@media (max-width: 860px) {
+    /* Phone: the lines scroll inside the legend and under the profile chart, so the map stays in view */
+    .layer-legend.has-provider-lines { max-height: 45vh; overflow-y: auto; overscroll-behavior: contain; }
+    .profile-drawer { display: flex; flex-direction: column; max-height: 70%; }
+    .profile-drawer .provider-lines { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
+
 .steps { display: grid; gap: var(--space-2); counter-reset: step; }
 .step { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .step:not(.d-none) { counter-increment: step; }

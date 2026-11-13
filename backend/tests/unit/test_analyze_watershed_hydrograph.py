@@ -2,19 +2,25 @@
 
 The morphometry of step 4 carries shape/relief indices and the CN next to the
 fields of Hydrolog's WatershedParameters; step 6 must hand Hydrolog only the
-accepted fields and the CN computed by the script.
+accepted fields and the CN computed by the script. The results of step 8 carry the
+provider lines exactly when the precipitation came from IMGW-PIB's PMAXTP.
 """
 
+import json
 from typing import Any
 
 import pytest
 from shapely.geometry import Polygon
 
+from core.attribution import NO_PROVIDER, PMAXTP
 from models.schemas import MorphometricParameters
 from scripts.analyze_watershed import (
+    PMAXTP_PRECIPITATION_SOURCE,
     AnalysisConfig,
     calculate_morphometry,
     generate_hydrograph,
+    save_results,
+    write_attribution_file,
 )
 
 
@@ -84,3 +90,63 @@ def test_hydrograph_uses_the_cn_computed_by_the_script(tmp_path, watershed):
     assert q_low["cn"] == 60
     assert q_high["cn"] == 90
     assert q_high["design_storm"]["Qmax_m3s"] > q_low["design_storm"]["Qmax_m3s"]
+
+
+def _pmaxtp_precipitation() -> dict[str, Any]:
+    """A precipitation as fetch_precipitation_imgw returns it from PMAXTP."""
+    return {
+        "source": PMAXTP_PRECIPITATION_SOURCE,
+        "probability_percent": 1.0,
+        "duration_min": 60,
+        "precipitation_ks_mm": 42.0,
+        "precipitation_sg_mm": 51.0,
+        "precipitation_rb_mm": 4.0,
+        "precipitation_mm": 42.0,
+        "all_distributions": {"ks": 42.0, "sg": 51.0, "rb": 4.0},
+    }
+
+
+def _saved_results(tmp_path, watershed, precipitation):
+    config = _config(tmp_path, cn=80, tc_method="nrcs")
+    morph = calculate_morphometry(config, watershed, db=None)
+    hydrograph = generate_hydrograph(config, morph, precipitation)
+    step_3 = {**watershed, "area_km2": 3.0, "catchment_count": 4}
+    path = save_results(config, step_3, morph, precipitation, hydrograph)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_results_with_pmaxtp_precipitation_carry_the_provider_lines(
+    tmp_path, watershed
+):
+    results = _saved_results(tmp_path, watershed, _pmaxtp_precipitation())
+
+    assert results["hydrograph"]["design_storm"]["P_mm"] == 42.0
+    assert results["attribution"] == list(PMAXTP.attribution)
+    assert results["terms_notice"] == list(PMAXTP.terms_notice)
+
+
+def test_results_without_pmaxtp_precipitation_carry_no_provider_lines(
+    tmp_path, watershed
+):
+    results = _saved_results(tmp_path, watershed, None)
+
+    assert results["hydrograph"]["precipitation_source"] == "manual"
+    assert "attribution" not in results
+    assert "terms_notice" not in results
+
+
+def test_attribution_file_holds_the_lines_and_merges_into_an_existing_one(tmp_path):
+    pmaxtp_lines = [*PMAXTP.attribution, *PMAXTP.terms_notice]
+    assert write_attribution_file(tmp_path, NO_PROVIDER) is None
+    assert not (tmp_path / "ATTRIBUTION.txt").exists()
+
+    path = write_attribution_file(tmp_path, PMAXTP)
+    assert path.read_text(encoding="utf-8") == "".join(f"{x}\n" for x in pmaxtp_lines)
+
+    # Another command's line already in the file stays, the PMAXTP lines come once
+    foreign = "Źródło: inny dostawca"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text("\n".join([foreign, *lines]) + "\n", encoding="utf-8")
+    write_attribution_file(tmp_path, PMAXTP)
+
+    assert path.read_text(encoding="utf-8").splitlines() == [foreign, *pmaxtp_lines]

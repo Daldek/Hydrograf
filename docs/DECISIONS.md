@@ -88,6 +88,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (seven times), noted 2026-11-11 (an option of „Wybierz zlewnię”) | 2026-11-10 |
 | [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted, amended 2026-11-11 | 2026-11-11 |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | accepted | 2026-11-12 |
+| [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted | 2026-11-13 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

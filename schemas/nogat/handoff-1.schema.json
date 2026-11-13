@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Daldek/Nogat/schemas/exchange/handoff-1.schema.json",
   "title": "nogat-handoff/1",
-  "description": "Data handed from one tool's GUI to another's (item 6 of docs/plans/2026-11-01-nogat-gui-platform.md): an envelope with provenance around one domain document, the payload. Projects copy this file like schemas/agent/ (ECO-050) and never define the envelope themselves. The envelope does not check the payload's content: a consumer validates it against its owner's schema and refuses kinds it does not take. Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
+  "description": "Data handed from one tool's GUI to another's (item 6 of docs/plans/2026-11-01-nogat-gui-platform.md): an envelope with provenance and the providers' attribution around one domain document, the payload. Projects copy this file like schemas/agent/ (ECO-050) and never define the envelope themselves. The envelope does not check the payload's content: a consumer validates it against its owner's schema and refuses kinds it does not take. Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
   "type": "object",
   "required": ["schema", "created_at", "producer", "subject", "provenance", "payload"],
   "properties": {
@@ -31,6 +31,20 @@
       "minProperties": 1,
       "propertyNames": {"minLength": 1},
       "additionalProperties": {"$ref": "#/$defs/node_inputs"}
+    },
+    "attribution": {
+      "description": "The attribution lines the providers' terms require for the data in the payload and result, verbatim and in the order of DEV-20.4 of Nogat's standard (IMGW-PIB, hydro.imgw.pl, PMAXTP, ČHMÚ): required whenever the hand-off carries provider data or results derived from them. The consumer shows every line visibly with the loaded data and carries them on, without duplicates, into its own products and any further hand-off (DEV-20.6). Optional within `/1` (AGI-4.1)",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "terms_notice": {
+      "description": "The notice of the IMGW-PIB terms of use and the addresses of the terms that apply, verbatim and in the order of DEV-20.7 of Nogat's standard: required whenever the hand-off carries IMGW-PIB data or results derived from them. The consumer shows and carries it on like `attribution`. Optional within `/1` (AGI-4.1)",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
     },
     "payload": {"$ref": "#/$defs/payload"},
     "result": {"$ref": "#/$defs/result"}
@@ -113,6 +127,15 @@
         "rainfall": {"source": "pmaxtp", "probability_percent": 1, "duration_min": 720},
         "watershed": {"source": "hydrograf", "latitude": 51.0154, "longitude": 15.89}
       },
+      "attribution": [
+        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne",
+        "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone",
+        "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
+      ],
+      "terms_notice": [
+        "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+        "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+      ],
       "payload": {
         "schema": "hydrolog-network/1",
         "name": "Kamiennik — Świerzawa",
@@ -187,6 +210,15 @@
         },
         "Z3": {"watershed": {"source": "hydrograf", "element": "intermediate", "reach": "R1"}}
       },
+      "attribution": [
+        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne",
+        "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone",
+        "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
+      ],
+      "terms_notice": [
+        "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+        "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+      ],
       "payload": {
         "schema": "hydrolog-network/1",
         "name": "Kamiennik — Świerzawa, sieć 3 zlewni",

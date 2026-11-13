@@ -14,7 +14,7 @@ from fastapi import APIRouter, Response
 from pyproj import Transformer
 from shapely.geometry import LineString
 
-from core.analysis_results import sample_water_levels
+from core.analysis_results import provider_lines, sample_water_levels
 from core.config import get_settings
 from core.errors import (
     HydrografError,
@@ -145,6 +145,11 @@ def terrain_profile(
             )
         ]
 
+        # The lines of the results whose water the profile shows (ADR-083)
+        lines = provider_lines(
+            settings.frontend_data_dir, [w.result_id for w in water_levels]
+        )
+
         response.headers["Cache-Control"] = "public, max-age=3600"
         return TerrainProfileResponse(
             distances_m=distances,
@@ -152,6 +157,8 @@ def terrain_profile(
             dem_gaps=dem_gaps,
             total_length_m=total_length_m,
             water_levels=water_levels,
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
     except HydrografError:

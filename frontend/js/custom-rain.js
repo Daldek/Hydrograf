@@ -5,6 +5,10 @@
  * a table of depths per time step, typed in, pasted from a spreadsheet or
  * imported from CSV. While the own series is active hydrograph.js sends it as
  * `custom_precipitation` instead of duration, probability and hietogram.
+ * A series loaded from the current PMAXTP hietogram stays derived from PMAXTP
+ * through edits, pastes and a new size: it is sent with `derived_from: 'pmaxtp'`
+ * and shows the provider lines of that result under the table (attribution.js)
+ * until "Wyczyść", a CSV import or a new watershed.
  * The series belongs to one delineated watershed; a new delineation resets it.
  */
 (function () {
@@ -25,7 +29,8 @@
     var _custom = false;                // "Własna seria" selected
     var _cells = [];                    // depth texts by step index (may outlast a shorter table)
     var _step = DEFAULT_STEP_MIN;       // step of the rendered rows [min]
-    var _pmaxtp = null;                 // { watershed, step, depths } of the last PMAXTP result
+    var _pmaxtp = null;                 // { watershed, step, depths, lines } of the last PMAXTP result
+    var _derived = null;                // provider lines of the PMAXTP result the series was copied from; null for own data
     var _timer = null;
     var els = {};
 
@@ -230,6 +235,12 @@
         fillInputs();
     }
 
+    /** The series as a copy of a PMAXTP result (its provider lines), or the user's own data (null). */
+    function setDerived(lines) {
+        _derived = lines;
+        Hydrograf.attribution.render(els.attribution, lines);
+    }
+
     function updateLoadButton() {
         els.load.disabled = !(_pmaxtp && _pmaxtp.watershed === _watershed);
         els.load.title = els.load.disabled
@@ -252,6 +263,7 @@
         _watershed = data;
         _custom = false;
         _cells = [];
+        setDerived(null);
         if (_pmaxtp && _pmaxtp.watershed !== data) _pmaxtp = null;
         els.duration.value = String(DEFAULT_DURATION_MIN);
         els.step.value = String(DEFAULT_STEP_MIN);
@@ -486,6 +498,7 @@
                 return;
             }
             setSeries(parsed.step, parsed.depths);
+            setDerived(null);
             showMessage('info', 'Zaimportowano ' + steps(parsed.depths.length) + ' po ' + fmt(parsed.step) +
                 ' min z pliku „' + file.name + '”' +
                 (parsed.columns === 2 ? ' (kolumny czas i opad).' : ' (kolumna opadu).'));
@@ -539,6 +552,7 @@
         sync();
         if (!_pmaxtp || _pmaxtp.watershed !== _watershed) return;
         setSeries(_pmaxtp.step, _pmaxtp.depths);
+        setDerived(_pmaxtp.lines);
         showMessage('info', 'Wczytano bieżący hietogram PMAXTP: ' + steps(_pmaxtp.depths.length) +
             ' po ' + fmt(_pmaxtp.step) + ' min.');
         changed();
@@ -547,6 +561,7 @@
     function onClear() {
         sync();
         _cells = [];
+        setDerived(null);
         showMessage(null, '');
         fillInputs();
         changed();
@@ -558,7 +573,8 @@
      * Rainfall for the hydrograph request of the given watershed.
      * Returns { active, valid, series }: active when the own series is
      * selected; valid false while it has errors or no rain (the caller must
-     * not send the request); series = { timestep_min, depths_mm }.
+     * not send the request); series = { timestep_min, depths_mm }, with
+     * derived_from 'pmaxtp' while it is a copy of a PMAXTP hietogram.
      */
     function request(data) {
         if (!els.form) return { active: false, valid: true, series: null };
@@ -566,13 +582,24 @@
         if (!_custom) return { active: false, valid: true, series: null };
         var state = refresh();
         if (!state.valid) return { active: true, valid: false, series: null };
-        return { active: true, valid: true, series: { timestep_min: state.step, depths_mm: state.depths } };
+        var series = { timestep_min: state.step, depths_mm: state.depths };
+        if (_derived) series.derived_from = 'pmaxtp';
+        return { active: true, valid: true, series: series };
     }
 
-    /** Remember the PMAXTP series of a result ("Wczytaj z bieżącego hietogramu"). */
-    function noteResult(data, precip) {
+    /**
+     * Remember the PMAXTP series of a hydrograph response and its provider lines
+     * ("Wczytaj z bieżącego hietogramu").
+     */
+    function noteResult(data, result) {
+        var precip = result && result.precipitation;
         if (!els.form || !precip || precip.source !== 'pmaxtp') return;
-        _pmaxtp = { watershed: data, step: precip.timestep_min, depths: precip.intensities_mm.slice() };
+        _pmaxtp = {
+            watershed: data,
+            step: precip.timestep_min,
+            depths: precip.intensities_mm.slice(),
+            lines: Hydrograf.attribution.lines(result),
+        };
         updateLoadButton();
     }
 
@@ -606,6 +633,7 @@
         els.msgText = document.getElementById('custom-rain-msg-text');
         els.invalid = document.getElementById('custom-rain-invalid');
         els.invalidText = document.getElementById('custom-rain-invalid-text');
+        els.attribution = document.getElementById('custom-rain-attribution');
 
         els.srcPmaxtp.addEventListener('click', function () { setSource(false); });
         els.srcCustom.addEventListener('click', function () { setSource(true); });

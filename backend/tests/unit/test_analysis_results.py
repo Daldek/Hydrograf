@@ -1,4 +1,4 @@
-"""Tests for core.analysis_results (water levels along a terrain profile)."""
+"""Tests for core.analysis_results (water levels along a terrain profile, lines)."""
 
 import json
 
@@ -8,7 +8,8 @@ import rasterio
 from pyproj import Transformer
 from rasterio.transform import from_origin
 
-from core.analysis_results import sample_water_levels
+from core.analysis_results import provider_lines, sample_water_levels
+from core.attribution import ProviderLines
 
 NODATA = -9999.0
 X0, Y_TOP, CELL = 500000.0, 600000.0, 5.0
@@ -121,3 +122,30 @@ class TestSampleWaterLevels:
         assert sample_water_levels(str(data_dir), ["geo"], CENTRES[:1]) == [
             ("geo", [300.0])
         ]
+
+
+class TestProviderLines:
+    def test_lines_of_several_results_merge_each_once_in_their_order(self, tmp_path):
+        _write_manifest(
+            tmp_path,
+            [
+                {"id": "a", "attribution": ["A1", "A2"], "terms_notice": ["N1"]},
+                {"id": "b", "attribution": ["A2", "B1"], "terms_notice": ["N1", "N2"]},
+                {"id": "c"},
+            ],
+        )
+
+        lines = provider_lines(str(tmp_path), ["b", "a", "c", "unknown", "b"])
+
+        assert lines == ProviderLines(("A2", "B1", "A1"), ("N1", "N2"))
+
+    @pytest.mark.parametrize("value", ["A1", [""], ["A1", 2], {"0": "A1"}], ids=repr)
+    def test_lines_that_are_not_a_list_of_texts_are_left_out(self, tmp_path, value):
+        _write_manifest(
+            tmp_path, [{"id": "a", "attribution": value, "terms_notice": ["N1"]}]
+        )
+
+        assert provider_lines(str(tmp_path), ["a"]) == ProviderLines((), ("N1",))
+
+    def test_missing_manifest_gives_no_lines(self, tmp_path):
+        assert provider_lines(str(tmp_path), ["a"]) == ProviderLines()

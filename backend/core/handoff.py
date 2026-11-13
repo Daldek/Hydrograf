@@ -9,7 +9,9 @@ Hydrolog's ``hydrolog-network/1``. A watershed is one ``subcatchment`` (``Z1``) 
 hydrograph of POST /api/generate-hydrograph adds the runoff and the rainfall the
 computation used and its result, which Hydrolog recomputes and shows beside its own.
 The values are the computation's own, never rounded, so the same version of Hydrolog
-gives the same result; the provenance names where the inputs came from.
+gives the same result; the provenance names where the inputs came from, and
+``attribution`` and ``terms_notice`` give the lines the terms of the rainfall's
+provider require, which Hydrolog shows and carries on (Nogat DEV-20.6, ADR-083).
 
 A network of POST /api/delineate-network (``build_network_handoff``) is its
 subcatchments, reaches, nodes and outlet ``O`` in one payload, without rainfall, time
@@ -27,6 +29,7 @@ from functools import cache
 from importlib.metadata import version
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from core.attribution import ProviderLines
 from core.version import get_version
 
 if TYPE_CHECKING:
@@ -396,6 +399,9 @@ class DesignHydrograph:
         ``runoff``).
     result : dict[str, Any]
         Hydrograf's result (``hydrograph_result``).
+    lines : ProviderLines
+        The lines of the providers of the rainfall (``core.attribution``):
+        ``NO_PROVIDER`` for the user's own series.
     """
 
     timestep_min: float
@@ -403,6 +409,7 @@ class DesignHydrograph:
     rainfall: dict[str, Any]
     provenance: dict[str, dict[str, Any]]
     result: dict[str, Any]
+    lines: ProviderLines
 
 
 def build_handoff(
@@ -435,7 +442,8 @@ def build_handoff(
     dict[str, Any]
         The document: Hydrograf and its version as the producer, the payload
         ``hydrolog-network/1`` of the subcatchment and its outlet, the provenance and,
-        with the hydrograph, its result.
+        with the hydrograph, its result and the lines of its rainfall's providers
+        (``attribution`` and ``terms_notice``, left out without any).
     """
     moment = created_at or datetime.now(UTC)
     subcatchment: dict[str, Any] = {
@@ -460,8 +468,12 @@ def build_handoff(
         "producer": {"tool": PRODUCER, "version": get_version()},
         "subject": name,
         "provenance": provenance,
-        "payload": payload,
     }
+    if hydrograph and hydrograph.lines.attribution:
+        document["attribution"] = list(hydrograph.lines.attribution)
+    if hydrograph and hydrograph.lines.terms_notice:
+        document["terms_notice"] = list(hydrograph.lines.terms_notice)
+    document["payload"] = payload
     if hydrograph:
         document["result"] = hydrograph.result
     return document

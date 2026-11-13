@@ -16,6 +16,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from api.main import app
+from core.attribution import PMAXTP
 from core.config import Settings
 from core.database import get_db
 
@@ -51,6 +52,15 @@ SUBCATCHMENT = {
 }
 # What the catchment graph gives for the segment, as core.point_info returns it
 MAIN_CHANNEL = {"channel_length_km": 9.8123, "distance_to_outlet_km": 41.375}
+# The lines the manifest gives the results: 'sfincs' of a PMAXTP rainfall, 'other'
+# of another provider
+RESULT_LINES = {
+    "sfincs": {
+        "attribution": list(PMAXTP.attribution),
+        "terms_notice": list(PMAXTP.terms_notice),
+    },
+    "other": {"attribution": ["Źródło: inny dostawca"], "terms_notice": ["Regulamin"]},
+}
 
 
 def _raster(path, row):
@@ -87,7 +97,8 @@ def settings(tmp_path):
     """DEM 100 m with a gap in the last cell, slope, two results, one lake.
 
     Result 'sfincs' (cells 0-3): 101.5 (1.5 m of water), dry, 99.0 (below the
-    terrain), 102.25. Result 'other' covers a raster far away from the cells.
+    terrain), 102.25. Result 'other' covers a raster far away from the cells. Each
+    has the lines of RESULT_LINES.
     """
     nmt = tmp_path / "nmt"
     nmt.mkdir()
@@ -123,6 +134,7 @@ def settings(tmp_path):
                             "crs": "EPSG:2180",
                             "unit": "m n.p.m.",
                         },
+                        **RESULT_LINES[result_id],
                     }
                     for result_id in ("sfincs", "other")
                 ],
@@ -255,6 +267,22 @@ class TestIdentifyPoint:
 
     def test_no_water_without_result_ids(self, client, settings, database):
         assert _get(client, settings).json()["water"] == []
+
+    def test_lines_of_the_results_whose_water_the_card_shows(
+        self, client, settings, database
+    ):
+        # 'other' does not hold the point, 'nope' is not in the manifest
+        data = _get(client, settings, result_ids=["sfincs", "other", "nope"]).json()
+
+        assert (data["attribution"], data["terms_notice"]) == (
+            list(PMAXTP.attribution),
+            list(PMAXTP.terms_notice),
+        )
+
+    def test_no_lines_without_water_of_a_result(self, client, settings, database):
+        data = _get(client, settings).json()
+
+        assert (data["attribution"], data["terms_notice"]) == ([], [])
 
     @pytest.mark.parametrize(
         ("requested", "used"),

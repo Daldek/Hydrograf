@@ -33,12 +33,20 @@ import fnmatch
 import json
 import logging
 import sys
+import textwrap
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.attribution import (
+    IMGW_TERMS_NOTICE,
+    NO_PROVIDER,
+    PMAXTP,
+    ProviderLines,
+    merge,
+)
 from core.constants import DEFAULT_THRESHOLD_M2
 from utils.kartograf_store import metadata_cache_path, store_dir
 
@@ -49,6 +57,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# The source of the precipitation fetched from IMGW-PIB's PMAXTP through Obserwator
+PMAXTP_PRECIPITATION_SOURCE = "IMGW PMAXTP"
 
 
 # =============================================================================
@@ -112,6 +123,104 @@ class AnalysisConfig:
         self.cache_dir = Path(self.cache_dir)
         self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def precipitation_lines(precipitation_source: str | None) -> ProviderLines:
+    """Return the provider lines of a product made with a precipitation.
+
+    Parameters
+    ----------
+    precipitation_source : str | None
+        The ``source`` of the precipitation ("IMGW PMAXTP", "manual" or None).
+
+    Returns
+    -------
+    ProviderLines
+        The PMAXTP lines for PMAXTP precipitation, no line otherwise.
+    """
+    if precipitation_source == PMAXTP_PRECIPITATION_SOURCE:
+        return PMAXTP
+    return NO_PROVIDER
+
+
+def scenario_lines(config: AnalysisConfig, hydrograph: dict[str, Any]) -> ProviderLines:
+    """Return the provider lines of the precipitation scenarios of a hydrograph.
+
+    The scenarios scale the design precipitation unless the config sets their
+    depths (see ``generate_hydrograph``); only then are they free of PMAXTP data.
+    """
+    if config.precipitation_scenarios_mm:
+        return NO_PROVIDER
+    return precipitation_lines(hydrograph["precipitation_source"])
+
+
+def write_attribution_file(output_dir: Path, lines: ProviderLines) -> Path | None:
+    """Write the provider lines to ``ATTRIBUTION.txt`` at the root of the outputs.
+
+    UTF-8, one line per line, the attribution lines first, then the terms lines
+    (DEV-20.5). The lines of an existing file are merged in first, each line once:
+    its lines equal to ``IMGW_TERMS_NOTICE`` or starting with "Regulamin: " are
+    terms lines, the rest attribution lines. Nothing is written without lines.
+
+    Returns
+    -------
+    Path | None
+        The path of the file, None when nothing was written.
+    """
+    if not (lines.attribution or lines.terms_notice):
+        return None
+
+    path = output_dir / "ATTRIBUTION.txt"
+    if path.exists():
+        old = [x for x in path.read_text(encoding="utf-8").splitlines() if x]
+        is_terms = [x == IMGW_TERMS_NOTICE or x.startswith("Regulamin: ") for x in old]
+        existing = ProviderLines(
+            attribution=tuple(x for x, t in zip(old, is_terms, strict=True) if not t),
+            terms_notice=tuple(x for x, t in zip(old, is_terms, strict=True) if t),
+        )
+        lines = merge([existing, lines])
+
+    path.write_text(
+        "".join(f"{x}\n" for x in (*lines.attribution, *lines.terms_notice)),
+        encoding="utf-8",
+    )
+    logger.info(f"Zapisano: {path}")
+    return path
+
+
+def draw_provider_footer(fig, lines: ProviderLines, fontsize: float = 8.0) -> None:
+    """Draw the provider lines as a footer under a figure (DEV-20.5).
+
+    The attribution lines, then the terms_notice lines, each wrapped to the figure
+    width, are drawn right below the bottom edge of the figure, where
+    ``savefig(bbox_inches="tight")`` extends the image to hold them. Nothing is
+    drawn without lines.
+    """
+    text_lines = (*lines.attribution, *lines.terms_notice)
+    if not text_lines:
+        return
+
+    from matplotlib.transforms import ScaledTranslation
+
+    # A conservative average width of a DejaVu Sans character, 0.6 em, keeps the
+    # wrapped lines inside the figure width
+    width_chars = int(fig.get_figwidth() * 72 / (fontsize * 0.6))
+    wrapped = "\n".join(
+        textwrap.fill(line, width_chars, break_long_words=False, break_on_hyphens=False)
+        for line in text_lines
+    )
+    # 10 pt below the figure, clear of the x-axis label
+    offset = ScaledTranslation(0, -10 / 72, fig.dpi_scale_trans)
+    fig.text(
+        0.01,
+        0.0,
+        wrapped,
+        transform=fig.transFigure + offset,
+        ha="left",
+        va="top",
+        fontsize=fontsize,
+        linespacing=1.4,
+    )
 
 
 # =============================================================================
@@ -446,7 +555,7 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
             logger.info(f"Błąd estymacji (RB): {P_rb:.1f} mm")
 
         return {
-            "source": "IMGW PMAXTP",
+            "source": PMAXTP_PRECIPITATION_SOURCE,
             "probability_percent": float(prob_key),
             "duration_min": int(duration_key),
             "precipitation_ks_mm": P_ks,
@@ -836,6 +945,8 @@ def generate_visualizations(
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, max(times))
+    # The design storm is the PMAXTP depth when the precipitation came from IMGW
+    draw_provider_footer(fig1, precipitation_lines(hydrograph["precipitation_source"]))
 
     path1 = config.output_dir / "hydrograph.png"
     fig1.savefig(path1, dpi=150, bbox_inches="tight")
@@ -858,6 +969,7 @@ def generate_visualizations(
     ax2.set_ylabel("Qmax [m³/s]", fontsize=11)
     ax2.set_title(f"Qmax vs Opad | A={area:.2f}km², CN={cn}", fontsize=12)
     ax2.grid(True, alpha=0.3, axis="y")
+    draw_provider_footer(fig2, scenario_lines(config, hydrograph))
 
     path2 = config.output_dir / "qmax_scenarios.png"
     fig2.savefig(path2, dpi=150, bbox_inches="tight")
@@ -958,12 +1070,16 @@ def save_results(
     precipitation: dict[str, Any] | None,
     hydrograph: dict[str, Any],
 ) -> Path:
-    """Zapisz wyniki do JSON."""
+    """Zapisz wyniki do JSON.
+
+    With PMAXTP precipitation the results carry the provider lines in the
+    top-level ``attribution`` and ``terms_notice``; without it they have neither.
+    """
     logger.info("=" * 60)
     logger.info("KROK 8: Zapisywanie wyników")
     logger.info("=" * 60)
 
-    results = {
+    results: dict[str, Any] = {
         "metadata": {
             "generated_at": datetime.now().isoformat(),
             "version": "0.3.0",
@@ -996,6 +1112,12 @@ def save_results(
         "precipitation": precipitation,
         "hydrograph": hydrograph,
     }
+
+    lines = precipitation_lines(hydrograph["precipitation_source"])
+    if lines.attribution:
+        results["attribution"] = list(lines.attribution)
+    if lines.terms_notice:
+        results["terms_notice"] = list(lines.terms_notice)
 
     json_path = config.output_dir / "analysis_results.json"
     with open(json_path, "w", encoding="utf-8") as f:
@@ -1154,6 +1276,13 @@ def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
         if config.save_json:
             save_results(config, watershed, morph, precipitation, hydrograph)
 
+        # The JSON and the plots of PMAXTP precipitation carry its lines
+        if config.save_json or (config.generate_plots and not config.use_cached):
+            write_attribution_file(
+                config.output_dir,
+                precipitation_lines(hydrograph["precipitation_source"]),
+            )
+
         elapsed_total = time.time() - start_total
 
         # Podsumowanie
@@ -1170,6 +1299,10 @@ def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
 
         logger.info(f"Qmax: {hydrograph['design_storm']['Qmax_m3s']:.2f} m³/s")
         logger.info(f"Całkowity czas: {elapsed_total:.1f}s")
+        # The rainfall and Qmax above come from PMAXTP when IMGW provided them
+        lines = precipitation_lines(hydrograph["precipitation_source"])
+        for line in (*lines.attribution, *lines.terms_notice):
+            logger.info(line)
         logger.info("=" * 60)
         logger.info(f"Wyniki zapisane w: {config.output_dir}")
 

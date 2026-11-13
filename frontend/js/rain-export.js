@@ -9,7 +9,10 @@
  * of the interpolation at a point with that point. A custom series has no points.
  * With the user's areal reduction factor the depths are the reduced ones; the JSON
  * and GeoJSON give the factor and the unreduced depth, and every file name ends in
- * "_arf<factor>".
+ * "_arf<factor>". The lines of the rainfall's provider that the response carries
+ * (attribution.js: PMAXTP, or an own series copied from it) go into every file: the
+ * trailing CSV columns `attribution` and `terms_notice`, the JSON fields and the
+ * GeoJSON foreign members of the same names; without lines nothing is added.
  */
 (function () {
     'use strict';
@@ -63,20 +66,23 @@
     }
 
     function csv() {
-        var rows = ['krok,czas_od_min,czas_do_min,opad_mm,opad_efektywny_mm,opad_narastajacy_mm'];
-        steps(_current.result.precipitation).forEach(function (s) {
-            rows.push([s.step, s.start_min, s.end_min, s.precipitation_mm,
-                s.effective_mm == null ? '' : s.effective_mm, s.cumulative_mm].join(','));
+        var header = ['krok', 'czas_od_min', 'czas_do_min', 'opad_mm', 'opad_efektywny_mm', 'opad_narastajacy_mm'];
+        var rows = steps(_current.result.precipitation).map(function (s) {
+            return [s.step, s.start_min, s.end_min, s.precipitation_mm,
+                s.effective_mm == null ? '' : s.effective_mm, s.cumulative_mm];
         });
-        save('hietogram_' + fileStem(_current) + '.csv', rows.join('\r\n') + '\r\n', 'text/csv');
+        var table = Hydrograf.attribution.csvTable(header, rows, _current.result);
+        var text = table.map(function (row) { return row.join(','); }).join('\r\n') + '\r\n';
+        save('hietogram_' + fileStem(_current) + '.csv', text, 'text/csv');
     }
 
     function json() {
         var p = _current.result.precipitation;
         var c = _current.context;
-        var doc = {
+        var doc = Object.assign({
             created_at: new Date().toISOString(),
             producer: 'Hydrograf',
+        }, Hydrograf.attribution.fields(_current.result), {
             point: c.point,
             rainfall: {
                 source: p.source,
@@ -95,7 +101,7 @@
             },
             steps: steps(p),
             pmaxtp_points: p.pmaxtp_points || [],
-        };
+        });
         save('hietogram_' + fileStem(_current) + '.json', JSON.stringify(doc, null, 2) + '\n', 'application/json');
     }
 
@@ -126,9 +132,8 @@
                 properties: { role: 'interpolation_point' },
             });
         }
-        var doc = {
-            type: 'FeatureCollection',
-            // Foreign members (RFC 7946, 6.1): the scenario of the depths
+        // Foreign members (RFC 7946, 6.1): the provider's lines and the scenario of the depths
+        var doc = Object.assign({ type: 'FeatureCollection' }, Hydrograf.attribution.fields(_current.result), {
             rainfall: {
                 duration: c.duration,
                 probability_percent: p.probability_percent,
@@ -138,7 +143,7 @@
                 interpolation: p.interpolation,
             },
             features: features,
-        };
+        });
         save('punkty_PMAXTP_' + fileStem(_current) + '.geojson', JSON.stringify(doc) + '\n', 'application/geo+json');
     }
 

@@ -5,7 +5,10 @@
  * Renders in the profile drawer at the bottom of the map (#profile-drawer).
  * Hover over chart shows corresponding point on the map line.
  * Analysis results with a water level that are shown on the map add their
- * water surface where the line crosses them (results.js, API result_ids).
+ * water surface where the line crosses them (results.js, API result_ids);
+ * under the chart, the provider lines of the water it shows (from the response)
+ * and of every result on the map, whose legends the open drawer hides
+ * (attribution.js).
  * Samples off the DEM (API dem_gaps) are gaps of the chart, left out of the
  * elevation range; a line wholly off the DEM gets a message instead.
  */
@@ -138,6 +141,21 @@
     }
 
     /**
+     * Under the chart, the provider lines of the water it shows (`result`, the
+     * response, or null) and of every result on the map: the open drawer hides
+     * their legends.
+     */
+    function showProviderLines(result) {
+        var onMap = Hydrograf.results ? Hydrograf.results.shownLines() : null;
+        Hydrograf.attribution.render(document.getElementById('profile-attribution'),
+            Hydrograf.attribution.merge([result, onMap]));
+    }
+
+    function clearProviderLines() {
+        Hydrograf.attribution.render(document.getElementById('profile-attribution'), null);
+    }
+
+    /**
      * Fetch the profile of the drawn line, with the water level of the results
      * shown on the map, and render it in the profile drawer (#profile-drawer).
      */
@@ -166,14 +184,16 @@
                     '% próbek) leży poza zasięgiem NMT: wykres ma tam przerwę.', false);
             }
             setProfileSummary(result.distances_m, elevations);
+            var water = waterSeries(result, shown, elevations);
             Hydrograf.charts.renderProfileChart(
                 'chart-profile-standalone',
                 result.distances_m,
                 elevations,
                 onChartHover,
                 onChartHoverEnd,
-                waterSeries(result, shown, elevations)
+                water
             );
+            showProviderLines(water.length ? result : null);
 
             // Resize after render to ensure correct dimensions
             setTimeout(function () {
@@ -187,6 +207,7 @@
             setProfileSummary(null, null);
             // No chart of an earlier line under the message
             Hydrograf.charts.destroyChart('chart-profile-standalone');
+            showProviderLines(null);
             showProfileNotice(profileErrorText(err), true);
         });
     }
@@ -206,8 +227,8 @@
     }
 
     /**
-     * Draw the open profile again: a result with a water level was turned on
-     * or off in the "Warstwy" panel.
+     * Draw the open profile again: a result with a water level or provider
+     * lines was turned on or off in the "Warstwy" panel.
      */
     function refresh() {
         var drawer = document.getElementById('profile-drawer');
@@ -225,6 +246,7 @@
         Hydrograf.map.clearProfileLine();
         Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
+        clearProviderLines();
         _lineLatLngs = null;
         _request++;
     }
@@ -237,6 +259,7 @@
         Hydrograf.map.clearProfileLine();
         Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
+        clearProviderLines();
         _lineLatLngs = null;
         _request++;
     }
