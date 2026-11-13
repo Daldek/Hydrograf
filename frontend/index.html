@@ -26,8 +26,8 @@
     <!-- Nogat design tokens, shell chrome, the kit's app menu, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
-    <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=8bb318a9a6">
-    <link rel="stylesheet" href="css/app.css?v=b4a59a5b1e">
+    <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
+    <link rel="stylesheet" href="css/app.css?v=7b85bb965b">
 </head>
 <body>
 <div class="shell">
@@ -169,6 +169,10 @@
                         <div class="identify-body" id="identify-body" aria-live="polite"></div>
                     </section>
                 </div>
+                <!-- The statement of the service and its regulamin (DEV-15.7, DEV-15.8): js/terms.js shows it on a public deployment -->
+                <footer class="site-footer" id="site-footer" hidden>
+                    <p>Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB. <a href="/regulamin.html" id="terms-link">Regulamin</a></p>
+                </footer>
             </section>
 
             <!-- Right panel: watershed results -->
@@ -563,24 +567,14 @@
         </button>
     </div>
     <form class="modal-body" id="feedback-form" novalidate>
-        <p>Opisz błąd lub pomysł. Zgłoszenie trafi do administratora Hydrografu.</p>
+        <p>Opisz błąd lub pomysł. Zgłoszenie trafi do operatora serwisu.</p>
         <div class="field">
-            <label for="feedback-message">Opis problemu lub sugestii</label>
-            <textarea id="feedback-message" rows="6" maxlength="5000" placeholder="Opisz co się stało lub co można poprawić…"></textarea>
+            <label for="feedback-message">Wiadomość</label>
+            <textarea id="feedback-message" rows="6" maxlength="5000" required aria-describedby="feedback-hint"></textarea>
             <span class="counter num"><span id="feedback-char-count">0</span>/5000</span>
+            <span class="hint" id="feedback-hint">Nie wpisuj danych osobowych.</span>
         </div>
-        <div class="field">
-            <label for="feedback-contact">Imię lub e-mail <span class="muted">(opcjonalnie)</span></label>
-            <input type="text" id="feedback-contact" maxlength="200">
-        </div>
-        <label class="check">
-            <input type="checkbox" id="feedback-diagnostics" checked>
-            <span>Dołącz dane diagnostyczne (ostatnie akcje w aplikacji, błędy, parametry zapytań)</span>
-        </label>
-        <details class="preview">
-            <summary>Pokaż co zostanie wysłane</summary>
-            <pre id="feedback-diagnostics-preview"></pre>
-        </details>
+        <p class="muted">Zgłoszenie zawiera też widok, jego parametry i wersję aplikacji.</p>
         <p id="feedback-status" class="feedback-status d-none" role="status"></p>
     </form>
     <div class="modal-foot">
@@ -637,31 +631,31 @@
         crossorigin="anonymous"></script>
 
 <!-- Application modules -->
-<script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=eadd8a22ff"></script>
+<script defer src="js/api.js?v=4c393c4b55"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=71de73a7b9"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
 <script defer src="js/attribution.js?v=b7900eaad6"></script>
-<script defer src="js/layers.js?v=63f6b6b2a7"></script>
+<script defer src="js/layers.js?v=3d4f46349b"></script>
 <script defer src="js/profile.js?v=b1aab93c09"></script>
 <script defer src="js/info-texts.js?v=5733dc44eb"></script>
 <script defer src="js/info.js?v=dd4d3f83e0"></script>
 <script defer src="js/hydrograph.js?v=0fcf62b091"></script>
-<script defer src="js/rain-export.js?v=4657f2a52f"></script>
+<script defer src="js/rain-export.js?v=0bf231af6f"></script>
 <script defer src="js/advanced.js?v=48268e8668"></script>
 <script defer src="js/custom-rain.js?v=8ba99db5f8"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
 <script defer src="js/results.js?v=482914dc96"></script>
-<script defer src="js/feedback.js?v=8ce70a740a"></script>
+<script defer src="js/feedback.js?v=20fe9e98b9"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=54f8061114"></script>
 <script defer src="js/identify.js?v=a6c0e7ebfe"></script>
-<script type="module" src="js/nogat.js?v=1a75bf5331"></script>
-<script defer src="js/handoff.js?v=53ec91cd4b"></script>
+<script type="module" src="js/nogat.js?v=101867399f"></script>
+<script defer src="js/handoff.js?v=5edb431823"></script>
 <script defer src="js/network.js?v=dda978abcf"></script>
-<script defer src="js/app.js?v=ec237cd623"></script>
+<script defer src="js/terms.js?v=c5ff20bdcc"></script>
+<script defer src="js/app.js?v=4d5945c305"></script>
 </body>
 </html>

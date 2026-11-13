@@ -1,5 +1,8 @@
 # ADR-082: Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module
 
+> **Amended by ADR-084 (2026-11-13):** when HYDROGRAF_GUI is empty, the table `gui` comes
+> from `[nogat] gui` of the `nogat.toml` named by NOGAT_CONFIG.
+
 **Date:** 2026-11-12
 **Status:** accepted
 

@@ -18,10 +18,11 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Producers | done | `develop` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2. Production (since its update of 2026-11-11) and Hydroni run them. The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`, its `develop` `35ba444` since 2026-11-12, which routes a reach that Muskingum-Cunge cannot grid as linear reservoirs with the warning `diffusion_dominated`, Hydrolog ADR-0026). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
 | Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię (options „Jedna zlewnia” and „Sieć zlewni” over the map) / Profil terenu / Identyfikuj. The top-bar „Instrukcja” button opens the welcome dialog; the user guide is a scrolling page with a TOC and chapters, while `docs/Hydrograf-prezentacja.html` remains a slide deck. The welcome text and guide name the data area from `frontend/data/instance.json`; external analyses come from `frontend/data/results/index.json` (SFINCS), alongside the MZP overlay and `?v=` asset versions. On `feature/nogat-kit` (2026-11-12, not merged; Next 12): Nogat's GUI kit 0.1.0 (ADR-082), the top-bar menu „Aplikacje” of the GUIs in `HYDROGRAF_GUI` (`GET /api/gui`) and the hand-off through the kit's `nogat-handoff.js`; Hydrograf's copies of Nogat's tokens, marks, kit, schemas and registry equal Nogat `7786271`. |
 | Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the option „Sieć zlewni” of „Wybierz zlewnię” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended on 2026-11-11 by the plan `2026-11-11-network-nodes`: every point is a node, `J` at a confluence it is drawn to within 50 m up or down, `P` elsewhere, numbered from the closing section up, the outlet `O`; ADR-081); the plans `2026-11-10-network-delineation`, `2026-11-11-network-preview` and `2026-11-11-network-nodes` are done. Merged into `develop` with `feat/network-nodes` on 2026-11-11; networks above 60 M cells stay refused. Open methodology: Next 10. |
-| Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
+| Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051); on `feature/public-gui` each report shows its `context` and, for a report of the old form, its `legacy` fields (ADR-084). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
 | Provider attribution | done on `fix/provider-attribution`, not merged | The author's order of 2026-11-13, step 4 of Nogat's plan `2026-11-13-provider-attribution` (DEV §20, ECO-060; ADR-083, plan `2026-11-13-provider-attribution`): the lines the PMAXTP terms require (PS, PP, M; N, RK) from `core/attribution.py` in the hydrograph response and its hand-off, the panel, the exports, an own series copied from PMAXTP, the results manifest's layer, point card and profile, `analyze_watershed` and the guide and slides. Next 13. |
-| Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
+| Public service (regulamin, limit, logs, statistics, form) | done on `feature/public-gui`, not merged | The author's order of 2026-11-13, step 3 of Nogat's plan `2026-11-13-gui-terms` (DEV-15.7 to DEV-15.12, DEV-18.1, ECO-061 to ECO-063; ADR-084, plan `2026-11-13-public-gui`): Nogat's regulamin at `/regulamin.html` from `[nogat.operator]` of NOGAT_CONFIG, the footer and the menu's `terms`; 300 requests in 60 s per client address in the app (tiles 3,000, the form 5 in 5 minutes), 429 as a Polish page or `rate_limited`; nginx and API logs without addresses in the journal, at most 14 days; daily totals in `<data_dir>/hydrograf/stats.jsonl`; „Zgłoś uwagę” with the text and the view's context, migration 007; kit 0.4.0; one API process. Next 14, 15. |
+| Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
@@ -99,8 +100,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 8. **Error registry, loose ends** (ADR-059): the admin routers document `401` only
    (`api/main.py`), so the `404` and `409` of `bootstrap/start`, `bootstrap/cancel` and the
    feedback routes are undocumented; the texts of core exceptions that reach `details.cause`
-   (`invalid_parameters`, `invalid_bbox`, `invalid_boundary_file`) are the library's; the 429 and
-   gateway errors of nginx are not problem documents (CLAUDE.md, AGI-6.3).
+   (`invalid_parameters`, `invalid_bbox`, `invalid_boundary_file`) are the library's; the gateway
+   errors of nginx are not problem documents (CLAUDE.md, AGI-6.3).
 9. **Small items carried over from earlier sessions** (no other home):
    - `docker-compose.staging.yml` still publishes the staging nginx on `192.168.88.9:8081`, to be
      removed after S7 (the author's decision in S4; S7 ran in place), and
@@ -171,7 +172,28 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     lines in the SFINCS entry (the command printing them is in the plan's Deployment), or the
     layer, the point card and the profile show none; Hydroni needs an image build. The GeoTIFFs
     of the SFINCS result (`max_depth.tif`, `wse_max.tif`) carry no lines: Hydraulik's publication.
-14. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
+14. **Public service, to deploy** (ADR-084, plan `2026-11-13-public-gui`): the branch
+    `feature/public-gui` waits for the author's merge. Before `terms_effective`:
+    - the operator writes `[nogat.operator]` into `~/.config/nogat/nogat.toml`, and production's
+      `.env` gets `NOGAT_CONFIG=/home/claude-agent/.config/nogat/nogat.toml`;
+    - as root: `install -m 644 docker/journald.conf /etc/systemd/journald.conf.d/hydrograf.conf
+      && systemctl restart systemd-journald` (without it the journal keeps the logs longer than
+      the regulamin says);
+    - after the merge and the checkout: `docker compose up -d --no-deps api nginx`. Both are
+      recreated: new mounts (the kit and `nogat.toml` into the API), environment and log driver;
+      migration 007 runs when the API starts; `nginx.conf` is a single-file mount, so only a
+      recreate shows nginx the new file;
+    - Cloudflare Access on `/admin`, `/admin.html` and `/api/admin/*`;
+    - Hydroni: a build of the image `hydroni-api`; its prod overlay now runs one API process
+      (it loses its second worker); NOGAT_CONFIG and a `hydrograf` entry of its HYDROGRAF_GUI
+      are its own decision (without them it has no regulamin).
+15. **The reports of the old form.** Production's `hydro_db.feedback` holds 30 reports (ids
+    11–40, 2026-08-02 to 2026-11-05): 3 with a contact (ids 11, 12, 13), all 30 with a User-Agent
+    and a page URL, 7 with diagnostics; a backup of 26 of them (ids 11–36) is in
+    `/data/nmt/hydrograf-feedback-backup-2026-11-03T2319/`; Hydroni has none. Migration 007 keeps
+    their old columns (the admin list shows them as `legacy`) until the operator has handled
+    them; a later migration drops `contact`, `page_url`, `user_agent` and `diagnostics`.
+16. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
     endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
@@ -200,3 +222,6 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 11. Who writes the providers' lines of a result in `frontend/data/results/index.json`: the
     publication script of a Hydraulik run, which makes its rasters, or the person who publishes
     it (ADR-083)? Production's SFINCS entry needs them by hand until then.
+12. The reports of the old form (Next 15): are they, the backup of 2026-11-03 included, deleted
+    before `terms_effective`, as Nogat's plan `2026-11-13-gui-terms` proposes (§ 8 of the
+    regulamin deletes a report once it is handled)? The operator decides; until then they stay.

@@ -109,9 +109,6 @@
      */
     function setBaseLayer(name) {
         currentBaseLayerName = name;
-        if (window.Hydrograf.diagnostics) {
-            Hydrograf.diagnostics.log('layer_change', { baseLayer: name });
-        }
 
         var map = Hydrograf.map._getMap();
         if (!map) return;
@@ -197,12 +194,6 @@
         };
     }
 
-    function logLayerChange(label, visible) {
-        if (window.Hydrograf.diagnostics) {
-            Hydrograf.diagnostics.log('layer_change', { layer: label, visible: visible });
-        }
-    }
-
     /**
      * Add an overlay row for a layer that already exists (or is created synchronously).
      * @param {HTMLElement} list - Group to append the row to.
@@ -236,7 +227,6 @@
                 if (onHide) onHide();
             }
             entry.row.classList.toggle('off', !cb.checked);
-            logLayerChange(label, cb.checked);
         });
     }
 
@@ -285,7 +275,6 @@
                 if (onHide) onHide();
             }
             entry.row.classList.toggle('off', !cb.checked);
-            logLayerChange(label, cb.checked);
         });
         return entry;
     }
@@ -373,7 +362,6 @@
             }
             entry.row.classList.toggle('off', !cb.checked);
             extra.classList.toggle('d-none', !cb.checked);
-            logLayerChange(label, cb.checked);
         });
     }
 
@@ -525,9 +513,6 @@
                 layer.setUrl(mzpUrl(scenario), true);
                 layer.setParams({ layers: scenario.layer });
             }
-            if (window.Hydrograf.diagnostics) {
-                Hydrograf.diagnostics.log('layer_change', { layer: label, scenario: scenario.service });
-            }
         });
 
         cb.addEventListener('change', function () {
@@ -557,7 +542,6 @@
             sync();
             entry.row.classList.toggle('off', !cb.checked);
             extra.classList.toggle('d-none', !cb.checked);
-            logLayerChange(label, cb.checked);
         });
     }
 

@@ -58,17 +58,24 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
-      # The ecosystem's GUIs for the menu „Aplikacje” (ADR-082); empty, no menu
+      # The ecosystem's GUIs for the menu „Aplikacje” (ADR-082); empty, the table
+      # `gui` of nogat.toml, and without it no menu
       HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
+      # The deployment's nogat.toml, mounted below: with `[nogat.operator]` Hydrograf
+      # is a public service with its regulamin (ADR-084)
+      NOGAT_CONFIG: /config/nogat.toml
+      # Requests per client address and window [s] (DEV-15.9, ADR-084)
+      HYDROGRAF_REQUEST_LIMIT: ${HYDROGRAF_REQUEST_LIMIT:-300}
+      HYDROGRAF_REQUEST_WINDOW: ${HYDROGRAF_REQUEST_WINDOW:-60}
       NUMBA_CACHE_DIR: /tmp/numba_cache
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
+    # The host's journal keeps the logs 14 days (DEV-15.10, docker/journald.conf)
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "50"
+        tag: "{{.Name}}"
     depends_on:
       db:
         condition: service_healthy
@@ -83,9 +90,14 @@ services:
           cpus: "2.0"
     volumes:
       - ${HYDROGRAF_CACHE_PATH:-./cache}:/cache
+      # The daily statistics are <data_dir>/hydrograf/stats.jsonl here (DEV-15.11)
       - ${HYDROGRAF_DATA_PATH:-./data}:/data
       - ${HYDROGRAF_FRONTEND_DATA_PATH:-./frontend/data}:/frontend/data
       - ${HYDROGRAF_FRONTEND_TILES_PATH:-./frontend/tiles}:/frontend/tiles
+      # The kit's regulamin template (core/terms.py) and the deployment's nogat.toml
+      # (NOGAT_CONFIG of .env; none: an empty file, no regulamin)
+      - ./frontend/nogat:/frontend/nogat:ro
+      - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -116,10 +128,9 @@ services:
         condition: service_healthy
     restart: unless-stopped
     logging:
-      driver: json-file
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "50"
+        tag: "{{.Name}}"
     security_opt:
       - no-new-privileges:true
     cap_drop:

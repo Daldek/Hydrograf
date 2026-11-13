@@ -187,6 +187,15 @@ MESSAGES: Final[dict[str, Message]] = {
         "The feedback could not be deleted.",
         "Nie udało się usunąć zgłoszenia.",
     ),
+    # --- The public service (ADR-084) ---
+    "request_limit": Message(
+        "Too many requests. Try again in {retry_after_s} s.",
+        "Zbyt wiele żądań. Spróbuj ponownie za {retry_after_s} s.",
+    ),
+    "terms_not_configured": Message(
+        "This deployment serves no terms of use.",
+        "To wdrożenie nie udostępnia regulaminu.",
+    ),
     # --- Watershed and hydrograph ---
     "catchment_graph_unavailable": Message(
         "The catchment graph is not loaded.",

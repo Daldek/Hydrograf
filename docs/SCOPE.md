@@ -543,13 +543,14 @@ This document defines precisely:
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
 **UI framework:** none on the main page (own shell `chrome.css` + `app.css`); Bootstrap 5.3.3 (CDN) only in `/admin` (grid, modal dialogs), recoloured with the tokens
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
-**Modules:** 24 JS modules on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, info, info-texts, advanced, depressions, sewer, results, diagnostics, feedback, welcome, shell, app + 6 admin modules; outside the namespace: `theme-init.js`, `theme-switch.js`
+**Modules:** 24 JS modules on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, info, info-texts, advanced, depressions, sewer, results, terms, feedback, welcome, shell, app + 6 admin modules; outside the namespace: `theme-init.js`, `theme-switch.js`
 **Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), ESRI orthophoto, no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
-**Pages:** `index.html` (main), `admin.html` (admin panel), `instrukcja/index.html` (user guide)
+**Pages:** `index.html` (main), `admin.html` (admin panel), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure
 **Containerization:** Docker + Docker Compose (3 containers: db, api, nginx)
-**Reverse proxy:** Nginx (alpine)
+**Reverse proxy:** Nginx (alpine); it passes the pages and `/api/` to the API and sets no limit of its own
+**Public service (ADR-084):** Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG, a request limit per client address in the API (one process), logs without client addresses kept at most 14 days in the host's journal, anonymous daily totals in `<data_dir>/hydrograf/stats.jsonl`, „Zgłoś uwagę” with the text and the view's context only
 **Server:** Own
 **CI/CD:** GitHub Actions (or GitLab CI)
 **Monitoring:** The admin panel `/admin` (CPU/RAM, DB pool, uptime) + the health check `/health`
@@ -964,13 +965,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.16
-**Date of the last update:** 2026-11-11
+**Document version:** 1.17
+**Date of the last update:** 2026-11-13
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.17 (2026-11-13): the public service (ADR-084): the page `regulamin.html`, the module `terms` instead of `diagnostics`, nginx without its own limit, the request limit, the logs, the daily totals and the form in 5.1
 - 1.16 (2026-11-11): the network preview is in scope (2.1.7, ADR-081: `POST /api/delineate-network/preview`; the mode computes the characteristics on confirmation)
 - 1.15 (2026-11-10): the network delineation at control points is in scope (2.1.7, ADR-080: `POST /api/delineate-network` and the hand-off of a network to Hydrolog); routing stays out (2.2.1)
 - 1.14 (2026-11-10): Hydrolog follows the release set candidate-3 of Nogat (`b0ac85b`): `930915d`

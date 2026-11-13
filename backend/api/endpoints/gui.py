@@ -7,7 +7,7 @@ The app menu of the top bar (Nogat's `<nogat-app-menu>`, DEV-15.4, loaded by
 
 from fastapi import APIRouter
 
-from core.config import get_settings, gui_table
+from core.config import deployment_gui, get_settings
 
 router = APIRouter()
 
@@ -17,8 +17,8 @@ def gui_addresses() -> dict[str, str]:
     """
     Return the table `gui` of the deployment: registry name -> address.
 
-    The value of HYDROGRAF_GUI (the table `gui` of `[nogat]` in `nogat.toml`,
-    DEV-18.1), e.g. `{"hydrolog": "http://127.0.0.1:8070/"}`; `{}` without it, and
-    the menu is then not drawn.
+    The value of HYDROGRAF_GUI, else the table `gui` of `[nogat]` in the `nogat.toml`
+    of NOGAT_CONFIG (DEV-18.1), e.g. `{"hydrolog": "http://127.0.0.1:8070/"}`; `{}`
+    without either, and the menu is then not drawn.
     """
-    return gui_table(get_settings().hydrograf_gui)
+    return deployment_gui(get_settings())

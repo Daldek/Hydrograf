@@ -67,6 +67,11 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   `python3 scripts/bump_asset_versions.py` before the commit (reference a new file without
   `?v=`, the script adds it; it versions the imports of `js/nogat.js` too); the gate and the
   CI job `frontend-assets` run it with `--check`.
+- Public service (ADR-084): the client's address never reaches the front end or any log
+  (DEV-15.10): not nginx's access or error log, not the API's records, not a traceback; it
+  lives only in the memory of `api/traffic.py` (the limit's window, the day's salted hash).
+  The request limit and the daily totals are per process, so the API runs one uvicorn
+  process (no `--workers`); a change that needs more processes needs a shared store first.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session (DEV-17.3).
 
@@ -99,12 +104,16 @@ Tunnel (`cloudflared tunnel --url http://localhost:8080`).
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, endpoints/ (watershed, network, hydrograph, tiles,
-│                        #   profile, identify, depressions, feedback, health, admin),
+├── api/                 # FastAPI: main.py, traffic.py (the request limit and the daily totals,
+│                        #   ADR-084), endpoints/ (watershed, network, hydrograph, tiles,
+│                        #   profile, identify, depressions, feedback, gui, site: the pages,
+│                        #   /regulamin.html, /api/terms and /api/downloads, health, admin),
 │                        #   dependencies/ (admin key)
 ├── core/                # business logic: watershed, catchment_graph, network_* (tree,
 │                        #   delineation, preview), handoff, hydrology, morphometry, cn_calculator,
-│                        #   raster_service, sewer_*, config, database, errors, messages, _errors
+│                        #   raster_service, sewer_*, config, database, errors, messages, _errors,
+│                        #   terms (the regulamin from NOGAT_CONFIG), request_limit (fixed
+│                        #   windows per address), usage (stats.jsonl)
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
 ├── utils/               # geometry, raster and sheet-lookup helpers
@@ -194,12 +203,13 @@ heads, which follow the standard 2.1 (ADR-060, ADR-061).
   resources.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
 - DEV-18, DEV-19: profile `tool` only; Hydrograf reads its settings from the environment
-  (`.env.example`) and fetches data through Kartograf in the pipeline scripts.
+  (`.env.example`), and `nogat.toml` only through the file NOGAT_CONFIG names (its
+  `[nogat.operator]` and `[nogat] gui`); it fetches data through Kartograf in the pipeline
+  scripts.
 - AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
   `schema` member and no result envelope; the error document alone is
   `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`
   schemas are unused.
 - AGI-6.1, AGI-6.2: there is no command catalog; `operationId` is the route function name
   and the operations document `400`, the problems of their route and `500`.
-- AGI-6.3: the 429 of the nginx rate limits and the gateway errors of nginx are not problem
-  documents, and the application sends no `rate_limited`.
+- AGI-6.3: the gateway errors of nginx are not problem documents.

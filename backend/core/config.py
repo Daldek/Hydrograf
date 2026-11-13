@@ -9,13 +9,14 @@ import json
 import logging
 import os
 import re
+import tomllib
 from copy import deepcopy
-from functools import lru_cache
+from functools import cache, lru_cache
 from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.active_run import active_run_raster
@@ -55,23 +56,74 @@ def gui_table(text: str) -> dict[str, str]:
         table = json.loads(text)
     except json.JSONDecodeError as error:
         raise ValueError(f"HYDROGRAF_GUI is not JSON: {error}") from error
+    return _checked_gui(table, "HYDROGRAF_GUI")
+
+
+def _checked_gui(table: object, source: str) -> dict[str, str]:
+    """Return a table ``gui`` (DEV-15.4) read from ``source``, checked.
+
+    Raises
+    ------
+    ValueError
+        When it is not an object of registry names and http, https or ``/`` addresses.
+    """
     if not isinstance(table, dict):
-        raise ValueError(
-            "HYDROGRAF_GUI must be a JSON object of GUI names and addresses"
-        )
+        raise ValueError(f"{source} must map GUI names to their addresses")
     gui: dict[str, str] = {}
     for name, address in table.items():
         if not _GUI_NAME.fullmatch(name):
-            raise ValueError(
-                f"HYDROGRAF_GUI: {name!r} is not a registry name in lower case"
-            )
+            raise ValueError(f"{source}: {name!r} is not a registry name in lower case")
         if not isinstance(address, str) or not _is_gui_address(address):
             raise ValueError(
-                f"HYDROGRAF_GUI: the address of {name!r} must be an http or https URL "
+                f"{source}: the address of {name!r} must be an http or https URL "
                 "or a path from /"
             )
         gui[name] = address
     return gui
+
+
+@cache
+def nogat_table(path: str) -> dict[str, Any]:
+    """Return the section ``[nogat]`` of the ``nogat.toml`` at ``path`` (DEV-18.1).
+
+    Hydrograf reads two of its tables: ``operator``, who runs a deployment open to
+    others (the regulamin, DEV-15.7, ADR-084), and ``gui`` when HYDROGRAF_GUI is not
+    set. An empty path, an empty file (the Docker default mounts ``/dev/null``) or a
+    file that cannot be read or parsed give an empty table; the last two are logged.
+    The file is read once per process: a change needs a restart of the API.
+    """
+    if not path:
+        return {}
+    try:
+        with open(path, "rb") as file:
+            document = tomllib.load(file)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        logger.warning("nogat.toml at NOGAT_CONFIG=%s cannot be read: %s", path, error)
+        return {}
+    section = document.get("nogat", {})
+    if not isinstance(section, dict):
+        logger.warning("nogat.toml at NOGAT_CONFIG=%s: [nogat] is not a table", path)
+        return {}
+    return section
+
+
+def deployment_gui(settings: "Settings") -> dict[str, str]:
+    """Return the GUIs of the deployment (DEV-15.4, DEV-18.1; ADR-082, ADR-084).
+
+    HYDROGRAF_GUI when it is set, else the table ``gui`` of ``[nogat]`` in the
+    ``nogat.toml`` of NOGAT_CONFIG, else an empty table. A table of the file that the
+    menu cannot use is logged and ignored.
+    """
+    if settings.hydrograf_gui.strip():
+        return gui_table(settings.hydrograf_gui)
+    table = nogat_table(settings.nogat_config).get("gui")
+    if table is None:
+        return {}
+    try:
+        return _checked_gui(table, "[nogat] gui of nogat.toml")
+    except ValueError as error:
+        logger.warning("%s", error)
+        return {}
 
 
 class Settings(BaseSettings):
@@ -124,8 +176,21 @@ class Settings(BaseSettings):
 
     # The GUIs of the deployment that the app menu of the top bar lists (ADR-082): the
     # table `gui` of `[nogat]` in nogat.toml (DEV-15.4, DEV-18.1) as a JSON object,
-    # read by gui_table(); empty, no menu
+    # read by gui_table(); empty, the table of NOGAT_CONFIG's file (deployment_gui())
     hydrograf_gui: str = ""
+
+    # The nogat.toml of the deployment (DEV-18.1): its `[nogat]` tables `operator`, for
+    # the regulamin (DEV-15.7, ADR-084), and `gui`; empty, none is read
+    nogat_config: str = ""
+
+    # Requests per client address and window (DEV-15.9, ADR-084): pages and API routes;
+    # map tiles have ten times the limit in the same window
+    hydrograf_request_limit: int = Field(300, ge=1)
+    hydrograf_request_window: int = Field(60, ge=1)  # seconds
+
+    # The deployment's data_dir (DEV-18.2): the daily statistics are
+    # <data_dir>/hydrograf/stats.jsonl (DEV-15.11)
+    hydrograf_data_dir: str = "/data"
 
     @field_validator("hydrograf_gui")
     @classmethod

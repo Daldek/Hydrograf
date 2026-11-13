@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 import api.endpoints.gui
 from api.main import app
-from core.config import Settings, gui_table
+from core.config import Settings, deployment_gui, gui_table, nogat_table
 
 TABLE = (
     '{"hydrolog": "http://127.0.0.1:8070/", "archiwista": "https://archiwista.example/",'
@@ -94,3 +94,42 @@ class TestGuiRoute:
 
         assert response.status_code == 200
         assert response.json() == {}
+
+
+class TestDeploymentGui:
+    """HYDROGRAF_GUI before the table `gui` of nogat.toml (DEV-18.1, ADR-084)."""
+
+    @pytest.fixture
+    def nogat_toml(self, tmp_path):
+        def write(text: str) -> str:
+            path = tmp_path / "nogat.toml"
+            path.write_text(text, encoding="utf-8")
+            return str(path)
+
+        nogat_table.cache_clear()
+        yield write
+        nogat_table.cache_clear()
+
+    def test_without_the_variable_the_table_comes_from_nogat_toml(self, nogat_toml):
+        path = nogat_toml('[nogat]\ngui = { hydrolog = "https://hydrolog.example/" }\n')
+
+        settings = Settings(hydrograf_gui="", nogat_config=path)
+
+        assert deployment_gui(settings) == {"hydrolog": "https://hydrolog.example/"}
+
+    def test_the_variable_wins_over_nogat_toml(self, nogat_toml):
+        path = nogat_toml('[nogat]\ngui = { hydrolog = "https://hydrolog.example/" }\n')
+
+        settings = Settings(hydrograf_gui=TABLE, nogat_config=path)
+
+        assert deployment_gui(settings) == gui_table(TABLE)
+
+    @pytest.mark.parametrize(
+        "text",
+        ['[nogat]\ngui = { hydrolog = "hydrolog/" }\n', "[nogat\n", ""],
+        ids=["unusable-table", "not-toml", "empty-file"],
+    )
+    def test_a_file_without_a_usable_table_gives_none(self, nogat_toml, text):
+        settings = Settings(hydrograf_gui="", nogat_config=nogat_toml(text))
+
+        assert deployment_gui(settings) == {}

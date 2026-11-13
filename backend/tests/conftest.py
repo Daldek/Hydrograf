@@ -23,6 +23,22 @@ def _private_kartograf_store(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HYDROGRAF_KARTOGRAF_ROOT", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_traffic(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Give every test the request limit and daily totals of a new process (ADR-084).
+
+    The suite's requests all come from one client address, so one shared limit would
+    refuse them after the first 300; the statistics go to the session's temporary
+    directory, never to ``/data``.
+    """
+    from api.main import app
+    from api.traffic import Traffic
+    from core.config import Settings
+
+    data_dir = tmp_path_factory.getbasetemp() / "data"
+    app.state.traffic = Traffic(Settings(hydrograf_data_dir=str(data_dir)))
+
+
 @pytest.fixture
 def mock_db():
     """Create mock database session."""

@@ -4,6 +4,8 @@ FastAPI application entry point.
 Configures the API with routers, middleware, and exception handlers.
 """
 
+import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -26,6 +28,7 @@ from api.endpoints import (
     identify,
     network,
     profile,
+    site,
     tiles,
     watershed,
 )
@@ -35,9 +38,11 @@ from api.errors import (
     operation_id,
     problem_responses,
 )
+from api.traffic import Traffic, keep_traffic, limit_and_count
 from core.catchment_graph import loaded_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
+from core.terms import current_terms
 from core.version import get_version
 
 # Configure structured logging
@@ -75,7 +80,12 @@ request_logger = structlog.get_logger("api.requests")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan handler — loads in-memory catchment graph."""
+    """Application lifespan handler.
+
+    Loads the in-memory catchment graph, fills the regulamin of the deployment and
+    keeps the request limit and the daily totals (ADR-084), whose last totals it
+    stores at shutdown.
+    """
     logger.info("Starting Hydrograf API...")
 
     # Load the catchment graph now rather than at the first request; requests
@@ -87,7 +97,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning(f"Catchment graph loading failed: {e}")
 
+    current_terms()
+    traffic: Traffic = app.state.traffic
+    keeper = asyncio.create_task(keep_traffic(traffic))
     yield
+    keeper.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await keeper
+    traffic.store()
     logger.info("Shutting down Hydrograf API...")
 
 
@@ -116,6 +133,11 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept", "Accept-Language", "X-Admin-Key"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# The request limit and the daily totals of this process (ADR-084), inside the request
+# ID below, so that a refused request is logged with its ID too
+app.state.traffic = Traffic(settings)
+app.middleware("http")(limit_and_count)
 
 
 @app.middleware("http")
@@ -186,6 +208,8 @@ app.include_router(
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
 app.include_router(gui.router, prefix="/api", tags=["Ecosystem"])
+app.include_router(site.router, prefix="/api", tags=["Public service"])
+app.include_router(site.pages_router)
 app.include_router(
     feedback.admin_router,
     prefix="/api/admin",

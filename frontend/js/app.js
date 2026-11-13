@@ -463,10 +463,6 @@
      * Handle map click with 300ms debounce.
      */
     function onMapClick(lat, lng) {
-        if (Hydrograf.diagnostics) {
-            Hydrograf.diagnostics.log('map_click', { lat: lat, lng: lng, mode: state.clickMode });
-        }
-
         // Browse mode — do nothing
         if (state.clickMode === 'browse') return;
 
@@ -683,9 +679,6 @@
      */
     function setClickMode(mode) {
         state.clickMode = mode;
-        if (Hydrograf.diagnostics) {
-            Hydrograf.diagnostics.log('mode_change', { mode: mode });
-        }
 
         var picking = mode === 'select' || mode === 'network';
         if (picking) state.selectTarget = mode;

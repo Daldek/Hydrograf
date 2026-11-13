@@ -55,7 +55,15 @@ from the map's top-bar "Instrukcja" button via the welcome dialog. The API is un
 Tunnel. In development `docker-compose.override.yml` is loaded automatically (hot
 reload, the code mounted from `./backend`); production runs
 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (secrets from
-`SECRETS_DIR`, no reload).
+`SECRETS_DIR`, no reload, one API process).
+
+A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
+`NOGAT_CONFIG=/home/USER/.config/nogat/nogat.toml`, which Compose mounts read-only into the
+API at `/config/nogat.toml`. With the table `[nogat.operator]` in that file Hydrograf is a
+public service with its regulamin at `/regulamin.html` (see [Public service](#public-service));
+without it there is no regulamin, no footer and no menu entry „Regulamin”. On the Docker
+host, install the retention of the logs once as root:
+`install -m 644 docker/journald.conf /etc/systemd/journald.conf.d/hydrograf.conf && systemctl restart systemd-journald`.
 
 A second instance runs beside the first on the same Docker host from its own checkout, with
 its own compose project and env file:
@@ -133,41 +141,85 @@ manifest of the analysis results), the admin key
 `IMGW_RATE_LIMIT_DELAY_S`), the shared Kartograf store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
 through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
 the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
-`{"hydrolog": "http://127.0.0.1:8070/"}`; without it there is no menu) and Docker Compose
+`{"hydrolog": "http://127.0.0.1:8070/"}`; without it the table `gui` of `[nogat]` in the file
+of `NOGAT_CONFIG`, and without both there is no menu), the public service (`NOGAT_CONFIG`, the
+deployment's `nogat.toml`; `HYDROGRAF_REQUEST_LIMIT` and `HYDROGRAF_REQUEST_WINDOW`, 300
+requests in 60 s per client address by default; `HYDROGRAF_DATA_DIR`, the directory of the
+daily statistics, `/data` in Docker) and Docker Compose
 (`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, and the names and host paths of an instance:
 `HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets are read from the environment only
 and `.env` is not committed.
 
 ### Service logs
 
-Nginx writes requests and errors to stdout/stderr; the API and PostgreSQL also log to
-Docker. The three services of Hydrograf rotate their `json-file` logs: at most 50 files of
-10 MiB (500 MiB) **per container**. To look at them:
+nginx and the API log to the host's journal (Docker's `journald` driver, the tag is the
+container's name); PostgreSQL keeps `json-file` (at most 50 files of 10 MiB). With
+`docker/journald.conf` installed (see [Run and Deploy](#run-and-deploy)) the journal keeps an
+entry at most 14 days. To look at them:
 
 ```bash
 docker compose logs --since 10m nginx api db
 ```
 
-Every nginx access entry holds `request_id` (also for static files), `request_time` and
-`upstream_time` in seconds (`-` without a backend). For API requests nginx passes the same
-`X-Request-ID` to FastAPI; the API returns it in the response header and writes a JSON
-record `request_completed` or `request_failed` with `request_id`, `status_code` and
-`duration_ms`. Look for the ID that a tester reports in both logs. The nginx time covers
-the proxy and the transfer of the response, the API time the handling by the application;
-the two need not be equal.
+The journal holds the same lines under the containers' names (`journalctl -t hydro_nginx`).
+
+No log holds the client's address (Nogat DEV-15.10). Every nginx access entry holds the
+time, method and URI, status, size, `request_time` and `upstream_time` in seconds (`-`
+without a backend), `request_id` (also for static files) and the User-Agent; the error log
+writes `crit` only. For pages and API requests nginx passes the same `X-Request-ID` to
+FastAPI; the API returns it in the response header and writes a JSON record
+`request_completed` or `request_failed` with the method, path, `request_id`, `status_code` and
+`duration_ms`. uvicorn's own access log is off. The nginx time covers the proxy and the
+transfer of the response, the API time the handling by the application; the two need not
+be equal.
 
 During tests give the tester the tunnel address that starts with `https://`. The current
 Cloudflare redirect from HTTP returns 301, so a `POST` sent straight to HTTP can be
-repeated as a `GET`. When a tester reports an error, ask for the approximate time and the
-`X-Request-ID` from the diagnostics of the feedback form; the nginx log also shows the
-failed loads of static files, which never reach the API. The rotation limits the size but
-does not keep the entries for a set number of days.
+repeated as a `GET`. When a tester reports an error, ask for the approximate time; the
+nginx log also shows the failed loads of static files, which never reach the API.
 
 A change of the logging options needs the containers to be recreated
-(`docker compose up -d db api nginx`); a restart does not update the log driver. The logs
-can hold IP addresses, paths and query parameters: do not share them with testers. The
-separate `imgwtools-api` container (the REST server of IMGWTools 2.1, now Obserwator) is not
-part of this Compose project and is not covered by this rotation.
+(`docker compose up -d api nginx`); a restart does not update the log driver. The logs hold
+paths and query parameters: do not share them with testers. The separate `imgwtools-api`
+container (the REST server of IMGWTools 2.1, now Obserwator) is not part of this Compose
+project and is not covered by these settings.
+
+### Public service
+
+Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
+
+- **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.4.0) once per process with the
+  operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
+  The statement of the service and the link „Regulamin” are under the map and in the guide,
+  and in the menu „Aplikacje”.
+- **Request limit.** Pages and API routes: 300 requests in 60 s per client address
+  (`HYDROGRAF_REQUEST_LIMIT`, `HYDROGRAF_REQUEST_WINDOW`). The map's vector tiles
+  (`/api/tiles/`) have a tile limit of their own instead: ten times the limit in the same
+  window, 3,000 requests in 60 s by default, since one map move loads dozens of tiles.
+  „Zgłoś uwagę” (`/api/feedback`) has besides at most 5 reports in 5 minutes. `/health` and the static
+  files that nginx serves are not counted. Over a limit the answer is 429 with
+  `Retry-After`: a Polish page for a page, the problem `rate_limited` for a route. The client
+  address comes from Cloudflare's `CF-Connecting-IP`, believed only through private hops; it
+  stays in the API's memory for its window only.
+- **Statistics.** One line per UTC day in `<data_dir>/hydrograf/stats.jsonl`
+  (`HYDROGRAF_DATA_DIR`; `/data` in Docker, `HYDROGRAF_DATA_PATH` on the host), rewritten every
+  10 minutes, at 00:00 UTC and at shutdown: `date`, `visitors` (distinct pairs of address and
+  User-Agent of the day, counted as HMAC-SHA-256 hashes under a salt drawn daily and kept in
+  memory only), `page_views` (GETs of a page served: the map, the admin panel, the guide, the
+  regulamin), `stations_opened` (always 0: Hydrograf has no stations), `analyses_run`
+  (successful delineations of a watershed or a network, hydrographs and terrain profiles, not
+  the previews) and `downloads` (files the interface saves: hietogram CSV and JSON, PMAXTP
+  GeoJSON, the hand-off file; the interface reports each to `/api/downloads`). Nothing
+  else is stored.
+- **„Zgłoś uwagę”.** The form sends the text and the view's context (the map mode, the map and
+  the analysis settings); the server adds the app version and stores no User-Agent and no
+  address. It has no contact field: it says „Nie wpisuj danych osobowych. Jeśli chcesz
+  odpowiedzi, napisz na” the operator's e-mail.
+
+The limit and the visitors live in the memory of one process: run the API with one uvicorn
+process (the Compose files do). The admin paths `/admin`, `/admin.html` and `/api/admin/*`
+sit behind Cloudflare Access besides the `X-Admin-Key`.
 
 ## Capabilities
 
@@ -183,8 +235,10 @@ part of this Compose project and is not covered by this rotation.
 | Optional layers that hold data (storm sewer) | `GET /layers` | database |
 | Vector tiles of streams, catchments, land cover, sewer network | `GET /tiles/{layer}/{z}/{x}/{y}.pbf`, `GET /tiles/thresholds` | preprocessed data |
 | Closed depressions of the terrain | `GET /depressions` | DEM (GUGiK) |
-| Feedback from testers | `POST /feedback` | none |
-| The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` |
+| Feedback: a text and the context of the view | `POST /feedback` | none |
+| The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` or the `nogat.toml` of `NOGAT_CONFIG` |
+| The address of the regulamin and the operator's e-mail, both null without an operator | `GET /terms` | the `nogat.toml` of `NOGAT_CONFIG` |
+| Count one file that the interface saved, for the daily statistics | `POST /downloads` | none |
 | Administration (pipeline, data cleanup, sewer network upload, feedback list) | `/admin/*` with the `X-Admin-Key` header | none |
 
 The background maps of the interface are OpenFreeMap (vector, drawn by MapLibre GL), the
@@ -240,8 +294,10 @@ and `details` do not change with the language. The five codes you meet most:
 | `unsupported` | 422 | the catchment is above 250 km² or lacks the parameters of the chosen model |
 | `unauthorized` | 401 | the `X-Admin-Key` of the admin panel is missing or wrong |
 
-Errors of the web server itself (429 when the rate limit is exceeded, gateway errors) are
-not problem documents. The preprocessing scripts exit with 0 on success and 1 on failure,
+Over the request limit every route answers 429 with `Retry-After` and the problem
+`rate_limited` (`details`: `reason` `request_limit`, `tile_limit` or `feedback_limit`,
+`retry_after_s`, `limit`, `window_s`). Only the gateway errors of nginx (502, 504) are not
+problem documents. The preprocessing scripts exit with 0 on success and 1 on failure,
 and with 2 when the command line is invalid.
 
 ## Data and licensing

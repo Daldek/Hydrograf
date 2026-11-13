@@ -111,6 +111,25 @@ a.nogat-app-menu-item:hover {
   font-size: var(--text-sm, 12px);
 }
 
+.nogat-app-menu-terms {
+  display: block;
+  margin-top: var(--space-1, 4px);
+  padding: var(--space-2, 8px);
+  border-top: 1px solid var(--line, #e5e5e5);
+  color: var(--accent, #284b63);
+  font-size: var(--text-sm, 12px);
+  text-decoration: none;
+}
+
+.nogat-app-menu-terms:hover {
+  text-decoration: underline;
+}
+
+.nogat-app-menu-terms:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
 /* Phone: the list is a sheet under the top bar, the button keeps only its icon. */
 @media (max-width: 860px) {
   nogat-app-menu {

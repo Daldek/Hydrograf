@@ -14,7 +14,7 @@
  * A <script type="module"> runs in document order with the deferred scripts, so the
  * kit is on window.Hydrograf before the scripts after it run.
  */
-import { entries } from '../nogat/nogat-app-menu.js?v=3d5ac60cb2';
+import { entries } from '../nogat/nogat-app-menu.js?v=3291fd5192';
 import * as handoff from '../nogat/nogat-handoff.js?v=605cda9ff5';
 
 window.Hydrograf = window.Hydrograf || {};

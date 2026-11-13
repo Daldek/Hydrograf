@@ -4,6 +4,8 @@
 // deployment's `[nogat.gui]` table of `nogat.toml`: registry name in lower case -> address.
 // The menu lists every GUI of that table, the current one marked and not a link; with no
 // other GUI it is not drawn. An entry opens its GUI in the tab named "nogat-<name>".
+// Its `terms` attribute, the address of the GUI's regulamin.html (DEV-15.7), ends the
+// list with the link „Regulamin”.
 // No shadow DOM: the page's stylesheet nogat-app-menu.css styles it with the tokens.
 // Copy this file byte for byte (DEV-15.6); change it in Nogat design/kit/.
 
@@ -21,6 +23,7 @@ export const MENU_TEXTS = {
   title: "Inne aplikacje ekosystemu",
   list: "Aplikacje ekosystemu",
   current: "Ta aplikacja",
+  terms: "Regulamin",
 };
 
 const GRID_ICON =
@@ -41,21 +44,31 @@ let counter = 0;
 export function entries(apps) {
   const out = [];
   for (const [key, address] of Object.entries(apps ?? {})) {
-    const name = String(key).toLowerCase();
-    let url;
-    try {
-      url = new URL(String(address), globalThis.location?.href);
-    } catch {
-      continue;
-    }
-    if (url.protocol === "http:" || url.protocol === "https:") out.push([name, url.href]);
+    const href = web(address);
+    if (href) out.push([String(key).toLowerCase(), href]);
   }
   return out;
 }
 
+/**
+ * An address resolved against the page, or null unless it is http or https.
+ *
+ * @param {unknown} address an absolute address or a path
+ * @returns {string|null} the resolved address
+ */
+export function web(address) {
+  let url;
+  try {
+    url = new URL(String(address), globalThis.location?.href);
+  } catch {
+    return null;
+  }
+  return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+}
+
 /** The custom element `<nogat-app-menu>`. */
 export class NogatAppMenu extends HTMLElement {
-  static observedAttributes = ["apps", "current", "marks"];
+  static observedAttributes = ["apps", "current", "marks", "terms"];
 
   constructor() {
     super();
@@ -161,6 +174,14 @@ export class NogatAppMenu extends HTMLElement {
     items.setAttribute("aria-label", MENU_TEXTS.list);
     for (const [name, url] of list) items.append(this._item(name, url, name === current, marks));
     panel.append(items);
+    const terms = this.hasAttribute("terms") ? web(this.getAttribute("terms")) : null;
+    if (terms) {
+      const link = document.createElement("a");
+      link.className = "nogat-app-menu-terms";
+      link.href = terms;
+      link.textContent = MENU_TEXTS.terms;
+      panel.append(link);
+    }
     panel.addEventListener("click", (event) => {
       if (event.target.closest("a")) this.close();
     });
