@@ -1,7 +1,8 @@
 # ADR-083: The providers' lines in every product: one module, the responses, the hand-off and the exports
 
 **Date:** 2026-11-13
-**Status:** accepted
+**Status:** accepted; amended 2026-11-13 (one strip of the lines on screen, the welcome
+window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below)
 
 ## Context
 
@@ -115,3 +116,23 @@ A1, B3, C2 and D1:
   producer is Hydraulik).
 - An own series imported from a file carries no lines: Hydrograf does not read lines from
   CSV files; a person who imports provider data answers for its terms.
+
+## Amendment 2026-11-13: one strip on screen (Nogat ECO-064)
+
+Nogat amended DEV-20.5 and DEV-20.7 (ECO-064, plan `2026-11-13-compact-attribution`, step 4
+here: plan `2026-11-13-compact-sources`): a GUI view shows the lines once, in the kit's strip
+`<nogat-sources>` (S, P, PS and PP on screen, „Źródła i warunki” opening every line and the
+terms), never beside a panel, card, chart, legend or popup. Points 4 and 5 of the decision
+change for the screen only:
+
+- The map view has one strip, `#view-sources`, under the map and both panels. `attribution.js`
+  keeps the lines each surface shows (the hydrograph, an own series copied from PMAXTP, the
+  results on the map, the point card, the profile) and gives the strip their union; the lines
+  of a part of the results panel count while it is laid out. The legend, the (i), the card,
+  the drawer and the panel show no lines of their own.
+- The welcome window shows the full lines and the terms with the kit's `fillSources()`. They
+  come from `GET /api/terms`, which adds `attribution` and `terms_notice` (PMAXTP's, from the
+  module, on every deployment; AGI-4.1, additive): a copy in the front end would be a second
+  place of the lines (DEV-20.4).
+- The exports, the hand-off, the API fields, `analyze_watershed`, the guide and the slides
+  keep the full lines as decided.

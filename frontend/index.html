@@ -27,7 +27,8 @@
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
-    <link rel="stylesheet" href="css/app.css?v=7b85bb965b">
+    <link rel="stylesheet" href="nogat/nogat-sources.css?v=b02762f078">
+    <link rel="stylesheet" href="css/app.css?v=c970a56ea9">
 </head>
 <body>
 <div class="shell">
@@ -155,7 +156,6 @@
                                 <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
                             </div>
                         </div>
-                        <div id="profile-attribution" class="provider-lines" hidden></div>
                     </section>
 
                     <!-- Point card (identify mode, js/identify.js) -->
@@ -169,10 +169,6 @@
                         <div class="identify-body" id="identify-body" aria-live="polite"></div>
                     </section>
                 </div>
-                <!-- The statement of the service and its regulamin (DEV-15.7, DEV-15.8): js/terms.js shows it on a public deployment -->
-                <footer class="site-footer" id="site-footer" hidden>
-                    <p>Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB. <a href="/regulamin.html" id="terms-link">Regulamin</a></p>
-                </footer>
             </section>
 
             <!-- Right panel: watershed results -->
@@ -385,7 +381,6 @@
                                                 </table>
                                             </div>
                                             <p id="custom-rain-sum" class="custom-rain-sum num"></p>
-                                            <div id="custom-rain-attribution" class="provider-lines" hidden></div>
                                             <p id="custom-rain-msg" class="notice d-none" role="status">
                                                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
                                                 <span id="custom-rain-msg-text"></span>
@@ -429,7 +424,6 @@
                                                 Punkty PMAXTP (GeoJSON)
                                             </button>
                                         </div>
-                                        <div id="hietogram-attribution" class="provider-lines" hidden></div>
                                     </div>
                                 </div>
                             </details>
@@ -519,7 +513,6 @@
                                             <div class="chart-title">Hydrogram odpływu</div>
                                             <div class="chart-container chart-md"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
                                         </div>
-                                        <div id="hydrograph-attribution" class="provider-lines" hidden></div>
                                     </div>
                                     <div id="hydrograph-info"></div>
                                 </div>
@@ -554,6 +547,16 @@
                     </section>
                 </div>
             </aside>
+
+            <!-- The foot of the view across its width, under the map and the panels; on phones the sheets stop above it (js/shell.js) -->
+            <div class="view-foot" id="view-foot">
+                <!-- The view's one strip of provider lines and its dialog (Nogat DEV-20.5, kit nogat-sources; js/attribution.js) -->
+                <nogat-sources id="view-sources" hidden></nogat-sources>
+                <!-- The statement of the service and its regulamin (DEV-15.7, DEV-15.8): js/terms.js shows it on a public deployment -->
+                <footer class="site-footer" id="site-footer" hidden>
+                    <p>Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB. <a href="/regulamin.html" id="terms-link" target="_blank" rel="noopener">Regulamin</a></p>
+                </footer>
+            </div>
         </div>
     </main>
 </div>
@@ -596,6 +599,8 @@
             <p>Hydrograf wyznacza z NMT zlewnię wskazanego przekroju i oblicza jej parametry fizjograficzne oraz CN z pokrycia terenu (BDOT10k) i grup glebowych HSG. Dla zlewni do 250&nbsp;km² oblicza hydrogram odpływu metodą SCS-CN z opadu projektowego PMAXTP, z hydrogramem jednostkowym SCS, Nasha lub Snydera. Ponadto: profil terenu, identyfikacja punktu i mapa zagłębień bezodpływowych.</p>
             <p id="welcome-area">Obszar danych: ten, który mapa pokazuje po otwarciu; poza nim Hydrograf nie wyznaczy zlewni. Wyniki są szacunkami do analiz wstępnych, nie prognozą hydrologiczną.</p>
         </div>
+        <!-- The full provider lines and the terms, as in the dialog of the view's strip (Nogat DEV-20.5; js/welcome.js) -->
+        <section class="welcome-sources" id="welcome-sources" aria-label="Źródła danych i warunki korzystania" hidden></section>
         <label class="check">
             <input type="checkbox" id="welcome-hide">
             <span>Nie pokazuj ponownie</span>
@@ -632,30 +637,30 @@
 
 <!-- Application modules -->
 <script defer src="js/api.js?v=4c393c4b55"></script>
-<script defer src="js/shell.js?v=2b97414afd"></script>
+<script defer src="js/shell.js?v=31fb77a438"></script>
 <script defer src="js/map.js?v=71de73a7b9"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
-<script defer src="js/attribution.js?v=b7900eaad6"></script>
-<script defer src="js/layers.js?v=3d4f46349b"></script>
-<script defer src="js/profile.js?v=b1aab93c09"></script>
+<script defer src="js/attribution.js?v=067d55284e"></script>
+<script defer src="js/layers.js?v=e97a841035"></script>
+<script defer src="js/profile.js?v=5d10c5035f"></script>
 <script defer src="js/info-texts.js?v=5733dc44eb"></script>
-<script defer src="js/info.js?v=dd4d3f83e0"></script>
-<script defer src="js/hydrograph.js?v=0fcf62b091"></script>
+<script defer src="js/info.js?v=778110a063"></script>
+<script defer src="js/hydrograph.js?v=0ba8f9b019"></script>
 <script defer src="js/rain-export.js?v=0bf231af6f"></script>
 <script defer src="js/advanced.js?v=48268e8668"></script>
-<script defer src="js/custom-rain.js?v=8ba99db5f8"></script>
+<script defer src="js/custom-rain.js?v=f7c0093c2f"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
-<script defer src="js/results.js?v=482914dc96"></script>
+<script defer src="js/results.js?v=5a51c06405"></script>
 <script defer src="js/feedback.js?v=20fe9e98b9"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
-<script defer src="js/welcome.js?v=54f8061114"></script>
-<script defer src="js/identify.js?v=a6c0e7ebfe"></script>
-<script type="module" src="js/nogat.js?v=101867399f"></script>
+<script defer src="js/welcome.js?v=575d5f0064"></script>
+<script defer src="js/identify.js?v=ae055880e1"></script>
+<script type="module" src="js/nogat.js?v=b666b28dab"></script>
 <script defer src="js/handoff.js?v=5edb431823"></script>
 <script defer src="js/network.js?v=dda978abcf"></script>
-<script defer src="js/terms.js?v=c5ff20bdcc"></script>
+<script defer src="js/terms.js?v=3989ba9ee2"></script>
 <script defer src="js/app.js?v=4d5945c305"></script>
 </body>
 </html>

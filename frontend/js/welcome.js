@@ -3,6 +3,9 @@
  * shown on the first visit and from the top-bar guide button.
  * The data area comes from /data/instance.json (Hydrograf.instance); without it the
  * paragraph keeps the neutral text of index.html.
+ * Under it the full provider lines of the service's PMAXTP data and their terms, the
+ * content of the dialog of the view's strip (Nogat DEV-20.5): GET /api/terms
+ * (Hydrograf.terms) gives them, the kit's fillSources (js/nogat.js) writes them.
  */
 (function () {
     'use strict';
@@ -47,6 +50,18 @@
             '. Wyniki są szacunkami do analiz wstępnych, nie prognozą hydrologiczną.';
     }
 
+    /** The full lines and terms in #welcome-sources; without lines it stays hidden. */
+    function renderSources(terms) {
+        var box = document.getElementById('welcome-sources');
+        if (!box || (!terms.attribution.length && !terms.terms_notice.length)) return;
+        Hydrograf.nogat.fillSources(box, {
+            attribution: terms.attribution,
+            termsNotice: terms.terms_notice,
+            terms: terms.url,
+        });
+        box.hidden = false;
+    }
+
     function init() {
         var dialog = document.getElementById('welcome-modal');
         if (!dialog || typeof dialog.showModal !== 'function') return;
@@ -59,6 +74,11 @@
         };
 
         if (Hydrograf.instance && els.area) Hydrograf.instance.load().then(renderArea);
+        // The kit's module (js/nogat.js) defines the element and hands on fillSources in one run
+        if (Hydrograf.terms) {
+            Promise.all([Hydrograf.terms.ready, customElements.whenDefined('nogat-sources')])
+                .then(function (done) { renderSources(done[0]); });
+        }
 
         document.getElementById('welcome-close').addEventListener('click', closeModal);
         els.mapBtn.addEventListener('click', closeModal);

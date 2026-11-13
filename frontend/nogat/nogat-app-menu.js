@@ -5,7 +5,8 @@
 // The menu lists every GUI of that table, the current one marked and not a link; with no
 // other GUI it is not drawn. An entry opens its GUI in the tab named "nogat-<name>".
 // Its `terms` attribute, the address of the GUI's regulamin.html (DEV-15.7), ends the
-// list with the link „Regulamin”.
+// list with the link „Regulamin”, opened in a new tab so the GUI's own tab and its
+// session stay.
 // No shadow DOM: the page's stylesheet nogat-app-menu.css styles it with the tokens.
 // Copy this file byte for byte (DEV-15.6); change it in Nogat design/kit/.
 
@@ -180,6 +181,8 @@ export class NogatAppMenu extends HTMLElement {
       link.className = "nogat-app-menu-terms";
       link.href = terms;
       link.textContent = MENU_TEXTS.terms;
+      link.target = "_blank";
+      link.rel = "noopener";
       panel.append(link);
     }
     panel.addEventListener("click", (event) => {

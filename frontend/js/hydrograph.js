@@ -6,8 +6,8 @@
  * The number fields are checked against the limits of the API before a
  * request; an invalid field (or a server error at it) shows its message under
  * it, and the result of an earlier calculation is hidden until it is fixed.
- * The lines of the rainfall's provider that a result carries (PMAXTP) are shown
- * under its hietogram and under its hydrograph (attribution.js).
+ * The lines of the rainfall's provider that a result carries (PMAXTP) go to the
+ * view's strip while the result is shown (attribution.js).
  */
 (function () {
     'use strict';
@@ -158,10 +158,13 @@
             '. Do tego czasu hietogram i hydrogram nie s\u0105 przeliczane.';
     }
 
-    /** The provider lines of a result under its hietogram and its hydrograph; null clears them. */
+    /**
+     * The provider lines of the result shown to the view's strip, while the
+     * Hietogram or Hydrogram section is laid out; null takes them away.
+     */
     function showProviderLines(result) {
-        Hydrograf.attribution.render(document.getElementById('hietogram-attribution'), result);
-        Hydrograf.attribution.render(document.getElementById('hydrograph-attribution'), result);
+        Hydrograf.attribution.show('hydrograph', result,
+            [document.getElementById('acc-hietogram'), document.getElementById('acc-hydrograph')]);
     }
 
     /** Hide the result of an earlier calculation: it no longer matches the form. */

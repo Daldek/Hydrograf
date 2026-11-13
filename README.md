@@ -189,10 +189,10 @@ project and is not covered by these settings.
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.4.0) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.5.1) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
-  The statement of the service and the link „Regulamin” are under the map and in the guide,
-  and in the menu „Aplikacje”.
+  The statement of the service and the link „Regulamin” (in a new tab) are under the map and
+  in the guide, and in the menu „Aplikacje”.
 - **Request limit.** Pages and API routes: 300 requests in 60 s per client address
   (`HYDROGRAF_REQUEST_LIMIT`, `HYDROGRAF_REQUEST_WINDOW`). The map's vector tiles
   (`/api/tiles/`) have a tile limit of their own instead: ten times the limit in the same

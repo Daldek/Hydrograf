@@ -10,9 +10,9 @@
  * sub-catchment of the flow lines with the main channel at its end and the
  * distance to the outlet of the network. The answer fills the card
  * #identify-card over the map (a sheet at the bottom of the map on phones);
- * the provider lines of the results whose water it reads (attribution.js) end
- * the section "Woda". Turning a result or the flow lines threshold on or off
- * reads the open point again.
+ * the provider lines of the results whose water it reads go to the view's strip
+ * while the card shows them (attribution.js). Turning a result or the flow
+ * lines threshold on or off reads the open point again.
  */
 (function () {
     'use strict';
@@ -288,8 +288,7 @@
             (shown.length ? 'wyniki analiz włączone w panelu „Warstwy”; ' : '') +
             'cieki i wody powierzchniowe — BDOT10k (GUGiK)');
         // The lines of the data's providers that the water of the results carries
-        var lines = Hydrograf.attribution.element(data, 'identify-lines');
-        if (lines) water.appendChild(lines);
+        Hydrograf.attribution.show('identify', data);
         els.body.appendChild(water);
         els.body.appendChild(section('Teren i gleba', [table(landRows(data))],
             'pokrycie terenu — BDOT10k (GUGiK), CN — tablice TR-55 (Hydrolog) dla klasy pokrycia i grupy glebowej punktu (B, gdy jej brak), przeliczenie AMC — Hydrolog; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
@@ -298,6 +297,7 @@
     }
 
     function showLoading() {
+        Hydrograf.attribution.show('identify', null);
         els.body.innerHTML = '';
         var box = el('div', 'loading');
         box.setAttribute('role', 'status');
@@ -309,6 +309,7 @@
     }
 
     function showError(message) {
+        Hydrograf.attribution.show('identify', null);
         els.body.innerHTML = '';
         var notice = el('p', 'notice bad');
         notice.setAttribute('role', 'alert');
@@ -408,6 +409,7 @@
         _request++;
         _point = null;
         _inputs = '';
+        Hydrograf.attribution.show('identify', null);
         if (els.card) {
             els.card.hidden = true;
             els.body.innerHTML = '';

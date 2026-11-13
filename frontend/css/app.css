@@ -80,7 +80,7 @@ input[type="range"] { width: 100%; height: 16px; }
     position: relative;
     display: grid;
     grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     height: 100%;
 }
 .view-panel {
@@ -181,12 +181,19 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 /* Own stacking context: Leaflet panes (z 400-1000) stay below the resizers and sheets */
 #map { position: absolute; inset: 0; z-index: 0; }
 
-/* The statement of the service and the link „Regulamin” under the map (DEV-15.7, DEV-15.8):
- * it wraps and stays whole on every width, on phones above the bottom rail */
+/* The foot of the view across its width, under the map and the panels: the strip of provider
+ * lines and the statement of the service. On phones the sheets stop above it (js/shell.js
+ * sets --view-foot-h) */
+.view-foot { grid-row: 2; grid-column: 1 / -1; flex: none; background: var(--surface); }
+
+/* The view's one strip of provider lines (Nogat DEV-20.5, kit nogat-sources.css: 12 px, muted) */
+#view-sources { padding: var(--space-1) var(--space-3); border-top: 1px solid var(--line); }
+
+/* The statement of the service and the link „Regulamin” (DEV-15.7, DEV-15.8): it wraps and
+ * stays whole on every width */
 .site-footer {
-    flex: none;
     padding: var(--space-1) var(--space-3);
-    background: var(--surface); border-top: 1px solid var(--line);
+    border-top: 1px solid var(--line);
     font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2);
 }
 .site-footer p { margin: 0; }
@@ -344,28 +351,6 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .notice.bad { background: var(--bad-bg); color: var(--bad-ink); }
 .notice.has-action { flex-direction: column; }
 .notice svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
-
-/* Provider lines (attribution.js): the source and the terms of use of the data, next to them in
-   the panels, the legends, the point card, the profile drawer and the (i) texts (Nogat DEV §20) */
-.provider-lines { margin: 0 0 var(--space-3); font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2); overflow-wrap: anywhere; }
-.provider-lines p { margin: 0; }
-.provider-lines p + p { margin-top: 2px; }
-.provider-attribution + .provider-terms { margin-top: var(--space-1); }
-.provider-lines a { color: var(--accent); }
-.provider-lines a:hover { color: var(--accent-hover); }
-.custom-rain .provider-lines { margin-bottom: var(--space-2); }
-.profile-drawer .provider-lines { margin: 0; padding: 0 var(--space-3) var(--space-3); }
-.identify-section .provider-lines { margin: var(--space-1) 0 0; }
-.info-tip .provider-lines { margin: var(--space-2) 0 0; }
-/* A legend with lines is wider, so they take fewer rows (also on phones) */
-.layer-legend.has-provider-lines { width: min(280px, calc(100vw - 2 * var(--space-3))); }
-.layer-legend .provider-lines { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); }
-@media (max-width: 860px) {
-    /* Phone: the lines scroll inside the legend and under the profile chart, so the map stays in view */
-    .layer-legend.has-provider-lines { max-height: 45vh; overflow-y: auto; overscroll-behavior: contain; }
-    .profile-drawer { display: flex; flex-direction: column; max-height: 70%; }
-    .profile-drawer .provider-lines { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-}
 
 .steps { display: grid; gap: var(--space-2); counter-reset: step; }
 .step { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
@@ -749,8 +734,11 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 .modal-body .feedback-status.bad { color: var(--bad-ink); }
 
 /* ---------- Welcome dialog ---------- */
-.welcome .modal-body p { color: var(--text); font-size: var(--text-site); line-height: var(--line-height); }
+.welcome #welcome-text p { color: var(--text); font-size: var(--text-site); line-height: var(--line-height); }
 .welcome .check { margin-top: var(--space-1); }
+/* The full provider lines and the terms, as the dialog of the strip shows them (kit fillSources, nogat-sources.css) */
+.welcome-sources { margin: 0 0 var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--line); }
+.welcome-sources .nogat-sources-regulamin { margin: var(--space-3) 0 0; }
 
 /* ---------- Narrow desktop: panels at their minimum ---------- */
 @media (max-width: 1240px) and (min-width: 861px) {
@@ -765,14 +753,15 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 
 /* ---------- Phone ---------- */
 @media (max-width: 860px) {
-    .view-layout { display: block; }
-    .view-center { height: 100%; }
+    .view-layout { display: flex; flex-direction: column; }
+    .view-center { flex: 1; }
     .resizer { display: none; }
     .phone-only { display: inline-flex !important; }
 
     .view-panel {
-        position: fixed; left: 0; right: 0; bottom: 58px; z-index: 30;
-        height: min(74vh, 640px);
+        /* Above the rail and the foot of the view, so the strip of provider lines stays in sight */
+        position: fixed; left: 0; right: 0; bottom: calc(58px + var(--view-foot-h, 0px)); z-index: 30;
+        height: min(74vh, 640px, calc(100vh - 114px - var(--view-foot-h, 0px)));
         border: 1px solid var(--line); border-bottom: 0;
         border-radius: 16px 16px 0 0; box-shadow: var(--shadow-lg);
         transform: translateY(110%); visibility: hidden;
