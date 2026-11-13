@@ -66,11 +66,12 @@ dependencies = [
     "kartograf>=0.8.0.dev0,<0.9",
     "hydrolog>=1.0.0.dev0,<2",
     "requests>=2.31",
-    # Logging, process monitoring, utilities, caching
-    "structlog>=24.1.0",
+    # Process monitoring, utilities, caching
     "psutil>=5.9",
     "python-dotenv>=1.0.0",
     "cachetools>=5.3.0",
+    # The default state_dir of the logs, platformdirs.user_state_path (DEV-18.2)
+    "platformdirs>=4.2",
 ]
 
 [project.optional-dependencies]

@@ -23,7 +23,7 @@ from jsonschema import Draft202012Validator
 
 from api.endpoints.watershed import _watershed_handoff
 from api.main import app
-from core.attribution import NO_PROVIDER, PMAXTP
+from core.attribution import NO_PROVIDER, PMAXTP, ProviderLines
 from core.database import get_db
 from core.precipitation import DesignDepth
 from models.schemas import MorphometricParameters, OutletInfo, WatershedResponse
@@ -393,11 +393,15 @@ class TestDelineatedWatershedHandoff:
             morphometry=MorphometricParameters(**_morphometry()),
         )
 
-        doc = _watershed_handoff(watershed)
+        lines = ProviderLines(attribution=("Źródło: GUGiK (test)",))
+        doc = _watershed_handoff(watershed, lines)
 
         assert doc is not None
         assert _schema_problems(doc) == []
         assert "result" not in doc
+        # The hand-off carries the lines of its response (DEV-20.6)
+        assert doc["attribution"] == ["Źródło: GUGiK (test)"]
+        assert "terms_notice" not in doc
         assert doc["provenance"] == {"watershed": {"source": "hydrograf", **OUTLET}}
         (subcatchment, outlet) = doc["payload"]["nodes"]
         assert outlet == {"id": "OUT", "type": "outlet", "from": ["Z1"]}

@@ -359,6 +359,7 @@
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
         state.currentStream = null;
+        showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
         els.results.classList.add('d-none');
         views.watershed.error = '';
@@ -385,6 +386,7 @@
             }
         }
         state.view = view;
+        showWatershedLines();
         var texts = VIEW_TEXTS[view];
         els.panel.dataset.view = view;
         els.title.textContent = texts.title;
@@ -403,6 +405,16 @@
             restoreWatershedSections();
         }
         renderStatus();
+    }
+
+    /**
+     * The view's strip holds the lines of the GUGiK and SoilGrids data of the
+     * delineated watershed (its `attribution`) while the map shows it: not in the
+     * option „Sieć zlewni”, which hides it (js/attribution.js, DEV §20).
+     */
+    function showWatershedLines() {
+        Hydrograf.attribution.show('watershed',
+            state.view === 'watershed' ? state.currentWatershed : null);
     }
 
     /** The sections and the context of the watershed again, after the network had them. */
@@ -519,6 +531,7 @@
         setLoading(true);
         state.currentWatershed = null;
         state.currentStream = null;
+        showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
 
         // Clear previous watershed display
@@ -567,6 +580,7 @@
                 state.currentWatershed = data;
                 state.clickLat = lat;
                 state.clickLng = lng;
+                showWatershedLines();
 
                 // Show outlet marker (but NOT watershed polygon — selection boundary is enough)
                 var outlet = data.watershed.outlet;
@@ -616,6 +630,7 @@
             Hydrograf.map.clearDelineatePreview();
             Hydrograf.map.clearSelectionBoundary();
             state.currentWatershed = null;
+            showWatershedLines();
             if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
             showError(err.message);
         } finally {

@@ -1,18 +1,18 @@
-// Nogat GUI kit: the providers' lines on screen (DEV-20.5, DEV-20.7, ECO-064).
+// Nogat GUI kit: the providers' lines on screen (DEV-20.5, DEV-20.7, ECO-064, ECO-068).
 // <nogat-sources attribution='[…]' terms-notice='[…]' terms="regulamin.html"> once per
 // view: a compact strip with the lines the providers require on the product (S, P, PS,
-// PP and the short form CK of C), each once in the order of DEV-20.4, and the button
-// „Źródła i warunki”, which opens a dialog with every line and the terms. `attribution`
-// and `terms-notice` hold JSON arrays, the API's `attribution` and `terms_notice`; the
-// properties `attribution` and `termsNotice` take the arrays themselves. `terms` is the
-// address of the GUI's regulamin.html (DEV-15.7), linked from the dialog in a new tab, so
-// the GUI's own tab and its session stay.
+// PP) and the short forms CK, GK, SK and ZK of C, G, SG and Z, each once in the order of
+// DEV-20.4, and the button „Źródła i warunki”, which opens a dialog with every line and
+// the terms. `attribution` and `terms-notice` hold JSON arrays, the API's `attribution`
+// and `terms_notice`; the properties `attribution` and `termsNotice` take the arrays
+// themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked from
+// the dialog in a new tab, so the GUI's own tab and its session stay.
 // `fillSources(container, {attribution, termsNotice, terms})` writes the same full
 // content into a welcome window of the GUI's own.
 // No shadow DOM: the page's stylesheet nogat-sources.css styles it with the tokens.
 // Copy this file byte for byte (DEV-15.6); change it in Nogat design/kit/.
 
-/** The lines of DEV §20 the element recognises, byte for byte. */
+/** The lines of DEV §20 the element recognises, byte for byte; `<name>` stands for a value. */
 export const LINES = {
   S: "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
   P: "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
@@ -20,16 +20,48 @@ export const LINES = {
   PP: "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone",
   C: "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
   CK: "Źródło: ČHMÚ, CC BY 4.0",
+  G: "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, `<products>` (wytworzono `<period>`, pozyskano `<date>`); dane przetworzone",
+  GK: "Źródło: GUGiK (`<products>`)",
+  SG: "Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); dane przetworzone",
+  SK: "Źródło: ISRIC SoilGrids, CC BY 4.0",
+  Z: "Źródło: Český úřad zeměměřický a katastrální (ČÚZK), `<products>` (pozyskano `<date>`), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); dane przetworzone",
+  ZK: "Źródło: ČÚZK, CC BY 4.0",
 };
 
-/** The marks shown on screen, in the order of DEV-20.4; C is shown as CK. */
-const SCREEN = ["S", "P", "PS", "PP", "C"];
+/** The full lines shown on screen, in the order of DEV-20.4, and the line each is shown as. */
+const SCREEN = { S: "S", P: "P", PS: "PS", PP: "PP", C: "CK", G: "GK", SG: "SK", Z: "ZK" };
 
-/** Links of CK: the words of the short form and their addresses. */
-const SHORT_LINKS = [
-  ["ČHMÚ", "https://opendata.chmi.cz"],
-  ["CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"],
-];
+const LICENCE = "https://creativecommons.org/licenses/by/4.0/";
+
+/** Links of the short forms: their words and the addresses they open. */
+const SHORT_LINKS = {
+  CK: [
+    ["ČHMÚ", "https://opendata.chmi.cz"],
+    ["CC BY 4.0", LICENCE],
+  ],
+  SK: [["CC BY 4.0", LICENCE]],
+  ZK: [["CC BY 4.0", LICENCE]],
+};
+
+/** A value in a line of LINES, as DEV §20 writes it. */
+const VALUE = /`<([a-z]+)>`/g;
+
+/**
+ * The pattern of a line of LINES: its text byte for byte, each value any text.
+ *
+ * @param {string} line a line of LINES
+ * @returns {RegExp} the pattern, with a named group for each value
+ */
+function pattern(line) {
+  const parts = line
+    .split(VALUE)
+    .map((part, i) => (i % 2 ? `(?<${part}>.+?)` : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  return new RegExp(`^${parts.join("")}$`);
+}
+
+const PATTERNS = Object.fromEntries(
+  Object.keys(SCREEN).map((mark) => [mark, pattern(LINES[mark])]),
+);
 
 /** The element's own texts, in Polish. */
 export const SOURCES_TEXTS = {
@@ -68,15 +100,36 @@ export function lines(value) {
 }
 
 /**
- * The marks of the on-screen lines found among the full lines, in the order of DEV-20.4;
- * a line other than S, P, PS, PP and C (M, CP, another provider's) stays in the dialog.
+ * The lines of the strip found among the full lines, in the order of DEV-20.4: the mark of
+ * each full line shown and the text it is shown as, C, G, SG and Z in their short forms.
+ * The lines of one mark give one short form whose values join theirs with „, ”, each once,
+ * so every G of the view gives one GK naming all their products.
  *
  * @param {string[]} attribution the full lines a product carries
- * @returns {string[]} the marks, C standing for its short form
+ * @returns {{mark: string, shown: string, text: string}[]} the lines of the strip
+ */
+function onScreen(attribution) {
+  const found = [];
+  for (const [mark, shown] of Object.entries(SCREEN)) {
+    const matches = attribution.map((line) => PATTERNS[mark].exec(line)).filter(Boolean);
+    if (!matches.length) continue;
+    const text = LINES[shown].replace(VALUE, (_, name) =>
+      [...new Set(matches.flatMap((match) => match.groups[name].split(", ")))].join(", "),
+    );
+    found.push({ mark, shown, text });
+  }
+  return found;
+}
+
+/**
+ * The marks of the full lines shown on screen, in the order of DEV-20.4; a line other than
+ * S, P, PS, PP, C, G, SG and Z (M, CP, another provider's) stays in the dialog.
+ *
+ * @param {string[]} attribution the full lines a product carries
+ * @returns {string[]} the marks, C, G, SG and Z standing for their short forms
  */
 export function screenMarks(attribution) {
-  const present = new Set(attribution);
-  return SCREEN.filter((mark) => present.has(LINES[mark]));
+  return onScreen(attribution).map(({ mark }) => mark);
 }
 
 /**
@@ -117,14 +170,14 @@ function linked(text) {
   return nodes;
 }
 
-/** The nodes of CK, „ČHMÚ” and „CC BY 4.0” as links. */
-function short() {
+/** The nodes of a short form, its words linked to their addresses. */
+function short(text, words) {
   const nodes = [];
-  let rest = LINES.CK;
-  for (const [words, href] of SHORT_LINKS) {
-    const at = rest.indexOf(words);
-    nodes.push(document.createTextNode(rest.slice(0, at)), link(words, href));
-    rest = rest.slice(at + words.length);
+  let rest = text;
+  for (const [word, href] of words) {
+    const at = rest.indexOf(word);
+    nodes.push(document.createTextNode(rest.slice(0, at)), link(word, href));
+    rest = rest.slice(at + word.length);
   }
   if (rest) nodes.push(document.createTextNode(rest));
   return nodes;
@@ -251,10 +304,10 @@ export class NogatSources extends HTMLElement {
     const strip = document.createElement("p");
     strip.className = "nogat-sources-strip";
     strip.setAttribute("aria-label", SOURCES_TEXTS.strip);
-    for (const mark of screenMarks(full)) {
+    for (const { shown, text } of onScreen(full)) {
       const line = document.createElement("span");
       line.className = "nogat-sources-line";
-      line.append(...(mark === "C" ? short() : linked(LINES[mark])));
+      line.append(...(SHORT_LINKS[shown] ? short(text, SHORT_LINKS[shown]) : linked(text)));
       strip.append(line, " ");
     }
     const button = document.createElement("button");

@@ -47,9 +47,10 @@ PROJECT_VALUES: Mapping[str, str] = {
 }
 
 # The blocks of Hydrograf's data sources: PMAXTP (hydrographs), GUGiK (NMT, BDOT10k,
-# the grey OSM basemap), Copernicus (CORINE), ISRIC (SoilGrids), Wody Polskie (the MZP
-# overlay), OpenStreetMap (OpenFreeMap and the geoportal basemap) and Esri (orthophoto)
-BLOCKS = ("pmaxtp", "gugik", "copernicus", "isric", "wody-polskie", "osm", "esri")
+# the orthophoto and the grey OSM basemap), ISRIC (SoilGrids), Wody Polskie (the MZP
+# overlay) and OpenStreetMap (OpenFreeMap and the geoportal basemap); not Copernicus,
+# whose CORINE the pipeline does not use (scripts/README.md, ADR-061)
+BLOCKS = ("pmaxtp", "gugik", "isric", "wody-polskie", "osm")
 
 # A key of [nogat.operator] -> the field of the template it fills
 OPERATOR_FIELDS: Mapping[str, str] = {

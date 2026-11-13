@@ -32,8 +32,16 @@ from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from api.errors import problem_responses
-from core.attribution import NO_PROVIDER, PMAXTP, ProviderLines
+from core.attribution import (
+    CATCHMENT,
+    NO_PROVIDER,
+    PMAXTP,
+    ProviderLines,
+    instance_lines,
+    merge,
+)
 from core.catchment_graph import loaded_catchment_graph
+from core.config import get_settings
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.errors import (
@@ -80,6 +88,7 @@ from core.watershed_service import (
     get_segment_outlet,
     get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
+    watershed_lines,
 )
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
@@ -633,6 +642,33 @@ def _handoff_watershed(
     )
 
 
+def _watershed_data_lines(
+    request: HydrographRequest, watershed_resp: WatershedResponse | None
+) -> ProviderLines:
+    """Return the lines of the GUGiK and SoilGrids data of the hydrograph's watershed.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    watershed_resp : WatershedResponse or None
+        The watershed the endpoint delineated, None for a given morphometry.
+
+    Returns
+    -------
+    ProviderLines
+        Those of the watershed the endpoint delineated; for a given morphometry with
+        its ``morphometry_origin``, a delineation of Hydrograf, those of a catchment
+        (its morphometry and CN); none for the user's own watershed.
+    """
+    frontend_data_dir = get_settings().frontend_data_dir
+    if watershed_resp is not None:
+        return watershed_lines(watershed_resp, frontend_data_dir)
+    if request.morphometry_origin is not None:
+        return instance_lines(CATCHMENT, frontend_data_dir)
+    return NO_PROVIDER
+
+
 def _storm_shape(request: HydrographRequest) -> dict[str, float]:
     """Return the shape parameters of the request's hyetograph in Hydrolog's names.
 
@@ -845,20 +881,20 @@ def generate_hydrograph(
 
         # ===== Precipitation: own series or PMAXTP design storm =====
         depth: DesignDepth | None = None
-        lines: ProviderLines
+        rain_lines: ProviderLines
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
             handoff_rainfall = rainfall_series(custom.depths_mm, timestep_min)
             rainfall_origin = given_origin()
             # A copy of a PMAXTP hyetogram still carries PMAXTP's lines (ADR-083)
-            lines = PMAXTP if custom.derived_from == "pmaxtp" else NO_PROVIDER
+            rain_lines = PMAXTP if custom.derived_from == "pmaxtp" else NO_PROVIDER
             logger.debug(
                 f"Custom precipitation: {precip_result.total_mm:.1f} mm "
                 f"in {duration_min:.0f} min"
             )
         else:
-            lines = PMAXTP
+            rain_lines = PMAXTP
             # PMAXTP depth: the watershed mean, or at the point without the grid
             depth = _design_depth(
                 request, point_2180, pmaxtp_cells, duration_str, design_probability, db
@@ -988,6 +1024,8 @@ def generate_hydrograph(
 
         # ===== Hand-off to Hydrolog: the values used, unrounded (ADR-068) =====
         name, watershed_origin = _handoff_watershed(request, watershed_resp)
+        # The rainfall's lines, then those of a watershed of Hydrograf's data
+        lines = merge([rain_lines, _watershed_data_lines(request, watershed_resp)])
         runoff, runoff_origin = _handoff_runoff(
             request, tc_min, tc_method, uh_params, nash_meta
         )
@@ -1001,6 +1039,7 @@ def generate_hydrograph(
             name=name,
             watershed=watershed_parameters(watershed_fields, name, cn=cn),
             watershed_origin=watershed_origin,
+            lines=lines,
             hydrograph=DesignHydrograph(
                 timestep_min=timestep_min,
                 runoff=runoff,
@@ -1011,7 +1050,6 @@ def generate_hydrograph(
                     hydro_result.time_to_peak_min,
                     hydro_result.total_volume_m3,
                 ),
-                lines=lines,
             ),
         )
 

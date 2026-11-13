@@ -13,10 +13,35 @@ from fastapi.testclient import TestClient
 
 import api.endpoints.site
 from api.main import app
-from core.attribution import PMAXTP
+from core.attribution import PMAXTP, SOILGRIDS_SOURCE
 from core.terms import Terms
 
 TERMS = Terms(page="<!doctype html><h1>Regulamin</h1>", operator_email="op@example.pl")
+
+
+def _gugik(products: str) -> str:
+    """G of the products, without an instance.json that dates them."""
+    return (
+        f"Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products} "
+        "(wytworzono b.d., pozyskano b.d.); dane przetworzone"
+    )
+
+
+# Every line of the service: PMAXTP's, then G and SG of a catchment (DEV-20.4), and
+# the lines of each kind of the map's layers
+LINES = {
+    "attribution": [*PMAXTP.attribution, _gugik("NMT, BDOT10k"), SOILGRIDS_SOURCE],
+    "terms_notice": list(PMAXTP.terms_notice),
+    "layers": {
+        "elevation": {"attribution": [_gugik("NMT")], "terms_notice": []},
+        "drainage": {"attribution": [_gugik("NMT, BDOT10k")], "terms_notice": []},
+        "topography": {"attribution": [_gugik("BDOT10k")], "terms_notice": []},
+        "soils": {
+            "attribution": [_gugik("BDOT10k"), SOILGRIDS_SOURCE],
+            "terms_notice": [],
+        },
+    },
+}
 
 
 @pytest.fixture
@@ -60,8 +85,7 @@ def test_regulamin_of_a_public_deployment(client, terms):
     assert client.get("/api/terms").json() == {
         "url": "/regulamin.html",
         "operator_email": "op@example.pl",
-        "attribution": list(PMAXTP.attribution),
-        "terms_notice": list(PMAXTP.terms_notice),
+        **LINES,
     }
 
 
@@ -75,6 +99,5 @@ def test_without_an_operator_there_is_no_regulamin(client, terms):
     assert client.get("/api/terms").json() == {
         "url": None,
         "operator_email": None,
-        "attribution": list(PMAXTP.attribution),
-        "terms_notice": list(PMAXTP.terms_notice),
+        **LINES,
     }

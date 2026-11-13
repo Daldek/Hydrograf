@@ -23,7 +23,9 @@ from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.attribution import DRAINAGE, ProviderLines, instance_lines
 from core.catchment_graph import CatchmentGraph, loaded_catchment_graph
+from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.divide_flow_path import NO_FLOW_PATHS
@@ -57,6 +59,7 @@ from core.watershed_service import (
     get_segment_outlet,
     get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
+    watershed_lines,
 )
 from models.schemas import (
     DelineatePreviewRequest,
@@ -543,13 +546,17 @@ def _delineate_precise(
     }
 
 
-def _watershed_handoff(watershed: WatershedResponse) -> dict[str, Any] | None:
+def _watershed_handoff(
+    watershed: WatershedResponse, lines: ProviderLines
+) -> dict[str, Any] | None:
     """Return the hand-off of a delineated watershed, without rainfall and result.
 
     Parameters
     ----------
     watershed : WatershedResponse
         The delineated watershed.
+    lines : ProviderLines
+        The lines of its data (``watershed_lines``).
 
     Returns
     -------
@@ -567,6 +574,7 @@ def _watershed_handoff(watershed: WatershedResponse) -> dict[str, Any] | None:
             watershed.morphometry.model_dump(exclude_none=True), name
         ),
         watershed_origin=delineated_origin(outlet.latitude, outlet.longitude),
+        lines=lines,
     )
 
 
@@ -616,14 +624,18 @@ def delineate_watershed(
 
         response.headers["Cache-Control"] = "public, max-age=3600"
 
+        watershed = result["watershed_response"]
+        lines = watershed_lines(watershed, get_settings().frontend_data_dir)
         return DelineateResponse(
             mode=mode,
-            watershed=result["watershed_response"],
+            watershed=watershed,
             stream=result.get("stream_info"),
             upstream_segment_indices=result.get("upstream_segment_indices"),
             display_threshold_m2=result.get("display_threshold_m2"),
             info_message=result.get("info_message"),
-            handoff=_watershed_handoff(result["watershed_response"]),
+            handoff=_watershed_handoff(watershed, lines),
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
     except HydrografError:
@@ -689,10 +701,13 @@ def delineate_watershed_preview(
             _preview_tolerance_m(selection.area_km2),
             db,
         )
+        lines = instance_lines(DRAINAGE, get_settings().frontend_data_dir)
         return DelineatePreviewResponse(
             threshold_m2=selection.merge_threshold,
             segment_count=len(segment_idxs),
             catchments=catchments,
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
     except HydrografError:

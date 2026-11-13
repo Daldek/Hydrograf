@@ -24,6 +24,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Public service (regulamin, limit, logs, statistics, form) | done on `feature/public-gui`, not merged | The author's order of 2026-11-13, step 3 of Nogat's plan `2026-11-13-gui-terms` (DEV-15.7 to DEV-15.12, DEV-18.1, ECO-061 to ECO-063; ADR-084, plan `2026-11-13-public-gui`): Nogat's regulamin at `/regulamin.html` from `[nogat.operator]` of NOGAT_CONFIG, the footer and the menu's `terms`; 300 requests in 60 s per client address in the app (tiles 3,000, the form 5 in 5 minutes), 429 as a Polish page or `rate_limited`; nginx and API logs without addresses in the journal, at most 14 days; daily totals in `<data_dir>/hydrograf/stats.jsonl`; „Zgłoś uwagę” with the text and the view's context, migration 007; kit 0.4.0; one API process. Next 14, 15. |
 | One strip of the providers' lines | done on `feature/compact-sources`, not merged | The author's request of 2026-11-13, step 4 of Nogat's plan `2026-11-13-compact-attribution` (DEV-20.5, DEV-20.7, ECO-064; ADR-083 amended, plan `2026-11-13-compact-sources`): kit 0.5.1; the map shows PS and PP once in the kit's strip `<nogat-sources>` under the map and the panels („Źródła i warunki” opens every line and the terms), no block of lines in the panel, legend, (i), card or drawer; the welcome dialog shows the full lines and terms of `GET /api/terms`; the phone sheets stop above the strip; exports, hand-off and API unchanged. Next 16. |
 | The providers' terms linked, not restated | done on `fix/minimal-provider-texts`, not merged | Nogat ECO-065 (develop `b29eada`, kit 0.6.0; ADR-083 and ADR-084 amended): PMAXTP's `terms_notice` is RK alone, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”, without the notice N; `core/terms.py` without `imgw-terms`; `analyze_watershed` tells terms lines by „Regulamin <whose terms>: <address>” and drops the retired lines on merge; guide, slides and PDF; kit and hand-off schema copied. Next 17. |
+| Regulamin 1.0 corrected, GUGiK's and ISRIC's lines, logs of ECO-066 | done on `fix/terms-1.0`, not merged | Step 3 of Nogat's plan `2026-11-13-terms-fix` (approved 2026-11-13; ADR-085): kit 0.6.2 (Nogat `5703c53`), `BLOCKS` without `copernicus` and `esri`; G and SG in every response, export, image and hand-off of NMT, BDOT10k and SoilGrids data, dated from `sources` of `instance.json`, GK and SK in the strip; the orthophoto of GUGiK; the libraries in `frontend/vendor/`, CSP `'self'`; the logs of Nogat ECO-066 (`core/nogat_logging.py`, `<state_dir>/hydrograf/logs`, nginx without logs, Docker `local`). Next 19. |
 | Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; on `feature/compact-sources` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; on `fix/minimal-provider-texts` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
@@ -206,6 +207,23 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     `sfincs-kamiennik-24h-p1` rewritten to the one line „Regulamin danych PMAXTP:
     https://klimat.imgw.pl/opady-maksymalne”, and the API restarts to fill the regulamin of kit
     0.6.0. Earlier `analyze_watershed` outputs keep N and „Regulamin: …” until rerun.
+19. **Regulamin 1.0 corrected, to deploy** (ADR-085, Nogat plan `2026-11-13-terms-fix` step 3 and
+    republication step 7): after the author's merge, in `~/workspace/Hydrograf`: `.env` gains
+    `NOGAT_STATE_DIR=/home/claude-agent/.local/state/nogat`; once `install -d -m 0777
+    ~/.local/state/nogat/hydrograf` (the API runs as UID 999); `docker compose up -d
+    --force-recreate api nginx db` (the log driver, the state mount and the new command are
+    set at creation; `nginx.conf` is a single-file mount). Then, in a one-off container,
+    `python -m scripts.write_instance_info --area-name "zlewnia Kaczawy" --boundary-file
+    /data/boundary/zlewnia_kaczawy_jednostki.gpkg --hsg-depth-rule least-permeable --nmt
+    /cache/nmt/pl_1992_5m_evrf2007 --nmt-sheets /data/boundary/kaczawa_sheets.txt --bdot10k
+    /cache/bdot10k/bdot10k_teryt_{0205,0206,0207,0209,0219,0221,0226,0262}.gpkg --soilgrids
+    /cache/soil_hsg/hsg_least-permeable_0-100cm_275000_335000_314000_378000.tif` writes the
+    dates of G (without it G reads „b.d.”); `terms_effective` of `nogat.toml` is set to the day
+    of republication and the API restarted. The old journal entries of `hydro_api` and
+    `hydro_nginx` stay until root removes them (Nogat plan `2026-11-13-unified-logging`).
+    Hydroni: an image build, its own `NOGAT_STATE_DIR`, and the same `write_instance_info`
+    with its inputs. `docs/Hydrograf-prezentacja.pdf` is not printed again (its HTML says
+    „Ortofotomapa GUGiK”).
 18. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read

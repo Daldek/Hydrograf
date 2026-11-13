@@ -12,10 +12,12 @@ memory.
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse
 
-from core.attribution import PMAXTP
+from core.attribution import CATCHMENT, LAYER_KINDS, PMAXTP, data_lines, merge
+from core.config import get_settings
+from core.data_sources import read_data_sources
 from core.errors import NotFoundError
 from core.terms import URL, current_terms
-from models.schemas import TermsInfo
+from models.schemas import LayerLines, TermsInfo
 
 # nginx's internal location of the front end's files
 SITE = "/_site/"
@@ -48,16 +50,28 @@ def terms_info() -> TermsInfo:
 
     The address and the e-mail are null when the deployment names no operator
     (`[nogat.operator]` of the nogat.toml of NOGAT_CONFIG): the front end then shows no
-    footer link and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice` are
-    always the lines of the PMAXTP data every hydrograph is made with
-    (core/attribution.py), which the welcome window shows in full (Nogat DEV-20.5).
+    footer link and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice`
+    are every line of the service's data (core/attribution.py): those of the PMAXTP
+    data every hydrograph is made with, then G and SG of the GUGiK and SoilGrids data
+    of the instance, which the welcome window shows in full (Nogat DEV-20.5).
+    `layers` gives the lines of each kind of data of the map's layers, which the strip
+    of the view shows while a layer of the kind is on the map.
     """
     terms = current_terms()
+    dates = read_data_sources(get_settings().frontend_data_dir)
+    lines = merge([PMAXTP, data_lines(CATCHMENT, dates)])
+    layers = {}
+    for kind, uses in LAYER_KINDS.items():
+        layer = data_lines(uses, dates)
+        layers[kind] = LayerLines(
+            attribution=list(layer.attribution), terms_notice=list(layer.terms_notice)
+        )
     return TermsInfo(
         url=URL if terms else None,
         operator_email=terms.operator_email if terms else None,
-        attribution=list(PMAXTP.attribution),
-        terms_notice=list(PMAXTP.terms_notice),
+        attribution=list(lines.attribution),
+        terms_notice=list(lines.terms_notice),
+        layers=layers,
     )
 
 

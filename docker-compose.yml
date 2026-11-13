@@ -10,11 +10,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
+    # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
     logging:
-      driver: json-file
+      driver: local
       options:
-        max-size: "10m"
-        max-file: "50"
+        max-size: "1m"
+        max-file: "3"
     restart: unless-stopped
     deploy:
       resources:
@@ -67,15 +68,17 @@ services:
       # Requests per client address and window [s] (DEV-15.9, ADR-084)
       HYDROGRAF_REQUEST_LIMIT: ${HYDROGRAF_REQUEST_LIMIT:-300}
       HYDROGRAF_REQUEST_WINDOW: ${HYDROGRAF_REQUEST_WINDOW:-60}
+      # The API's logs are /state/hydrograf/logs, mounted below (Nogat DEV-12.6)
+      NOGAT_STATE_DIR: /state
       NUMBA_CACHE_DIR: /tmp/numba_cache
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
-    # The host's journal keeps the logs 14 days (DEV-15.10, docker/journald.conf)
     logging:
-      driver: journald
+      driver: local
       options:
-        tag: "{{.Name}}"
+        max-size: "1m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -98,6 +101,10 @@ services:
       # (NOGAT_CONFIG of .env; none: an empty file, no regulamin)
       - ./frontend/nogat:/frontend/nogat:ro
       - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
+      # The access, application and lifecycle logs, deleted by the API after 14 days
+      # (Nogat DEV-12.6): <state_dir>/hydrograf of the host, writable by UID 999 like
+      # data/ (the default ./state/hydrograf too)
+      - ${NOGAT_STATE_DIR:-./state}/hydrograf:/state/hydrograf
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -128,9 +135,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
     logging:
-      driver: journald
+      driver: local
       options:
-        tag: "{{.Name}}"
+        max-size: "1m"
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     cap_drop:

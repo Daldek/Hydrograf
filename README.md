@@ -62,8 +62,12 @@ A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
 API at `/config/nogat.toml`. With the table `[nogat.operator]` in that file Hydrograf is a
 public service with its regulamin at `/regulamin.html` (see [Public service](#public-service));
 without it there is no regulamin, no footer and no menu entry „Regulamin”. On the Docker
-host, install the retention of the logs once as root:
-`install -m 644 docker/journald.conf /etc/systemd/journald.conf.d/hydrograf.conf && systemctl restart systemd-journald`.
+host, name the state directory of the logs in `.env` too,
+`NOGAT_STATE_DIR=/home/USER/.local/state/nogat`, and create the API's directory in it once,
+writable by the container's user (UID 999) as `data/` is:
+`install -d -m 0777 ~/.local/state/nogat/hydrograf` (without `NOGAT_STATE_DIR` Compose
+mounts `./state/hydrograf` of the checkout, which needs the same; see
+[Service logs](#service-logs)).
 
 A second instance runs beside the first on the same Docker host from its own checkout, with
 its own compose project and env file:
@@ -77,10 +81,11 @@ its names: `HYDROGRAF_CONTAINER_PREFIX` (containers `<prefix>_db`, `<prefix>_api
 `<prefix>_nginx`; default `hydro`), a free `HYDROGRAF_PORT`, and the host directories
 `HYDROGRAF_CACHE_PATH`, `HYDROGRAF_DATA_PATH`, `HYDROGRAF_FRONTEND_DATA_PATH` and
 `HYDROGRAF_FRONTEND_TILES_PATH` (defaults `./cache`, `./data`, `./frontend/data`,
-`./frontend/tiles`). The database volume and the network take the project's name
-(`NAME_postgres_data`, `NAME_default`). The checkout needs the empty directories
-`frontend/data` and `frontend/tiles`: nginx mounts the instance's directories there inside
-its read-only `./frontend`.
+`./frontend/tiles`), and its own `NOGAT_STATE_DIR` with a `hydrograf` directory writable by
+UID 999, so that its logs stay apart from the first instance's. The database volume and the
+network take the project's name (`NAME_postgres_data`, `NAME_default`). The checkout needs
+the empty directories `frontend/data` and `frontend/tiles`: nginx mounts the instance's
+directories there inside its read-only `./frontend`.
 
 The API needs data before it can delineate: a one-off preprocessing of the DEM and its
 derivatives for your area. The easiest way is the admin panel (give a bounding box and
@@ -145,44 +150,61 @@ the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON 
 of `NOGAT_CONFIG`, and without both there is no menu), the public service (`NOGAT_CONFIG`, the
 deployment's `nogat.toml`; `HYDROGRAF_REQUEST_LIMIT` and `HYDROGRAF_REQUEST_WINDOW`, 300
 requests in 60 s per client address by default; `HYDROGRAF_DATA_DIR`, the directory of the
-daily statistics, `/data` in Docker) and Docker Compose
+daily statistics, `/data` in Docker), the logs (`HYDROGRAF_STATE_DIR`, then `NOGAT_STATE_DIR`,
+then `state_dir` of `[hydrograf]` or `[nogat]` in the file of `NOGAT_CONFIG`, by default
+`~/.local/state/nogat`; for Docker Compose `NOGAT_STATE_DIR` is the host's directory) and
+Docker Compose
 (`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, and the names and host paths of an instance:
 `HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets are read from the environment only
 and `.env` is not committed.
 
 ### Service logs
 
-nginx and the API log to the host's journal (Docker's `journald` driver, the tag is the
-container's name); PostgreSQL keeps `json-file` (at most 50 files of 10 MiB). With
-`docker/journald.conf` installed (see [Run and Deploy](#run-and-deploy)) the journal keeps an
-entry at most 14 days. To look at them:
+The API writes the logs of Nogat DEV-12.4 to DEV-12.9 (`backend/core/nogat_logging.py`, a
+copy of Nogat's reference module) into `<state_dir>/hydrograf/logs/`, one file per kind and
+UTC day, `access-`, `app-` and `lifecycle-YYYY-MM-DD.jsonl`, and deletes a file once its date
+is 14 days old, at start and at each 00:00 UTC. A record is one JSON object of the format
+`nogat-log/1` (`schemas/nogat/record-1.schema.json`): an access record per request (the
+method, the path with its query, a parameter that may carry personal data or a credential
+keeping only its name, the status, the bytes, `duration_ms` and the class of the User-Agent:
+`browser`, `bot`, `script` or `none`), the warnings and errors of the application, and the
+start with a summary of the settings, the stop and the deletions. The map tiles
+(`/api/tiles/`) are logged only when they fail. Each record has a random `request_id` that
+is never sent to the client. No log holds the client's address, a cookie, a header other
+than that class of the User-Agent, or a request body (DEV-12.5, ADR-084).
+
+On the Docker host the files are in `<NOGAT_STATE_DIR>/hydrograf/logs/` (`.env`); without
+Docker, in `~/.local/state/nogat/hydrograf/logs/` by default. The last 14 days in time
+order, without the successful requests:
 
 ```bash
-docker compose logs --since 10m nginx api db
+jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' ~/.local/state/nogat/hydrograf/logs/*.jsonl
 ```
 
-The journal holds the same lines under the containers' names (`journalctl -t hydro_nginx`).
+Other questions, for example the answers by status and kind of client:
+`jq -r 'select(.kind == "access") | "\(.status) \(.agent)"' ~/.local/state/nogat/hydrograf/logs/access-*.jsonl | sort | uniq -c`.
+jq is not installed on the host: `apt install jq` (root, once) or jq's static release
+binary in `~/.local/bin` (no root). Use is counted only from
+`<data_dir>/hydrograf/stats.jsonl` (DEV-15.11, see [Public service](#public-service)), never
+from the logs.
 
-No log holds the client's address (Nogat DEV-15.10). Every nginx access entry holds the
-time, method and URI, status, size, `request_time` and `upstream_time` in seconds (`-`
-without a backend), `request_id` (also for static files) and the User-Agent; the error log
-writes `crit` only. For pages and API requests nginx passes the same `X-Request-ID` to
-FastAPI; the API returns it in the response header and writes a JSON record
-`request_completed` or `request_failed` with the method, path, `request_id`, `status_code` and
-`duration_ms`. uvicorn's own access log is off. The nginx time covers the proxy and the
-transfer of the response, the API time the handling by the application; the two need not
-be equal.
+The containers print only what outlives the 14 days without naming a request (DEV-12.7):
+`docker logs hydro_api` shows the JSON records of the starts, stops and deletions and the
+errors reduced to their type. nginx keeps no log (`access_log off`, `error_log /dev/null`):
+it would name the client in an error of a request at every level, and the static files it
+serves need none. uvicorn runs with `--no-access-log --log-level warning`. Every container
+logs with Docker's `local` driver, at most 3 files of 1 MiB.
 
 During tests give the tester the tunnel address that starts with `https://`. The current
 Cloudflare redirect from HTTP returns 301, so a `POST` sent straight to HTTP can be
-repeated as a `GET`. When a tester reports an error, ask for the approximate time; the
-nginx log also shows the failed loads of static files, which never reach the API.
+repeated as a `GET`. When a tester reports an error, ask for the approximate time and look
+for the `app` records and the 5xx answers around it.
 
 A change of the logging options needs the containers to be recreated
-(`docker compose up -d api nginx`); a restart does not update the log driver. The logs hold
-paths and query parameters: do not share them with testers. The separate `imgwtools-api`
-container (the REST server of IMGWTools 2.1, now Obserwator) is not part of this Compose
-project and is not covered by these settings.
+(`docker compose up -d --force-recreate api nginx db`); a restart does not update the log
+driver. The logs hold paths and query parameters: do not share them with testers. The
+separate `imgwtools-api` container (the REST server of IMGWTools 2.1, now Obserwator) is not
+part of this Compose project and is not covered by these settings.
 
 ### Public service
 
@@ -242,11 +264,12 @@ sit behind Cloudflare Access besides the `X-Admin-Key`.
 | Administration (pipeline, data cleanup, sewer network upload, feedback list) | `/admin/*` with the `X-Admin-Key` header | none |
 
 The background maps of the interface are OpenFreeMap (vector, drawn by MapLibre GL), the
-grey OpenStreetMap of GUGiK and the Esri orthophoto; the flood hazard map (MZP) of Wody
+grey OpenStreetMap of GUGiK and the orthophoto of GUGiK; the flood hazard map (MZP) of Wody
 Polskie is an overlay from their WMS service. The results of external analyses (for
 example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
-vanilla JS with Leaflet, MapLibre GL and Chart.js in the Nogat visual identity
+vanilla JS with Leaflet, MapLibre GL and Chart.js, vendored in `frontend/vendor/` (no page
+loads a script, style or font from another site), in the Nogat visual identity
 (`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje” and
 the hand-off); Bootstrap 5 is used only in `/admin`. Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
@@ -304,17 +327,20 @@ and with 2 when the command line is invalid.
 
 | Source | Data | Licence |
 |---|---|---|
-| GUGiK | DEM (NMT), BDOT10k land cover and hydrography | free reuse with attribution (Prawo geodezyjne i kartograficzne) |
-| Copernicus CLMS | CORINE Land Cover | Copernicus data policy, attribution required |
-| ISRIC SoilGrids | soil texture, input of the HSG groups | CC BY 4.0 |
-| IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project, then the link to the terms. Every response, view, export and hand-off with PMAXTP data carries these lines (`attribution`, `terms_notice`; `backend/core/attribution.py`, ADR-083) |
+| GUGiK | DEM (NMT), BDOT10k land cover and hydrography; the orthophoto (WMTS) and the grey OSM basemap of geoportal.gov.pl | GUGiK's conditions of reuse (https://www.gov.pl/web/gugik/ponowne-wykorzystanie-informacji-sektora-publicznego): every response, view, export, image and hand-off with NMT or BDOT10k data carries G, „Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, `<products>` (wytworzono `<period>`, pozyskano `<date>`); dane przetworzone”, dated from the Kartograf metadata of the files the instance used (`sources` of `frontend/data/instance.json`); the orthophoto is credited „Ortofotomapa © GUGiK” on the map |
+| ISRIC SoilGrids | soil texture, input of the HSG groups | CC BY 4.0: the products with soil groups carry SG, „Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (…); dane przetworzone” |
+| IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project, then the link to the terms. Every response, view, export and hand-off with PMAXTP data carries these lines |
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
 | OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
 
-The data are downloaded by Kartograf and Obserwator, whose documentation has the details and
-the attribution texts. Downloaded and derived data are written to `data/` and `cache/`
-(outside Git) and to the database; pass on the attribution when you publish results: for
-PMAXTP the lines of `attribution` and `terms_notice` that Hydrograf gives with them.
+The lines of every provider come from `backend/core/attribution.py` (Nogat DEV §20,
+ADR-083, ADR-085) in `attribution` and `terms_notice`; the strip under the map shows
+their short forms. CORINE Land Cover (Copernicus) is not used: the land cover is
+BDOT10k's (ADR-074). Esri's orthophoto is no longer offered (ADR-085). The data are
+downloaded by Kartograf and Obserwator, whose documentation has the details. Downloaded
+and derived data are written to `data/` and `cache/` (outside Git) and to the database;
+pass on the lines of `attribution` and `terms_notice` that Hydrograf gives with its
+results when you publish them.
 
 ## Documentation
 

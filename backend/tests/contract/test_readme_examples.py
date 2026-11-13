@@ -19,8 +19,9 @@ from models import schemas
 README = Path(__file__).resolve().parents[3] / "README.md"
 BACKEND = Path(__file__).resolve().parents[2]
 URL_PREFIX = "http://localhost:8080"
-# Commands the test does not run and does not look into: setup and Docker.
-NOT_CHECKED = {"git", "cd", "cp", "docker"}
+# Commands the test does not run and does not look into: setup, Docker and reading the
+# logs.
+NOT_CHECKED = {"git", "cd", "cp", "docker", "jq"}
 # Programs that `uv run` starts in the README.
 UV_RUN_PROGRAMS = {"alembic", "uvicorn", "python"}
 

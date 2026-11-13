@@ -34,5 +34,17 @@ takes the copy of `8848c26`:
   `backend/tests/unit/test_handoff.py` and `backend/tests/unit/test_network_endpoint.py`
   validate them against this copy.
 
+And the logging of ECO-066 (Nogat DEV-12.4 to DEV-12.9), copied from Nogat's `develop`
+`a41d971` (the merge of its `feat/unified-logging`, the files of `f370afe`):
+
+- `record-1.schema.json` (Nogat `schemas/log/record-1.schema.json`), SHA-256
+  `cac452bd338054916d7837820053b0a5ed8f5a076a33f95ed0448ded170984d0`: the record
+  `nogat-log/1` of the API's access, application and lifecycle logs;
+  `backend/tests/integration/test_access_log.py` validates an access record against it.
+- `backend/core/nogat_logging.py` (Nogat `standards/reference/nogat_logging.py`), SHA-256
+  `66964a5167ab8edd40f5bcae4462bf685bbe2e34456e8bead6722fe8cf0d32b7`: the reference module
+  that writes those logs (`ServerLog`, `AccessLog`), used by `backend/api/main.py`. It passes
+  Hydrograf's ruff and mypy configuration unchanged.
+
 Do not edit these files; copy them again when Nogat changes them. The copies of Nogat's GUI
 kit, marks and tokens are in `frontend/` (`frontend/nogat/`, `frontend/css/tokens.css`).

@@ -42,9 +42,18 @@
         });
     }
 
-    function createEsriOrthoLayer() {
-        return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+    // GUGiK orthophoto WMTS (KVP), matrix set EPSG:3857 = the web-mercator grid,
+    // levels EPSG:3857:0..19; the layer's WGS84 box keeps requests within Poland.
+    var GUGIK_ORTHO_URL = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution'
+        + '?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTOFOTOMAPA&STYLE=default'
+        + '&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}'
+        + '&TILEROW={y}&TILECOL={x}';
+
+    /** GUGiK orthophoto (Poland only). */
+    function createGugikOrthoLayer() {
+        return L.tileLayer(GUGIK_ORTHO_URL, {
+            attribution: 'Ortofotomapa &copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
+            bounds: L.latLngBounds([48.8, 13.8], [55.0, 24.4]),
             maxZoom: 19,
         });
     }
@@ -53,7 +62,7 @@
     var BASEMAPS = [
         { name: 'openfreemap', label: 'OpenFreeMap szary', create: createOpenFreeMapLayer },
         { name: 'gugik-osm', label: 'OSM GUGiK szary (tylko Polska)', create: createGugikOsmLayer },
-        { name: 'esri-ortho', label: 'Ortofotomapa ESRI', create: createEsriOrthoLayer },
+        { name: 'gugik-ortho', label: 'Ortofotomapa GUGiK', create: createGugikOrthoLayer },
         { name: 'none', label: 'bez podkładu', create: null },
     ];
 
@@ -142,6 +151,35 @@
     function noBounds() { return null; }
 
     /**
+     * Register an overlay for #zoom-extent and, with `kind`, for the view's strip: a
+     * layer of Hydrograf's data (`elevation`, `drainage`, `topography`, `soils`: the
+     * kinds of `layers` of GET /api/terms) puts the lines of its GUGiK and SoilGrids
+     * data into the strip while it is on (Nogat DEV §20; showDataLines, after every
+     * change in the panel).
+     */
+    function registerOverlay(label, cb, getBounds, kind) {
+        _overlayRegistry.push({ label: label, cb: cb, getBounds: getBounds, kind: kind || null });
+    }
+
+    /** The strip's lines of the layers of Hydrograf's data that are on (js/attribution.js). */
+    function showDataLines() {
+        var kinds = {};
+        _overlayRegistry.forEach(function (entry) {
+            if (entry.kind && entry.cb.checked) kinds[entry.kind] = true;
+        });
+        var names = Object.keys(kinds);
+        if (!names.length || !window.Hydrograf.terms) {
+            Hydrograf.attribution.show('layers', null);
+            return;
+        }
+        // In the order of the changes: every callback of one promise runs in turn
+        Hydrograf.terms.ready.then(function (terms) {
+            Hydrograf.attribution.show('layers', Hydrograf.attribution.merge(
+                names.map(function (kind) { return terms.layers[kind] || null; })));
+        });
+    }
+
+    /**
      * Build a layer row: checkbox, name, opacity slider and value.
      * The slider shows opacity in percent (100 − transparency).
      */
@@ -204,12 +242,13 @@
      * @param {number} defaultTransparency - Initial transparency in percent.
      * @param {function()=} onShow - Called when the layer is turned on (legend).
      * @param {function()=} onHide - Called when the layer is turned off.
+     * @param {string=} kind - The kind of Hydrograf's data it shows (registerOverlay).
      */
-    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide) {
+    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide, kind) {
         var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
         var cb = entry.cb;
 
-        _overlayRegistry.push({ label: label, cb: cb, getBounds: getBounds });
+        registerOverlay(label, cb, getBounds, kind);
 
         cb.addEventListener('change', function () {
             var layer = getLayer();
@@ -232,14 +271,15 @@
 
     /**
      * Overlay row for async-loaded layers (GeoJSON, MVT).
-     * getLayer returns the existing layer, loadLayer returns a Promise of it.
+     * getLayer returns the existing layer, loadLayer returns a Promise of it; `kind` as
+     * for addOverlayEntry.
      * @returns {Object} The row entry of createLayerRow.
      */
-    function addAsyncOverlayEntry(list, label, getLayer, loadLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide) {
+    function addAsyncOverlayEntry(list, label, getLayer, loadLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide, kind) {
         var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
         var cb = entry.cb;
 
-        _overlayRegistry.push({ label: label, cb: cb, getBounds: getBounds });
+        registerOverlay(label, cb, getBounds, kind);
 
         // One load at a time: a second check while the first load is pending
         // must not build a second layer (it would be orphaned on the map and
@@ -338,7 +378,7 @@
         });
 
         // MVT layers have no bounds of their own; use the DEM extent.
-        _overlayRegistry.push({ label: label, cb: cb, getBounds: Hydrograf.map.getDemBounds });
+        registerOverlay(label, cb, Hydrograf.map.getDemBounds, 'drainage');
 
         cb.addEventListener('change', function () {
             var map = Hydrograf.map._getMap();
@@ -575,6 +615,8 @@
 
         var zoomBtn = document.getElementById('zoom-extent');
         if (zoomBtn) zoomBtn.addEventListener('click', zoomToEnabledLayers);
+        // After the row's own handler: a row whose layer is missing unchecks itself
+        list.addEventListener('change', showDataLines);
 
         // ===== Overlay layers (depressions.js appends to #overlay-group-entries) =====
         var overlayGroup = createGroup(list, 'Warstwy podkładowe');
@@ -588,7 +630,8 @@
             Hydrograf.map.setDemOpacity,
             30,
             Hydrograf.map.createDemLegend,
-            Hydrograf.map.removeDemLegend
+            Hydrograf.map.removeDemLegend,
+            'elevation'
         );
 
         // BDOT10k water bodies
@@ -599,7 +642,10 @@
             Hydrograf.map.loadBdotLakes,
             layerBounds(Hydrograf.map.getBdotLakesLayer),
             Hydrograf.map.setBdotLakesOpacity,
-            0
+            0,
+            null,
+            null,
+            'topography'
         );
 
         // BDOT10k streams
@@ -610,10 +656,13 @@
             Hydrograf.map.loadBdotStreams,
             layerBounds(Hydrograf.map.getBdotStreamsLayer),
             Hydrograf.map.setBdotStreamsOpacity,
-            0
+            0,
+            null,
+            null,
+            'topography'
         );
 
-        // HSG soil groups
+        // HSG soil groups: SoilGrids, the BDOT10k wetlands group D (ADR-078)
         addAsyncOverlayEntry(
             overlayGroup,
             'Grupy glebowe (HSG)',
@@ -623,7 +672,8 @@
             Hydrograf.map.setHsgOpacity,
             0,
             Hydrograf.map.createHsgLegend,
-            Hydrograf.map.removeHsgLegend
+            Hydrograf.map.removeHsgLegend,
+            'soils'
         );
 
         // Land cover (BDOT10k) — MVT tiles, no own bounds: DEM extent
@@ -636,7 +686,8 @@
             Hydrograf.map.setLandCoverOpacity,
             30,
             Hydrograf.map.createLandCoverLegend,
-            Hydrograf.map.removeLandCoverLegend
+            Hydrograf.map.removeLandCoverLegend,
+            'topography'
         );
 
         // Sewer network overlay (MVT, no known extent): only when the server

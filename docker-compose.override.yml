@@ -6,5 +6,6 @@ services:
     read_only: false  # Dev needs write for __pycache__, .pyc (hot-reload)
     volumes:
       - ./backend:/app  # Hot-reload: code changes without rebuild
-    # uvicorn's access log would name the client; api.main logs requests (ADR-084)
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log
+    # uvicorn's access log would name the client; api.main writes the logs (Nogat
+    # DEV-12.8, ADR-084)
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log --log-level warning

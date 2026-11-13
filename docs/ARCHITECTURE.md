@@ -139,7 +139,7 @@ Summary of the key ADRs:
 backend/
 ├── api/
 │   ├── __init__.py
-│   ├── main.py                    # FastAPI app instance, lifespan, middleware
+│   ├── main.py                    # FastAPI app instance, lifespan (the logs' start and stop), middleware (the access log outermost)
 │   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (CF-Connecting-IP through private hops), the request limit, the 429 page or problem, the daily totals
 │   ├── dependencies/
 │   │   ├── __init__.py
@@ -167,7 +167,7 @@ backend/
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit and the data_dir of the statistics
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics and state_dir() of the logs (Nogat DEV-18.1, DEV-18.2)
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
@@ -179,6 +179,7 @@ backend/
 │   ├── network_delineation.py     # Network at control points on the rasters (ADR-080): snapping, the window of the closing section's catchment, the element raster and its splits, the area check, the measures of the elements, their coverage, the reaches
 │   ├── network_preview.py         # The network composed on the catchment graph (ADR-081): the full run's snapping and tree, areas exact to the cell, reach lengths, outlines from a cover of the sub-catchment polygons
 │   ├── network_tree.py            # Network at control points on the catchment graph (ADR-080): the points drawn to the nodes of the network, parents, trunks, junctions, elements of the units, ids J/P/Z/R from the closing section upward in the order of the hand-off
+│   ├── nogat_logging.py           # Copy of Nogat's reference module (never edited here, schemas/nogat/README.md): ServerLog (the files nogat-log/1 of <state_dir>/hydrograf/logs, deleted after 14 days; lifecycle and reduced errors on stderr) and the middleware AccessLog (Nogat DEV-12.4 to DEV-12.9)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
 │   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
@@ -291,9 +292,9 @@ Over a limit: 429, Retry-After: <s>; a page: a Polish HTML page; a route: the pr
 rate_limited, details {reason: request_limit|tile_limit|feedback_limit, retry_after_s,
 limit, window_s}
 ```
-`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `copernicus`, `isric`, `wody-polskie`, `osm` and `esri`. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
+`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 0.6.2; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
 
-The middleware `api/traffic.py` runs inside the request ID's. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
+The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -1134,7 +1135,7 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (CDN with SRI), no Bootstrap
+├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (vendor/), no Bootstrap
 ├── admin.html               # Admin panel (ADR-034) — shell + Bootstrap 5.3.3 (grid, modal dialogs)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
@@ -1154,6 +1155,13 @@ frontend/
 │   ├── instrukcja.css        # Guide layout; chrome and colours come from shared CSS
 │   ├── prezentacja.css       # Separate layout for docs/Hydrograf-prezentacja.html slides
 │   └── Hydrograf-*.png       # Shared 256-colour screenshots for guide and presentation
+├── vendor/                   # Third-party libraries byte for byte as published (npm), each with its licence files; no CDN
+│   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and /admin)
+│   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (vector basemap)
+│   ├── maplibre-gl-leaflet-0.0.22/ # leaflet-maplibre-gl.js
+│   ├── chart.js-4.4.7/       # chart.umd.js
+│   ├── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
+│   └── bootstrap-5.3.3/      # bootstrap.min.css, bootstrap.bundle.min.js (/admin), with Popper's licence
 ├── css/
 │   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 7786271) — do NOT edit, copy it again
 │   ├── chrome.css            # Shared shell: top bar, rail, panels, buttons (index, admin, instrukcja)
@@ -1252,7 +1260,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
 #### 4.2.1 Map (Leaflet.js)
 
-Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu** (no basemap).
+Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa GUGiK** (key `gugik-ortho`: GUGiK's orthophoto WMTS `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution`, KVP, layer `ORTOFOTOMAPA`, JPEG, matrix set `EPSG:3857` levels 0–19, bounded by the layer's box 13.8–24.4° E, 48.8–55.0° N so that no tile is asked outside Poland; „Ortofotomapa © GUGiK”), **bez podkładu** (no basemap).
 
 **Wheel zoom** (`map.js`, `wheelZoomHandler`): Leaflet's scroll-wheel handler (`scrollWheelZoom` is off) with two guards, because the default turned every 40 ms batch of wheel events, however small, into a whole zoom level and went on zooming after the wheel had stopped. An event weaker than half of the strongest event of its gesture is the fading tail of a touchpad, a Magic Mouse or a smooth-scrolling mouse driver and is ignored (a pause of 80 ms or a change of direction starts a new gesture), and wheel input older than 150 ms, an event or a whole batch that waited while the page was busy (e.g. MapLibre redrawing the base map), does not start a zoom step.
 
@@ -1462,6 +1470,8 @@ services:
       NOGAT_CONFIG: /config/nogat.toml
       HYDROGRAF_REQUEST_LIMIT: ${HYDROGRAF_REQUEST_LIMIT:-300}
       HYDROGRAF_REQUEST_WINDOW: ${HYDROGRAF_REQUEST_WINDOW:-60}
+      # The logs: /state/hydrograf/logs, mounted below (Nogat DEV-12.6)
+      NOGAT_STATE_DIR: /state
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
@@ -1469,11 +1479,12 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-    # The host's journal keeps the logs 14 days (DEV-15.10, docker/journald.conf)
+    # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
     logging:
-      driver: journald
+      driver: local
       options:
-        tag: "{{.Name}}"
+        max-size: "1m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -1486,7 +1497,8 @@ services:
       - ./frontend/tiles:/frontend/tiles
       - ./frontend/nogat:/frontend/nogat:ro              # the regulamin template
       - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log
+      - ${NOGAT_STATE_DIR:-./state}/hydrograf:/state/hydrograf  # the logs, writable by UID 999
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log --log-level warning
 
   nginx:
     image: nginx:alpine
@@ -1500,9 +1512,10 @@ services:
       - api
     restart: unless-stopped
     logging:
-      driver: journald
+      driver: local
       options:
-        tag: "{{.Name}}"
+        max-size: "1m"
+        max-file: "3"
 
 volumes:
   postgres_data:
@@ -1523,9 +1536,10 @@ volumes:
 
 **Override pattern (dev/prod):**
 - `docker-compose.yml` — base file (db + api + nginx), without `--reload`, without a code bind mount
-- `docker-compose.override.yml` — loaded automatically in dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
+- `docker-compose.override.yml` — loaded automatically in dev: bind mount `./backend:/app`, `--reload`
 - `docker-compose.prod.yml` — production override: one uvicorn process (the request limit and the daily totals live in its memory, ADR-084), `LOG_LEVEL=WARNING`, without `--reload`
-- uvicorn always runs with `--no-access-log` (its access log would name the client); `api.main` logs every request without it
+- uvicorn always runs with `--no-access-log --log-level warning` (its access log would name the client); `api.main` writes the logs (§7.1)
+- Every container logs with Docker's `local` driver, at most 3 files of 1 MiB (Nogat DEV-12.7)
 
 **Healthcheck API:**
 - Container `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30 s interval)
@@ -1549,13 +1563,10 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # Logs without the client's address (Nogat DEV-15.10, ADR-084)
-    log_format hydrograf '$time_iso8601 "$request_method $request_uri" $status '
-                         '$body_bytes_sent request_time=$request_time '
-                         'upstream_time=$upstream_response_time request_id=$request_id '
-                         '"$http_user_agent"';
-    access_log /dev/stdout hydrograf;
-    error_log /dev/stderr crit;
+    # No log (Nogat DEV-12.8, ADR-084): the API writes the access log; nginx would name
+    # the client in every error of a request, at every level
+    access_log off;
+    error_log /dev/null;
 
     gzip on;
     gzip_types text/plain text/css application/json application/geo+json
@@ -1580,7 +1591,6 @@ http {
         # Tile proxy (^~ prevents the regex .pbf match of the data files)
         location ^~ /api/tiles/ {
             proxy_pass http://api_backend/api/tiles/;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 15s;
         }
@@ -1597,7 +1607,6 @@ http {
         # nginx sends the file itself
         location ~* \.html$ {
             proxy_pass http://api_backend;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             error_page 502 504 = @page_file;
         }
@@ -1626,7 +1635,6 @@ http {
         # Admin SSE stream (longer timeout for bootstrap)
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
@@ -1636,7 +1644,6 @@ http {
         # API proxy
         location /api/ {
             proxy_pass http://api_backend/api/;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 120s;
         }
@@ -1652,15 +1659,15 @@ http {
 `X-Real-IP` is nginx's peer, never the client behind the tunnel: the API believes the client's address of `CF-Connecting-IP` only when that peer is a private hop (§2.2.1b). nginx does not read `CF-Connecting-IP` and writes no address in either log (`$remote_addr`, `$remote_user`, `$http_referer` are gone; nginx names the client in the errors of a request, which the `crit` level drops). `docker/nginx-ssl.conf.template` has the same locations and logs.
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
-- `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap in `/admin`); every library from a CDN has SRI (`integrity`).
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, also the area selection map of `/admin`), `https://server.arcgisonline.com` (ESRI orthophoto), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie).
+- `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'`: no other origin. The libraries are vendored in `frontend/vendor/` (§4.1) and keep their `integrity`, which the browser checks for same-origin files too and `tests/contract/test_frontend_vendor.py` checks against the files, with no page referencing a remote script, stylesheet or font.
+- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto, also the area selection map of `/admin`), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie).
 - `connect-src`: `https://tiles.openfreemap.org` (style, vector tiles and glyphs of OpenFreeMap, fetched by MapLibre).
 - `worker-src blob:`, `child-src blob:` — the Web Worker of MapLibre GL.
 
 **Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
 - the HTML pages (`/`, `/admin`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`);
 - the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
-- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The CDN libraries carry their version in the URL and SRI; the script does not touch them.
+- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The vendored libraries get a `?v=` too; their directory names carry the package version.
 
 ---
 
@@ -1718,7 +1725,6 @@ http {
 - ✅ Request limit per client address in the API (300 in 60 s, tiles 3,000, the form 5 in 5 min; ADR-084)
 - ✅ CORS with restrictive origins (env var `CORS_ORIGINS`), `allow_credentials=False`
 - ✅ GZip middleware (FastAPI)
-- ✅ Request ID tracing (`X-Request-ID` header, structlog context)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
 - ✅ Admin API key auth (X-Admin-Key header, file-based or env var, ADR-034)
@@ -1740,7 +1746,7 @@ http {
 │  - Input validation (Pydantic)                         │
 │  - Request limit per client address (FastAPI)          │
 │  - CORS (restrictive origins, no credentials)          │
-│  - GZip compression, X-Request-ID tracing              │
+│  - GZip compression, the access log without the client │
 │  - Security headers (CSP, HSTS, X-Frame-Options)       │
 └─────────────────────────────────────────────────────────┘
                            │
@@ -1758,42 +1764,21 @@ http {
 
 ### 7.1 Logging
 
-**Structured Logging (structlog):**
+**The logs of Nogat DEV-12.4 to DEV-12.9 (ECO-066).** `core/nogat_logging.py` is a byte-for-byte copy of Nogat's reference module (`standards/reference/nogat_logging.py`, source commit and SHA-256 in `schemas/nogat/README.md`), never edited here:
+
 ```python
 # api/main.py
-import structlog
+log = ServerLog("hydrograf", get_version(), state_dir(settings) / "hydrograf" / "logs")
+app.middleware("http")(limit_and_count)
+app.add_middleware(AccessLog, log=log, quiet=r"^/api/tiles/")   # added last: outermost
 
-structlog.configure(
-    processors=[
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()       # INFO+ → JSON
-        if settings.log_level != "DEBUG"
-        else structlog.dev.ConsoleRenderer(),     # DEBUG → human-readable
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-)
-
-# Request ID middleware
-@app.middleware("http")
-async def add_request_id(request, call_next):
-    request_id = str(uuid.uuid4())[:8]
-    structlog.contextvars.bind_contextvars(request_id=request_id)
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
+async def lifespan(app):
+    log.start({...})   # a summary of the settings: scalars, no secret, key, URL or operator
+    ...
+    log.stop()
 ```
 
-**Request correlation and log retention.** nginx gives every request an `X-Request-ID` and logs it with the time, method and URI, status, size, `request_time`, `upstream_time` and the User-Agent, never the client's address (DEV-15.10, ADR-084); its error log writes `crit` only. For pages and API requests nginx passes the same ID to FastAPI. The middleware `add_request_id` of `api/main.py` takes a forwarded ID of 32 hexadecimal characters (otherwise it makes `uuid4().hex`), binds it to the structlog context, returns it in the `X-Request-ID` header and writes `request_completed`, or `request_failed` when the application raises, with `method`, `path`, `status_code` and `duration_ms`, without the client; uvicorn runs with `--no-access-log`. nginx and the API log to the host's journal (Docker's `journald` driver, tag the container's name), which `docker/journald.conf` (`MaxRetentionSec=12day`, `MaxFileSec=1day`) limits to 14 days; PostgreSQL keeps Docker `json-file` logs of 10 MiB × 50 files (README, „Service logs”).
-
-**Log Levels:**
+Records of the format `nogat-log/1` (`schemas/nogat/record-1.schema.json`) go to `<state_dir>/hydrograf/logs/<kind>-YYYY-MM-DD.jsonl` by the UTC date: `access`, one per HTTP request (method, the path with its query, a parameter that may carry personal data or a credential keeping its name only, status, bytes, `duration_ms`, the class of the User-Agent), the map tiles only when answered with 400 or more; `app`, the warnings and errors that the process logs through `logging` (the root logger's only handler from `log.start`, uvicorn's loggers sent to it); `lifecycle`, the start with the settings, the stop and the deletions. The API deletes a file once its date is 14 days old, at start and at each 00:00 UTC. `request_id` is 16 random hexadecimal digits made by `AccessLog`, never taken from a header and never sent: there is no `X-Request-ID`. No record holds the client's address (an address in a path, message or traceback is written `[ip]`), a cookie, another header or a body (DEV-12.5, ADR-084). Standard error, and with it `docker logs hydro_api`, gets only the lifecycle records and the errors reduced to their type. `state_dir()` of `core/config.py` takes `HYDROGRAF_STATE_DIR`, `NOGAT_STATE_DIR`, `state_dir` of `[hydrograf]` or `[nogat]` in the file of `NOGAT_CONFIG`, else `platformdirs.user_state_path("nogat")`; in Docker `NOGAT_STATE_DIR=/state` with the host's `<state_dir>/hydrograf` mounted at `/state/hydrograf`. nginx keeps no log and uvicorn no access log (§5.1.1, §5.2). The reading command is in the README („Service logs”); use is counted only from `stats.jsonl` (§2.2.1b, DEV-15.11).
 
 ---
 
