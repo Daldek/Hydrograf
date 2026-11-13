@@ -26,59 +26,40 @@ Serwis prowadzi {{operator_name}} (dalej: operator) jako osoba prywatna, poza dz
 
 ## 5. Źródła danych i ich warunki
 
-1. Serwis pokazuje dane na warunkach ich dostawców i dołącza do widoków, plików i wyników informacje o źródle i o przetworzeniu danych, których dostawcy wymagają.
-2. Jeśli wykorzystujesz dane lub wyniki pobrane z serwisu, w tym pliki, wykresy i zrzuty ekranu, sam odpowiadasz za spełnienie warunków dostawców: zachowujesz bez zmian podane niżej informacje i przestrzegasz regulaminów i licencji dostawców.
+1. Serwis dołącza do widoków, plików i wyników informacje, których wymagają dostawcy danych. Podaje je niżej, przy każdym dostawcy, z odnośnikiem do jego regulaminu lub licencji.
+2. Korzystanie z danych i wyników pobranych z serwisu, w tym z plików, wykresów i zrzutów ekranu, podlega regulaminom i licencjom dostawców, do których odsyłają te odnośniki.
 3. Dostawcy danych nie są stronami regulaminu i nie odpowiadają za serwis ani za wyniki.
 
 <!-- block: imgw -->
 ### IMGW-PIB: dane publiczne
 
-Dane pomiarowe i obserwacyjne Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego z serwisu <https://danepubliczne.imgw.pl>, archiwalne i bieżące. Wymagane informacje:
-
 > Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy
 > Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone
 
-Regulamin: <https://danepubliczne.imgw.pl/regulations>
+Regulamin danych IMGW-PIB: <https://danepubliczne.imgw.pl/regulations>
 <!-- /block -->
 
 <!-- block: imgw-hydro -->
 ### IMGW-PIB: serwis hydrologiczny
 
-Dane operacyjne (stany wód i ich klasy, pomiary) i położenie stacji z serwisu hydrologicznego IMGW-PIB <https://hydro.imgw.pl>. Dane operacyjne serwis pokazuje tylko jako bieżące, z czasem pomiaru, i nie przechowuje ich. Wymagane informacje:
-
 > Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy
 > Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone
-> Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl
 
-Regulamin: <https://hydro.imgw.pl/#/regulamin>
+Regulamin serwisu hydrologicznego IMGW-PIB: <https://hydro.imgw.pl/#/regulamin>
 <!-- /block -->
 
 <!-- block: pmaxtp -->
 ### IMGW-PIB: opady maksymalne PMAXTP
 
-Opady maksymalne o określonym czasie trwania i prawdopodobieństwie przewyższenia z projektu PMAXTP (<https://klimat.imgw.pl/opady-maksymalne>) oraz oparte na nich opady projektowe, hietogramy i hydrogramy. Wymagane informacje:
-
 > Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne
 > Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone
 > „Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022
 
-Regulamin: <https://klimat.imgw.pl/opady-maksymalne>
-<!-- /block -->
-
-<!-- block: imgw-terms -->
-### Warunki korzystania z danych IMGW-PIB
-
-W skrócie, według regulaminów IMGW-PIB podanych wyżej:
-
-> Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.
-
-Te warunki wiążą każdego, kto wykorzystuje dane IMGW-PIB pobrane z serwisu; przy dalszym wykorzystaniu podawaj tę informację wraz z adresami regulaminów IMGW-PIB.
+Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 <!-- /block -->
 
 <!-- block: chmi -->
 ### ČHMÚ
-
-Otwarte dane Českého hydrometeorologického ústavu na licencji Creative Commons Uznanie autorstwa 4.0 (CC BY 4.0). Serwis zmienia ich format i oblicza z nich wyniki; w miejscu „…” każdy produkt podaje, co zrobiono z danymi. Wymagane informacje:
 
 > Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
 > Dane ČHMÚ zostały przetworzone (…)
@@ -87,57 +68,70 @@ Otwarte dane Českého hydrometeorologického ústavu na licencji Creative Commo
 <!-- block: gugik -->
 ### GUGiK
 
-Dane z państwowego zasobu geodezyjnego i kartograficznego udostępniane przez Główny Urząd Geodezji i Kartografii (<https://www.geoportal.gov.pl>), na przykład numeryczny model terenu, BDOT10k i ortofotomapa. Wykorzystanie zgodnie z ustawą Prawo geodezyjne i kartograficzne, z podaniem źródła: Główny Urząd Geodezji i Kartografii.
+> Źródło: Główny Urząd Geodezji i Kartografii
+
+Regulamin geoportalu: <https://www.geoportal.gov.pl/pl/o-geoportalu/regulamin/>
 <!-- /block -->
 
 <!-- block: cuzk -->
 ### ČÚZK
 
-Dane Českého úřadu zeměměřického a katastrálního (<https://geoportal.cuzk.cz>) na licencji CC BY 4.0 (<https://creativecommons.org/licenses/by/4.0/>), z podaniem źródła: ČÚZK.
+> Źródło: ČÚZK
+
+Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 <!-- /block -->
 
 <!-- block: copernicus -->
 ### Copernicus
 
-Dane programu Copernicus, w tym Copernicus Land Monitoring Service (na przykład CORINE Land Cover), udostępniane na zasadach polityki danych Copernicus (<https://land.copernicus.eu>), z podaniem źródła: © Unia Europejska, Copernicus Land Monitoring Service, Europejska Agencja Środowiska (EEA).
+> © Unia Europejska, Copernicus Land Monitoring Service, Europejska Agencja Środowiska (EEA)
+
+Polityka danych Copernicus: <https://land.copernicus.eu/en/data-policy>
 <!-- /block -->
 
 <!-- block: isric -->
 ### ISRIC SoilGrids
 
-Dane glebowe SoilGrids ISRIC – World Soil Information (<https://soilgrids.org>) na licencji CC BY 4.0 (<https://creativecommons.org/licenses/by/4.0/>), z podaniem źródła: ISRIC – World Soil Information.
+> Źródło: ISRIC – World Soil Information
+
+Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 <!-- /block -->
 
 <!-- block: wody-polskie -->
 ### Wody Polskie
 
-Mapy zagrożenia powodziowego Państwowego Gospodarstwa Wodnego Wody Polskie (<https://wody.gov.pl>) na licencji CC BY 4.0 (<https://creativecommons.org/licenses/by/4.0/>), z podaniem źródła: Państwowe Gospodarstwo Wodne Wody Polskie.
+> Źródło: Państwowe Gospodarstwo Wodne Wody Polskie
+
+Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 <!-- /block -->
 
 <!-- block: osm -->
-### OpenStreetMap
+### OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)
 
-Podkłady mapowe z danych OpenStreetMap (© autorzy OpenStreetMap), na licencji Open Database License (<https://www.openstreetmap.org/copyright>), w tym kafelki OpenFreeMap (<https://openfreemap.org>) i podkład OSM serwisu geoportal.gov.pl. Oznaczenie autorstwa jest na mapie.
+> © autorzy OpenStreetMap
+
+Licencja ODbL: <https://www.openstreetmap.org/copyright>
 <!-- /block -->
 
 <!-- block: esri -->
 ### Esri World Imagery
 
-Podkład zdjęć satelitarnych i lotniczych Esri World Imagery (źródło: Esri, Maxar, Earthstar Geographics i społeczność użytkowników GIS) na warunkach Esri (<https://www.esri.com/en-us/legal/terms/full-master-agreement>). Oznaczenie autorstwa jest na mapie.
+> Źródło: Esri, Maxar, Earthstar Geographics i społeczność użytkowników GIS
+
+Warunki Esri: <https://www.esri.com/en-us/legal/terms/full-master-agreement>
 <!-- /block -->
 
 ## 6. Twoje obowiązki
 
-1. Korzystasz z serwisu zgodnie z prawem, regulaminem i warunkami dostawców danych (§ 5).
-2. Przy dalszym wykorzystaniu danych dostawców lub wyników zachowujesz bez zmian informacje o źródle i o przetworzeniu danych, które serwis do nich dołącza (w widoku, w plikach `ATTRIBUTION.txt` oraz w kolumnach i polach `attribution` i `terms_notice`).
-3. Nie pobierasz danych automatycznie (scraping, masowe zapytania) w sposób, który obciąża serwis lub utrudnia korzystanie z niego innym, nie obchodzisz jego zabezpieczeń, w tym limitu żądań, i nie próbujesz dostać się do jego części administracyjnych. Do pobierania wielu danych służą narzędzia ekosystemu Nogat i serwisy dostawców.
-4. W zgłoszeniach nie przekazujesz treści bezprawnych ani danych osobowych (§ 8).
+1. Korzystasz z serwisu zgodnie z prawem i regulaminem.
+2. Nie pobierasz danych automatycznie (scraping, masowe zapytania) w sposób, który obciąża serwis lub utrudnia korzystanie z niego innym, nie obchodzisz jego zabezpieczeń, w tym limitu żądań, i nie próbujesz dostać się do jego części administracyjnych. Do pobierania wielu danych służą narzędzia ekosystemu Nogat i serwisy dostawców.
+3. W zgłoszeniach nie przekazujesz treści bezprawnych ani danych osobowych (§ 8).
 
 ## 7. Odpowiedzialność
 
 1. Serwis jest udostępniany w stanie, w jakim jest, i korzystasz z niego na własne ryzyko. Operator nie gwarantuje dostępności serwisu ani poprawności, kompletności i aktualności danych dostawców i wyników: wyniki oblicza otwarte oprogramowanie, które może zawierać błędy, a dane operacyjne mogą być niesprawdzone i niepełne.
 2. Operator nie ponosi odpowiedzialności za szkody wynikłe z korzystania z serwisu, w tym z decyzji podjętych na podstawie jego wyników, z wyjątkiem szkód wyrządzonych umyślnie.
-3. Za dane odpowiadają ich dostawcy na zasadach swoich regulaminów i licencji (§ 5). Operator nie odpowiada za treść stron dostawców i innych stron, do których serwis odsyła.
+3. Operator nie odpowiada za treść stron dostawców i innych stron, do których serwis odsyła.
 
 ## 8. Dane osobowe
 
@@ -152,7 +146,7 @@ Podkład zdjęć satelitarnych i lotniczych Esri World Imagery (źródło: Esri,
 
 ## 9. Licencja oprogramowania
 
-Oprogramowanie serwisu jest otwarte, na licencji {{software_licence}}; kod źródłowy: <{{source_url}}>. Licencja oprogramowania nie obejmuje danych dostawców ani wyników z nich utworzonych; do nich stosuje się warunki dostawców (§ 5).
+Oprogramowanie serwisu jest otwarte, na licencji {{software_licence}}; kod źródłowy: <{{source_url}}>. Licencja oprogramowania nie obejmuje danych dostawców ani wyników z nich utworzonych (§ 5).
 
 ## 10. Kontakt i zgłoszenia
 

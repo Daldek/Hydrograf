@@ -69,7 +69,7 @@ export function lines(value) {
 
 /**
  * The marks of the on-screen lines found among the full lines, in the order of DEV-20.4;
- * a line other than S, P, PS, PP and C (H, M, CP, another provider's) stays in the dialog.
+ * a line other than S, P, PS, PP and C (M, CP, another provider's) stays in the dialog.
  *
  * @param {string[]} attribution the full lines a product carries
  * @returns {string[]} the marks, C standing for its short form
