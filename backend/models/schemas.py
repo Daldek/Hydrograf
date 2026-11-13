@@ -1724,7 +1724,11 @@ class FeedbackUpdate(BaseModel):
 
 
 class TermsInfo(BaseModel):
-    """The regulamin of the deployment for the front end (Nogat DEV-15.7, ADR-084)."""
+    """The regulamin of the deployment and the lines of the service's data (ADR-084).
+
+    Nogat DEV-15.7 for the regulamin; DEV-20.5 and DEV-20.7 for the lines, which the
+    welcome window of the front end shows in full on the first visit.
+    """
 
     url: str | None = Field(
         ...,
@@ -1736,4 +1740,15 @@ class TermsInfo(BaseModel):
         ...,
         description="The operator's e-mail, named under „Zgłoś uwagę” for a reply "
         "(DEV-15.12); null without the regulamin",
+    )
+    attribution: list[str] = Field(
+        ...,
+        description="The attribution lines of the PMAXTP data of IMGW-PIB every "
+        "hydrograph is made with (Nogat DEV-20.2), as `attribution` of POST "
+        "/api/generate-hydrograph",
+    )
+    terms_notice: list[str] = Field(
+        ...,
+        description="The terms-of-use lines of the same data (Nogat DEV-20.7), after "
+        "`attribution`",
     )

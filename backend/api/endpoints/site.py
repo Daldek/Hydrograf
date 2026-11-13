@@ -12,6 +12,7 @@ memory.
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse
 
+from core.attribution import PMAXTP
 from core.errors import NotFoundError
 from core.terms import URL, current_terms
 from models.schemas import TermsInfo
@@ -43,16 +44,21 @@ def regulamin() -> HTMLResponse:
 @router.get("/terms", response_model=TermsInfo)
 def terms_info() -> TermsInfo:
     """
-    Return the address of the regulamin and the operator's e-mail.
+    Return the address of the regulamin, the operator's e-mail and the service's lines.
 
-    Both are null when the deployment names no operator (`[nogat.operator]` of the
-    nogat.toml of NOGAT_CONFIG): the front end then shows no footer link and no
-    e-mail under „Zgłoś uwagę”.
+    The address and the e-mail are null when the deployment names no operator
+    (`[nogat.operator]` of the nogat.toml of NOGAT_CONFIG): the front end then shows no
+    footer link and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice` are
+    always the lines of the PMAXTP data every hydrograph is made with
+    (core/attribution.py), which the welcome window shows in full (Nogat DEV-20.5).
     """
     terms = current_terms()
-    if terms is None:
-        return TermsInfo(url=None, operator_email=None)
-    return TermsInfo(url=URL, operator_email=terms.operator_email)
+    return TermsInfo(
+        url=URL if terms else None,
+        operator_email=terms.operator_email if terms else None,
+        attribution=list(PMAXTP.attribution),
+        terms_notice=list(PMAXTP.terms_notice),
+    )
 
 
 @router.post("/downloads", status_code=204)

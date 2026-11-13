@@ -5,11 +5,14 @@
  * and the analysis results made with it) carries the lines the provider's terms
  * require: `attribution`, then `terms_notice`, arrays of strings in the API
  * responses and the entries of the results manifest (backend/core/attribution.py
- * is their one place). This module shows them next to the data, byte for byte
- * (the addresses in them become links with the same text), and adds them to the
- * exports: the trailing CSV columns `attribution` and `terms_notice`, and the
- * JSON and GeoJSON fields of the same names. Without lines nothing is shown or
- * added.
+ * is their one place). On screen the view has one strip of them, the kit's
+ * <nogat-sources id="view-sources"> under the map (DEV-20.5, ECO-064): every
+ * surface of the view (the hydrograph panel, the own rainfall series, the result
+ * layers on the map, the point card, the terrain profile) hands it the lines of
+ * the data it shows with show(), and the strip holds their union, each line once.
+ * The exports carry them in full, byte for byte: the trailing CSV columns
+ * `attribution` and `terms_notice`, and the JSON and GeoJSON fields of the same
+ * names. Without lines nothing is shown or added.
  */
 (function () {
     'use strict';
@@ -17,9 +20,8 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var KEYS = ['attribution', 'terms_notice'];
-    var ADDRESS_RE = /https?:\/\/[^\s<>"]+/g;
-    // Punctuation after an address ends the sentence, not the address
-    var TRAILING_PUNCTUATION_RE = /[.,;:!?)\]}\u201d\u2019'"]+$/;
+    // The lines each surface of the view shows, by surface (show)
+    var _shown = {};
 
     /** The lines under `key`: an array of non-empty strings, or none. */
     function list(source, key) {
@@ -48,11 +50,6 @@
         return !l.attribution.length && !l.terms_notice.length;
     }
 
-    /** Whether `source` has a provider line. */
-    function has(source) {
-        return !isEmpty(lines(source));
-    }
-
     /**
      * The lines of a product with the data of several `sources` (DEV-20.4):
      * every line once, in the order it first comes; a null source has none.
@@ -70,51 +67,58 @@
         return out;
     }
 
-    /** Append `text` to `parent` as it is; its web addresses become links with the same text. */
-    function appendLine(parent, text) {
-        var last = 0;
-        var match;
-        ADDRESS_RE.lastIndex = 0;
-        while ((match = ADDRESS_RE.exec(text)) !== null) {
-            var address = match[0].replace(TRAILING_PUNCTUATION_RE, '');
-            if (match.index > last) parent.appendChild(document.createTextNode(text.slice(last, match.index)));
-            var link = document.createElement('a');
-            link.href = address;
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-            link.textContent = address;
-            parent.appendChild(link);
-            last = match.index + address.length;
+    /** Whether `element` is laid out: neither it nor an ancestor has display none. */
+    function rendered(element) {
+        for (var e = element; e; e = e.parentElement) {
+            if (getComputedStyle(e).display === 'none') return false;
         }
-        if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+        return true;
+    }
+
+    /** Put the union of the lines the surfaces show now into the view's strip. */
+    function update() {
+        var strip = document.getElementById('view-sources');
+        if (!strip) return;
+        var l = merge(Object.keys(_shown).filter(function (surface) {
+            var places = _shown[surface].places;
+            return !places || places.some(rendered);
+        }).map(function (surface) { return _shown[surface].source; }));
+        // Attributes, not properties: they hold before the kit's module defines the element.
+        // Unchanged lines are not set again, so an open dialog of the strip stays open.
+        var attribution = JSON.stringify(l.attribution);
+        var terms = JSON.stringify(l.terms_notice);
+        if (strip.getAttribute('attribution') !== attribution) strip.setAttribute('attribution', attribution);
+        if (strip.getAttribute('terms-notice') !== terms) strip.setAttribute('terms-notice', terms);
     }
 
     /**
-     * Show the lines of `source` in `container`: a paragraph per line, the
-     * attribution first, then the terms notice. Without lines the container is
-     * emptied and hidden. Returns whether lines are shown.
+     * The lines `source` (an API response, a manifest entry, lines; null for none)
+     * that the surface `surface` of the view shows; the view's strip #view-sources
+     * holds the union of every surface's lines. With `places` (elements of the
+     * results panel) a surface's lines count only while one of them is laid out,
+     * as the panel hides and shows its sections (a cleared watershed, a new one
+     * loading, the network, a collapsed panel).
      */
-    function render(container, source) {
-        if (!container) return false;
-        var l = lines(source);
-        container.textContent = '';
-        KEYS.forEach(function (key) {
-            l[key].forEach(function (text) {
-                var p = document.createElement('p');
-                p.className = key === 'attribution' ? 'provider-attribution' : 'provider-terms';
-                appendLine(p, text);
-                container.appendChild(p);
-            });
-        });
-        container.hidden = isEmpty(l);
-        return !container.hidden;
+    function show(surface, source, places) {
+        _shown[surface] = { source: source, places: places || null };
+        update();
     }
 
-    /** A new box (class "provider-lines" and `className`) with the lines of `source`; null without lines. */
-    function element(source, className) {
-        var box = document.createElement('div');
-        box.className = 'provider-lines' + (className ? ' ' + className : '');
-        return render(box, source) ? box : null;
+    // The panel hides its sections by classes and attributes: the strip follows them
+    var _frame = 0;
+    var panel = document.getElementById('results-panel');
+    if (panel) {
+        new MutationObserver(function () {
+            if (_frame) return;
+            _frame = requestAnimationFrame(function () {
+                _frame = 0;
+                update();
+            });
+        }).observe(panel, {
+            attributes: true,
+            subtree: true,
+            attributeFilter: ['class', 'hidden', 'data-view', 'data-element'],
+        });
     }
 
     /** A CSV cell of a line (RFC 4180): quoted, its quotes doubled; empty stays empty. */
@@ -170,10 +174,8 @@
 
     window.Hydrograf.attribution = {
         lines: lines,
-        has: has,
         merge: merge,
-        render: render,
-        element: element,
+        show: show,
         csvTable: csvTable,
         fields: fields,
     };

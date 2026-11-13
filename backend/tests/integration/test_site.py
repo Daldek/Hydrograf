@@ -1,5 +1,7 @@
 """
-The pages of the public service and GET /api/terms (api/endpoints/site.py; ADR-084).
+The pages of the public service and GET /api/terms (api/endpoints/site.py; ADR-084),
+whose provider lines the welcome window shows on every deployment, with or without an
+operator.
 
 A page of the front end is sent by nginx from the file the API names in
 `X-Accel-Redirect`; the regulamin is the filled page of the deployment, or a 404 with
@@ -11,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import api.endpoints.site
 from api.main import app
+from core.attribution import PMAXTP
 from core.terms import Terms
 
 TERMS = Terms(page="<!doctype html><h1>Regulamin</h1>", operator_email="op@example.pl")
@@ -57,6 +60,8 @@ def test_regulamin_of_a_public_deployment(client, terms):
     assert client.get("/api/terms").json() == {
         "url": "/regulamin.html",
         "operator_email": "op@example.pl",
+        "attribution": list(PMAXTP.attribution),
+        "terms_notice": list(PMAXTP.terms_notice),
     }
 
 
@@ -67,4 +72,9 @@ def test_without_an_operator_there_is_no_regulamin(client, terms):
 
     assert response.status_code == 404
     assert response.json()["details"]["reason"] == "terms_not_configured"
-    assert client.get("/api/terms").json() == {"url": None, "operator_email": None}
+    assert client.get("/api/terms").json() == {
+        "url": None,
+        "operator_email": None,
+        "attribution": list(PMAXTP.attribution),
+        "terms_notice": list(PMAXTP.terms_notice),
+    }

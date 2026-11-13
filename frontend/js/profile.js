@@ -6,9 +6,8 @@
  * Hover over chart shows corresponding point on the map line.
  * Analysis results with a water level that are shown on the map add their
  * water surface where the line crosses them (results.js, API result_ids);
- * under the chart, the provider lines of the water it shows (from the response)
- * and of every result on the map, whose legends the open drawer hides
- * (attribution.js).
+ * the provider lines of the water it shows (from the response) go to the view's
+ * strip while the drawer is open (attribution.js).
  * Samples off the DEM (API dem_gaps) are gaps of the chart, left out of the
  * elevation range; a line wholly off the DEM gets a message instead.
  */
@@ -140,19 +139,13 @@
         }).filter(Boolean);
     }
 
-    /**
-     * Under the chart, the provider lines of the water it shows (`result`, the
-     * response, or null) and of every result on the map: the open drawer hides
-     * their legends.
-     */
+    /** The provider lines of the water the chart shows (`result`, the response, or null) to the view's strip. */
     function showProviderLines(result) {
-        var onMap = Hydrograf.results ? Hydrograf.results.shownLines() : null;
-        Hydrograf.attribution.render(document.getElementById('profile-attribution'),
-            Hydrograf.attribution.merge([result, onMap]));
+        Hydrograf.attribution.show('profile', result);
     }
 
     function clearProviderLines() {
-        Hydrograf.attribution.render(document.getElementById('profile-attribution'), null);
+        Hydrograf.attribution.show('profile', null);
     }
 
     /**
@@ -227,8 +220,8 @@
     }
 
     /**
-     * Draw the open profile again: a result with a water level or provider
-     * lines was turned on or off in the "Warstwy" panel.
+     * Draw the open profile again: a result with a water level was turned on
+     * or off in the "Warstwy" panel.
      */
     function refresh() {
         var drawer = document.getElementById('profile-drawer');

@@ -261,6 +261,11 @@
     phone.addEventListener('change', render);
     window.addEventListener('resize', applyWidths);
     new ResizeObserver(notifyLayout).observe(document.getElementById('map-wrap'));
+    // Phone: the sheets stop above the foot of the view (the strip of provider lines, the footer)
+    var foot = document.getElementById('view-foot');
+    new ResizeObserver(function () {
+        view.style.setProperty('--view-foot-h', foot.offsetHeight + 'px');
+    }).observe(foot);
 
     // Segmented radio groups: arrow keys move and select (roving tabindex)
     document.querySelectorAll('.seg[role="radiogroup"]').forEach(function (group) {

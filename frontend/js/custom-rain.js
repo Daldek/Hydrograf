@@ -7,8 +7,8 @@
  * `custom_precipitation` instead of duration, probability and hietogram.
  * A series loaded from the current PMAXTP hietogram stays derived from PMAXTP
  * through edits, pastes and a new size: it is sent with `derived_from: 'pmaxtp'`
- * and shows the provider lines of that result under the table (attribution.js)
- * until "Wyczyść", a CSV import or a new watershed.
+ * and hands the provider lines of that result to the view's strip while the
+ * table is shown (attribution.js) until "Wyczyść", a CSV import or a new watershed.
  * The series belongs to one delineated watershed; a new delineation resets it.
  */
 (function () {
@@ -238,7 +238,8 @@
     /** The series as a copy of a PMAXTP result (its provider lines), or the user's own data (null). */
     function setDerived(lines) {
         _derived = lines;
-        Hydrograf.attribution.render(els.attribution, lines);
+        // In the view's strip while the table is laid out (attribution.js)
+        Hydrograf.attribution.show('custom-rain', lines, [els.form]);
     }
 
     function updateLoadButton() {
@@ -633,7 +634,6 @@
         els.msgText = document.getElementById('custom-rain-msg-text');
         els.invalid = document.getElementById('custom-rain-invalid');
         els.invalidText = document.getElementById('custom-rain-invalid-text');
-        els.attribution = document.getElementById('custom-rain-attribution');
 
         els.srcPmaxtp.addEventListener('click', function () { setSource(false); });
         els.srcCustom.addEventListener('click', function () { setSource(true); });
