@@ -150,3 +150,36 @@ def test_attribution_file_holds_the_lines_and_merges_into_an_existing_one(tmp_pa
     write_attribution_file(tmp_path, PMAXTP)
 
     assert path.read_text(encoding="utf-8").splitlines() == [foreign, *pmaxtp_lines]
+
+
+def test_attribution_file_merge_drops_the_retired_lines_and_orders_the_terms(tmp_path):
+    # A file written before Nogat's ECO-065: the old N and RK, another tool's terms
+    # line in the new form („Regulamin <whose terms>: <address>”) ahead of its line
+    path = tmp_path / "ATTRIBUTION.txt"
+    foreign_terms = (
+        "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
+    )
+    foreign = "Źródło: inny dostawca"
+    path.write_text(
+        "\n".join(
+            [
+                foreign_terms,
+                *PMAXTP.attribution,
+                "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych "
+                "(niezarobkowych). Wykorzystanie … wymaga umowy z IMGW-PIB.",
+                "Regulamin: https://klimat.imgw.pl/opady-maksymalne",
+                foreign,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_attribution_file(tmp_path, PMAXTP)
+
+    assert path.read_text(encoding="utf-8").splitlines() == [
+        *PMAXTP.attribution,
+        foreign,
+        foreign_terms,
+        *PMAXTP.terms_notice,
+    ]

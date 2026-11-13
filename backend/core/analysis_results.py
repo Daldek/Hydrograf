@@ -16,7 +16,7 @@ A result made with a provider's data, as the SFINCS depths of a PMAXTP rainfall,
 carries the lines its producer wrote for it (Nogat DEV §20, ADR-083)::
 
     "attribution": ["Źródłem pochodzenia danych jest …", …],
-    "terms_notice": ["Dane IMGW-PIB można wykorzystywać …", …]
+    "terms_notice": ["Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"]
 
 and a response with its water carries them on (:func:`provider_lines`).
 """

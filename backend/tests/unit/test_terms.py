@@ -50,7 +50,6 @@ class TestFill:
         "<!-- block: gugik -->\n<h3>GUGiK</h3>\n<!-- /block -->\n"
         "<!-- block: chmi -->\n<h3>ČHMÚ</h3>\n<!-- /block -->\n"
         "<!-- block: pmaxtp -->\n<h3>PMAXTP</h3>\n<!-- /block -->\n"
-        "<!-- block: imgw-terms -->\n<h3>Warunki IMGW-PIB</h3>\n<!-- /block -->\n"
         "<p>{{processor_transfer}}</p>\n"
     )
 
@@ -62,15 +61,6 @@ class TestFill:
         )
 
         assert page == "<h1>Hydrograf</h1>\n<h3>GUGiK</h3>\n<p></p>\n"
-
-    def test_imgw_terms_stay_with_pmaxtp(self):
-        page = fill(
-            self.TEMPLATE,
-            {"service_name": "Hydrograf", "processor_transfer": ""},
-            ["pmaxtp"],
-        )
-
-        assert "<h3>PMAXTP</h3>\n<h3>Warunki IMGW-PIB</h3>" in page
 
     def test_values_are_escaped(self):
         page = fill(
@@ -115,15 +105,20 @@ class TestBuildTerms:
         assert "na licencji MIT" in page
         for heading in (
             "IMGW-PIB: opady maksymalne PMAXTP",
-            "Warunki korzystania z danych IMGW-PIB",
             "GUGiK",
             "Copernicus",
             "ISRIC SoilGrids",
             "Wody Polskie",
-            "OpenStreetMap",
+            "OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)",
             "Esri World Imagery",
         ):
             assert f"<h3>{heading}</h3>" in page, heading
+        # The PMAXTP block links the terms in RK's words, and restates none (ECO-065)
+        assert (
+            'Regulamin danych PMAXTP: <a href="https://klimat.imgw.pl/opady-maksymalne">'
+            in page
+        )
+        assert "nieodpłatnie" not in page
         for heading in ("IMGW-PIB: dane publiczne", "ČHMÚ", "ČÚZK"):
             assert f"<h3>{heading}</h3>" not in page, heading
         assert "{{" not in page

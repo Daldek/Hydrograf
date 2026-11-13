@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-13
 **Status:** accepted; amended 2026-11-13 (one strip of the lines on screen, the welcome
-window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below)
+window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below) and
+2026-11-13 (the terms linked, not restated: Nogat ECO-065; below)
 
 ## Context
 
@@ -136,3 +137,24 @@ change for the screen only:
   place of the lines (DEV-20.4).
 - The exports, the hand-off, the API fields, `analyze_watershed`, the guide and the slides
   keep the full lines as decided.
+
+## Amendment 2026-11-13: the terms linked, not restated (Nogat ECO-065)
+
+Nogat's ECO-065 (develop `b29eada`, kit 0.6.0) takes the author's principle that a product
+carries only what the provider requires and links the rest: DEV §20 drops N, the summary of
+the IMGW-PIB terms, and every terms line names the terms it links, „Regulamin <whose
+terms>: <address>”. For Hydrograf:
+
+- `core/attribution.py`: PMAXTP is PS, PP, M with `terms_notice` [RK] alone, RK reading
+  „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”; `IMGW_TERMS_NOTICE`
+  is gone. `is_terms` tells a terms line by that form.
+- `analyze_watershed`'s `ATTRIBUTION.txt` tells its terms lines by `is_terms`, and a merge
+  into a file written before drops the retired H, N and „Regulamin: <address>” lines, so a
+  rerun leaves the current lines only.
+- The guide and the slides quote RK alone after PS, PP and M; the copy of the hand-off
+  schema (`b29eada`) has [RK] in its examples.
+- Stored data keep their old lines until rewritten: the results manifest's entries
+  (`frontend/data/results/index.json`, outside Git), whose producer or operator rewrites
+  `terms_notice` to [RK], and the `ATTRIBUTION.txt` and `analysis_results.json` of earlier
+  `analyze_watershed` runs, which a rerun rewrites. The API responses and the hand-offs
+  take the lines from the module, so they carry the new ones at once.

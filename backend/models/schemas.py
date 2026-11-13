@@ -1324,7 +1324,7 @@ class HydrographResponse(BaseModel):
     attribution : list[str]
         The lines the terms of the rainfall's provider require (Nogat DEV §20)
     terms_notice : list[str]
-        The notice of the IMGW-PIB terms of use and the address of the terms
+        The links to the terms of the rainfall's provider (Nogat DEV-20.7)
     """
 
     watershed: WatershedResponse | None = Field(
@@ -1357,8 +1357,9 @@ class HydrographResponse(BaseModel):
     terms_notice: list[str] = Field(
         ...,
         description=(
-            "The notice of the IMGW-PIB terms of use and the address of the PMAXTP "
-            "terms (Nogat DEV-20.7), shown right after `attribution`; empty with it"
+            "The links to the terms of the rainfall's provider, one line each "
+            "(Nogat DEV-20.7): for PMAXTP data the link to the PMAXTP terms; shown "
+            "right after `attribution`; empty with it"
         ),
     )
 

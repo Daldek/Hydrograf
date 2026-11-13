@@ -1,15 +1,15 @@
 {
   "name": "nogat-kit",
-  "version": "0.5.1",
-  "description": "Nogat's GUI kit (DEV-15.4 to DEV-15.7, DEV-20.5, ECO-058, ECO-061 to ECO-064): plain files a GUI copies byte for byte and never edits. Change them in Nogat design/kit/ and copy again.",
+  "version": "0.6.0",
+  "description": "Nogat's GUI kit (DEV-15.4 to DEV-15.7, DEV-20.5, DEV-20.7, ECO-058, ECO-061 to ECO-065): plain files a GUI copies byte for byte and never edits. Change them in Nogat design/kit/ and copy again.",
   "files": {
     "nogat-app-menu.css": "2c096d012230f78f58353b354dff4976046ef883fe9006b778a43d5e75ccd9d6",
     "nogat-app-menu.js": "951a2798ee169f1e179f57e0d45f04cf1d9edddd7b255019262b8d7e9da29076",
     "nogat-handoff.js": "605cda9ff5e7766ab456d07c127bb96c0e7a41628afacb5160454b70eb767e77",
     "nogat-sources.css": "b02762f078497055b70505656c22985a1461dbe5db16651c5bdaf140d388d065",
-    "nogat-sources.js": "c2a6e3e62076925414a639dd619d8065f928f1d7c3eb5e287aa1d8c956a107b3",
+    "nogat-sources.js": "76f08fef49746698ec6aa0811aad827772e8a7a405ee5767c9feba21e8073ebe",
     "nogat-terms.css": "495d71cc542c13a08833f32d14d2af20bc49b5c7d5d4c4d89e75e954de8e04af",
-    "nogat-terms.html": "b979d9a5653357bf3fedf37f0b3162c6887f1f861cd6a123a81a0a63174e4cc8",
-    "nogat-terms.md": "f56c647a0a7ad402fb4b9c2e6e7d29102803cd9e677a745a816c9171b50f50db"
+    "nogat-terms.html": "6c3e5740d80d37d7987291b5565b926106e9449f47c80c1f6b4dde7389b9c7c5",
+    "nogat-terms.md": "431fe974a2cc0aea62c6719aa25d6d436579ad0b6f8c45faa23635d7f58f8dbe"
   }
 }

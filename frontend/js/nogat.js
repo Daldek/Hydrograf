@@ -19,7 +19,7 @@
  */
 import { entries } from '../nogat/nogat-app-menu.js?v=951a2798ee';
 import * as handoff from '../nogat/nogat-handoff.js?v=605cda9ff5';
-import { fillSources } from '../nogat/nogat-sources.js?v=c2a6e3e620';
+import { fillSources } from '../nogat/nogat-sources.js?v=76f08fef49';
 
 window.Hydrograf = window.Hydrograf || {};
 

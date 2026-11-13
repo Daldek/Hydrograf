@@ -6,8 +6,8 @@ preprocessing fetches through Obserwator into ``precipitation_data``. Every prod
 with them, the design depth, the hyetograph, the hydrograph, their exports and the
 hand-off, carries the lines of DEV-20.2 of Nogat's standard in ``attribution`` (the
 source with the address of the PMAXTP page, the note that the data were processed and
-the monograph of the project) and those of DEV-20.7 in ``terms_notice`` (the notice of
-the IMGW-PIB terms of use and the address of the PMAXTP terms), byte for byte (ECO-060).
+the monograph of the project) and the link to the PMAXTP terms of DEV-20.7 in
+``terms_notice``, byte for byte (ECO-060; ECO-065: linked, never restated).
 
 This module is the one place of the lines in the code (DEV-20.4): the API responses
 carry them and the front end shows and exports what a response carries. The user
@@ -16,6 +16,7 @@ guide (``frontend/instrukcja/index.html``) and the slides
 results.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
@@ -39,15 +40,11 @@ PMAXTP_MONOGRAPH: Final = (
     "Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut "
     "Badawczy, Warszawa 2022"
 )
-# N: free use is private use only (DEV-20.7); the one line with full stops
-IMGW_TERMS_NOTICE: Final = (
-    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych "
-    "(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z "
-    "reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w "
-    "gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
-)
-# RK: the terms of PMAXTP
-PMAXTP_TERMS: Final = "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+# RK: the link to the PMAXTP terms (DEV-20.7)
+PMAXTP_TERMS: Final = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
+
+# A terms line names the terms it links: „Regulamin <whose terms>: <address>” (DEV §20)
+_TERMS_LINE = re.compile(r"Regulamin [^:]+: \S+")
 
 
 @dataclass(frozen=True)
@@ -59,8 +56,8 @@ class ProviderLines:
     attribution : tuple[str, ...]
         The attribution lines, in the order of DEV-20.4; empty without provider data.
     terms_notice : tuple[str, ...]
-        The notice of the terms of use and the addresses of the terms (DEV-20.7),
-        shown right after the attribution; empty without IMGW-PIB data.
+        The links to the terms that apply (DEV-20.7), shown right after the
+        attribution; empty without IMGW-PIB data.
     """
 
     attribution: tuple[str, ...] = ()
@@ -73,7 +70,7 @@ NO_PROVIDER: Final = ProviderLines()
 # A product made with PMAXTP data: Hydrograf always processes them (DEV-20.2)
 PMAXTP: Final = ProviderLines(
     attribution=(PMAXTP_SOURCE, PMAXTP_PROCESSED, PMAXTP_MONOGRAPH),
-    terms_notice=(IMGW_TERMS_NOTICE, PMAXTP_TERMS),
+    terms_notice=(PMAXTP_TERMS,),
 )
 
 
@@ -97,3 +94,8 @@ def merge(lines: Iterable[ProviderLines]) -> ProviderLines:
         attribution=tuple(dict.fromkeys(a for i in items for a in i.attribution)),
         terms_notice=tuple(dict.fromkeys(n for i in items for n in i.terms_notice)),
     )
+
+
+def is_terms(line: str) -> bool:
+    """Tell a terms line of DEV-20.7 (RD, RH, RK) from an attribution line."""
+    return _TERMS_LINE.fullmatch(line) is not None

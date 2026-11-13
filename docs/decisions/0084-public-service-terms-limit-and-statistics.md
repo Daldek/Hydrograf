@@ -1,7 +1,8 @@
 # ADR-084: Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact
 
 **Date:** 2026-11-13
-**Status:** accepted
+**Status:** accepted; amended 2026-11-13 (kit 0.6.0 without the block `imgw-terms`: Nogat
+ECO-065; below)
 
 ## Context
 
@@ -74,12 +75,12 @@ B, E, G and J.
   `frontend/nogat/`, mounted into the API at `/frontend/nogat`) filled once per process
   from `[nogat.operator]` of the `nogat.toml` in NOGAT_CONFIG (Docker mounts the host's
   file at `/config/nogat.toml`, `/dev/null` without it) and the entry `hydrograf` of the
-  table `gui`; the blocks `pmaxtp` (with `imgw-terms`), `gugik`, `copernicus`, `isric`,
-  `wody-polskie`, `osm` and `esri`; served at `/regulamin.html`. `GET /api/terms` gives
-  the front end its address and the operator's e-mail, both null without an operator: no
-  footer, no menu entry, no e-mail under the form. The table `gui` now comes from
-  HYDROGRAF_GUI and, when that is empty, from the same file (DEV-18.1's order), which
-  amends ADR-082.
+  table `gui`; the blocks `pmaxtp` (with `imgw-terms` until kit 0.6.0, below), `gugik`,
+  `copernicus`, `isric`, `wody-polskie`, `osm` and `esri`; served at `/regulamin.html`.
+  `GET /api/terms` gives the front end its address and the operator's e-mail, both null
+  without an operator: no footer, no menu entry, no e-mail under the form. The table `gui`
+  now comes from HYDROGRAF_GUI and, when that is empty, from the same file (DEV-18.1's
+  order), which amends ADR-082.
 - The footer of the map (`#site-footer`, `js/terms.js`) and of the guide: the statement
   and „Regulamin”; the app menu gets `terms`.
 - The limit and the totals (`api/traffic.py`, `core/request_limit.py`, `core/usage.py`):
@@ -135,3 +136,14 @@ B, E, G and J.
   drops those columns follows.
 - `X-Request-ID` no longer reaches the operator through the form; a person who wants an
   answer writes an e-mail.
+
+## Amendment 2026-11-13: kit 0.6.0, the providers' terms linked (Nogat ECO-065)
+
+Nogat's ECO-065 (develop `b29eada`) leaves the summary of the IMGW-PIB terms out of every
+product. Kit 0.6.0, copied byte for byte into `frontend/nogat/`, has no block `imgw-terms`:
+its § 5 says once that the providers' terms govern the data taken from the service, and
+each source block holds the provider's lines and the link to its terms or licence (for
+PMAXTP RK, „Regulamin danych PMAXTP: …”). `core/terms.py` no longer adds `imgw-terms` to
+the blocks it keeps; the blocks are `pmaxtp`, `gugik`, `copernicus`, `isric`,
+`wody-polskie`, `osm` and `esri`. The footer's statement (DEV-15.8) is unchanged. The page
+is filled once per process, so a deployment serves the new regulamin after its restart.

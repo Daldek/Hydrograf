@@ -41,10 +41,10 @@ from pathlib import Path
 from typing import Any
 
 from core.attribution import (
-    IMGW_TERMS_NOTICE,
     NO_PROVIDER,
     PMAXTP,
     ProviderLines,
+    is_terms,
     merge,
 )
 from core.constants import DEFAULT_THRESHOLD_M2
@@ -61,6 +61,14 @@ logger = logging.getLogger(__name__)
 # The source of the precipitation fetched from IMGW-PIB's PMAXTP through Obserwator
 PMAXTP_PRECIPITATION_SOURCE = "IMGW PMAXTP"
 
+# The starts of the lines Nogat's ECO-065 dropped or renamed (H, N and the terms
+# lines „Regulamin: <address>”): an older ATTRIBUTION.txt may hold them, a merge
+# leaves them out
+RETIRED_LINES = (
+    "Dane pochodzą z serwisu hydrologicznego IMGW-PIB ",
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie ",
+    "Regulamin: ",
+)
 
 # =============================================================================
 # KONFIGURACJA - ZMIEŃ PARAMETRY TUTAJ
@@ -159,8 +167,8 @@ def write_attribution_file(output_dir: Path, lines: ProviderLines) -> Path | Non
 
     UTF-8, one line per line, the attribution lines first, then the terms lines
     (DEV-20.5). The lines of an existing file are merged in first, each line once:
-    its lines equal to ``IMGW_TERMS_NOTICE`` or starting with "Regulamin: " are
-    terms lines, the rest attribution lines. Nothing is written without lines.
+    its terms lines (``is_terms``) after the attribution lines, without the lines
+    ECO-065 retired (``RETIRED_LINES``). Nothing is written without lines.
 
     Returns
     -------
@@ -172,11 +180,14 @@ def write_attribution_file(output_dir: Path, lines: ProviderLines) -> Path | Non
 
     path = output_dir / "ATTRIBUTION.txt"
     if path.exists():
-        old = [x for x in path.read_text(encoding="utf-8").splitlines() if x]
-        is_terms = [x == IMGW_TERMS_NOTICE or x.startswith("Regulamin: ") for x in old]
+        old = [
+            x
+            for x in path.read_text(encoding="utf-8").splitlines()
+            if x and not x.startswith(RETIRED_LINES)
+        ]
         existing = ProviderLines(
-            attribution=tuple(x for x, t in zip(old, is_terms, strict=True) if not t),
-            terms_notice=tuple(x for x, t in zip(old, is_terms, strict=True) if t),
+            attribution=tuple(x for x in old if not is_terms(x)),
+            terms_notice=tuple(x for x in old if is_terms(x)),
         )
         lines = merge([existing, lines])
 

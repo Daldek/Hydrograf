@@ -189,7 +189,7 @@ project and is not covered by these settings.
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.5.1) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.6.0) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
   The statement of the service and the link „Regulamin” (in a new tab) are under the map and
   in the guide, and in the menu „Aplikacje”.
@@ -307,7 +307,7 @@ and with 2 when the command line is invalid.
 | GUGiK | DEM (NMT), BDOT10k land cover and hydrography | free reuse with attribution (Prawo geodezyjne i kartograficzne) |
 | Copernicus CLMS | CORINE Land Cover | Copernicus data policy, attribution required |
 | ISRIC SoilGrids | soil texture, input of the HSG groups | CC BY 4.0 |
-| IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project; free use for private, non-commercial purposes only. Every response, view, export and hand-off with PMAXTP data carries these lines (`attribution`, `terms_notice`; `backend/core/attribution.py`, ADR-083) |
+| IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project, then the link to the terms. Every response, view, export and hand-off with PMAXTP data carries these lines (`attribution`, `terms_notice`; `backend/core/attribution.py`, ADR-083) |
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
 | OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
 

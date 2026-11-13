@@ -10,8 +10,7 @@ missing, there is neither page nor link: a local run is no service offered to ot
 
 Filling follows Nogat's ``design/README.md`` (its reference is ``fill`` of
 ``scripts/terms.py``): first the blocks, then the fields. The blocks kept are the data
-sources Hydrograf shows (README, "Data and licensing"); ``imgw-terms`` follows from
-``pmaxtp``. Every value is HTML-escaped.
+sources Hydrograf shows (README, "Data and licensing"). Every value is HTML-escaped.
 """
 
 import datetime
@@ -65,8 +64,6 @@ OPERATOR_FIELDS: Mapping[str, str] = {
 }
 # The only fields that may be empty (each a whole sentence or nothing)
 OPTIONAL = frozenset({"processor_transfer", "processor_cookie", "mail_transfer"})
-# Blocks that keep the block `imgw-terms`, which is never listed itself
-IMGW_BLOCKS = frozenset({"imgw", "imgw-hydro", "pmaxtp"})
 
 _PLACEHOLDER = re.compile(r"\{\{([a-z][a-z0-9_]*)\}\}")
 _BLOCK = re.compile(
@@ -96,8 +93,8 @@ def fill(template: str, values: Mapping[str, str], listed: Iterable[str]) -> str
     """Return the template with its blocks chosen and its fields filled.
 
     A block named in ``listed`` keeps its lines without its two marker lines; any
-    other block goes with its markers (``imgw-terms`` stays with ``imgw``,
-    ``imgw-hydro`` or ``pmaxtp``). Each ``{{name}}`` becomes its value, HTML-escaped.
+    other block goes with its markers. Each ``{{name}}`` becomes its value,
+    HTML-escaped.
 
     Raises
     ------
@@ -106,8 +103,6 @@ def fill(template: str, values: Mapping[str, str], listed: Iterable[str]) -> str
         is left in the page.
     """
     keep = set(listed)
-    if keep & IMGW_BLOCKS:
-        keep.add("imgw-terms")
     missing = sorted(
         name
         for name in set(_PLACEHOLDER.findall(template))

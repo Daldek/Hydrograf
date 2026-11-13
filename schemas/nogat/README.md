@@ -15,13 +15,13 @@ behind or modified:
   reports REST errors as `application/problem+json` and uses only the registry (see the
   deviations AGI-4.1 and AGI-4.2 in `CLAUDE.md`).
 
-And, outside the standard, the envelope of the hand-offs, copied from Nogat's commit `bbb58a8`
-(branch `fix/provider-attribution`; item 6 of Nogat's `docs/plans/2026-11-01-nogat-gui-platform.md`,
-with the optional `node_provenance` of step 1 of its
-`docs/plans/2026-11-10-node-provenance-in-handoff.md`: the origin of each node of a network,
-and the optional `attribution` and `terms_notice` of its
+And, outside the standard, the envelope of the hand-offs, copied from Nogat's `develop`
+`b29eada` (item 6 of Nogat's `docs/plans/2026-11-01-nogat-gui-platform.md`, with the optional
+`node_provenance` of step 1 of its `docs/plans/2026-11-10-node-provenance-in-handoff.md`: the
+origin of each node of a network, and the optional `attribution` and `terms_notice` of its
 `docs/plans/2026-11-13-provider-attribution.md`: the lines the providers' terms require, DEV §20,
-ECO-060); SHA-256 `7d69384bafe92c02c2008b4e822b9d7b80f5b382817dc3dbce213c6726ecd958`. The
+ECO-060, with the description and examples of ECO-065: `terms_notice` holds the links to the
+terms only); SHA-256 `c26ce043b292284fa7e8f995589fee09fd5ffa046efb61c4b3736619b8b71d08`. The
 pinned Hydrolog `930915d` reads the copy of `8727f6e`, `node_provenance`, `attribution` and
 `terms_notice` as unknown fields; its step 3, `cead00a` on Hydrolog's `develop` after the pin,
 takes the copy of `8848c26`:

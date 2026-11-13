@@ -40,7 +40,7 @@
       "items": {"type": "string", "minLength": 1}
     },
     "terms_notice": {
-      "description": "The notice of the IMGW-PIB terms of use and the addresses of the terms that apply, verbatim and in the order of DEV-20.7 of Nogat's standard: required whenever the hand-off carries IMGW-PIB data or results derived from them. The consumer shows and carries it on like `attribution`. Optional within `/1` (AGI-4.1)",
+      "description": "The links to the terms that apply to the IMGW-PIB data, one line each, verbatim and in the order of DEV-20.7 of Nogat's standard (RD, RH, RK), never a summary of the terms: required whenever the hand-off carries IMGW-PIB data or results derived from them. The consumer shows and carries them on like `attribution`. Optional within `/1` (AGI-4.1)",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -133,8 +133,7 @@
         "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
       ],
       "terms_notice": [
-        "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
-        "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+        "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
       ],
       "payload": {
         "schema": "hydrolog-network/1",
@@ -216,8 +215,7 @@
         "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022"
       ],
       "terms_notice": [
-        "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
-        "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+        "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
       ],
       "payload": {
         "schema": "hydrolog-network/1",
