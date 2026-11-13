@@ -138,6 +138,13 @@ computation used) and the provenance of `runoff` is Hydrolog's own record `{"sou
 "hydrograf", "method": "lutz"}`, so Hydrolog opens Nash in Lutz mode and its `uh nash`
 gives Hydrograf's n and K; `runoff` keeps them for the recomputation.
 
+The hand-off of a hydrograph with a PMAXTP rainfall, or with an own series copied from one
+(`custom_precipitation.derived_from`), carries the top-level `attribution` and
+`terms_notice` of Nogat DEV-20.6 and DEV-20.7 (ADR-083; the copy of the schema from Nogat
+`bbb58a8`): the lines the PMAXTP terms require, which Hydrolog shows with the loaded data and
+carries into its own products. The hand-offs of a delineation and of a network hold no
+PMAXTP value and have neither field.
+
 ---
 
 ## The hand-off of a network (`POST /api/delineate-network`, ADR-080)

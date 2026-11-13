@@ -1073,6 +1073,8 @@ class HydrographRequest(BaseModel):
 
 Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 400 `validation_error` jako `application/problem+json` (ADR-059; opis po angielsku, po polsku z `Accept-Language: pl`).
 
+`custom_precipitation.derived_from` (`"pmaxtp"` or null, ADR-083): the series started as a copy of a PMAXTP hyetogram, so the response carries PMAXTP's lines.
+
 ---
 
 ### 6.4 Response: Generate Hydrograph
@@ -1135,6 +1137,8 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
 ```
 
 Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`morphometry.cn`, `land_cover_stats.weighted_cn`). W aktualnym schemacie: `water_balance.cn_used` (float, CN po przeliczeniu wg AMC), `metadata.amc`, `precipitation.source` (`"pmaxtp"`/`"custom"`); dla własnej serii `precipitation.probability_percent` i `metadata.hietogram_type` są `null`. Schemat bazy danych bez zmian.
+
+The response also has `attribution` and `terms_notice` (ADR-083): the lines the PMAXTP terms require (Nogat DEV-20.2, DEV-20.7) for a PMAXTP rainfall and for an own series with `derived_from: "pmaxtp"`, empty lists for the user's own data; the hand-off `handoff` carries the same two fields when they are not empty.
 
 ---
 

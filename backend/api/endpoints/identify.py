@@ -18,7 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from core.analysis_results import sample_water_levels
+from core.analysis_results import provider_lines, sample_water_levels
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2
 from core.database import get_db
@@ -141,6 +141,8 @@ def identify_point(
         zone, easting_2000, northing_2000 = transform_wgs84_to_pl2000(
             request.latitude, request.longitude
         )
+        # The lines of the results whose water the point card shows (ADR-083)
+        lines = provider_lines(settings.frontend_data_dir, [w.result_id for w in water])
 
         return IdentifyPointResponse(
             coordinates=PointCoordinates(
@@ -168,6 +170,8 @@ def identify_point(
                 if subcatchment is None
                 else PointSubcatchment(threshold_m2=threshold, **subcatchment)
             ),
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
     except HydrografError:

@@ -125,6 +125,7 @@ Summary of the key ADRs:
 | ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; Bootstrap only in `/admin` |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
+| [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product | PMAXTP's lines of Nogat DEV §20 from one module (`core/attribution.py`) in the responses, the hand-off and every export; the front end shows what a response or the results manifest carries |
 
 ---
 
@@ -155,7 +156,8 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile
+│   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile, the providers' lines of a result (provider_lines, ADR-083)
+│   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083): PMAXTP's PS, PP, M and the terms notice N, RK; ProviderLines, merge
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS), reloaded when the network in the database changes
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
@@ -448,7 +450,8 @@ Request:
   "amc": "II",                 // I | II | III, II by default
   "custom_precipitation": {    // optional: your own series instead of PMAXTP and the hietogram
     "timestep_min": 10,        // > 0 and ≤ 1440
-    "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0]   // ≥ 0, 1–2000 values, sum > 0
+    "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0],  // ≥ 0, 1–2000 values, sum > 0
+    "derived_from": null       // "pmaxtp": a copy of a PMAXTP hyetogram (ADR-083)
   },
   "morphometry": { ... }       // optional: the fast path (advanced mode), fractional cn
 }
@@ -457,10 +460,15 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
   water_balance.cn_used: float (the CN after the AMC conversion)
   metadata.amc; metadata.hietogram_type = null for your own series
+  attribution: [PS, PP, M], terms_notice: [N, RK] for PMAXTP and a series derived from it;
+  [] and [] for your own data (ADR-083); the hand-off has the same fields, without them
+  when they are empty
 Response: 400 validation_error (application/problem+json), e.g. for the rainfall series
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
           delineated catchment and for one given in morphometry alike
 ```
+
+`attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M), the notice of the IMGW-PIB terms of use (N) and the address of the PMAXTP terms (RK). A product made with the result shows them visibly and carries them on (ADR-083).
 
 `GET /api/scenarios` also returns `amc` (`["I", "II", "III"]`), `custom_precipitation_max_steps` (2000) and `area_limit_km2` (250). The messages of `errors[]` of a 400 follow `Accept-Language` like `detail`: pydantic's English without the header, a Polish text of the error type with its limits for `pl` (e.g. `/body/hietogram_alpha`: „Wartość nie może być większa niż 20.”); pointers and types do not change.
 
@@ -507,14 +515,16 @@ Response: 200 OK
   "elevations_m": [150.0, 151.2, ..., 0.0],
   "dem_gaps": [false, false, ..., true],
   "total_length_m": 1050.0,
-  "water_levels": [{"result_id": "sfincs-kamiennik-24h-p1", "levels_m": [null, 152.4, ..., null]}]
+  "water_levels": [{"result_id": "sfincs-kamiennik-24h-p1", "levels_m": [null, 152.4, ..., null]}],
+  "attribution": ["Źródłem pochodzenia danych jest …", …],
+  "terms_notice": ["Dane IMGW-PIB można wykorzystywać …", …]
 }
 Response: 404 no_data (no_elevation_data) when no sample has DEM data
 ```
 
 `dem_gaps` marks the samples where the DEM has no data (off its extent, e.g. past the boundary of the clipped data); `elevations_m` holds 0.0 there, so a client must read the mask, not the value (the frontend draws a gap, B5).
 
-`result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0).
+`result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0). `attribution` and `terms_notice` are the lines the manifest gives the results of `water_levels`, each once (ADR-083); empty without them.
 
 #### 2.2.5a Identify Point
 ```
@@ -523,6 +533,8 @@ GET /api/identify-point?latitude=51.0158&longitude=15.9042&threshold_m2=100000&r
 Everything Hydrograf knows at one point, for the mode „Identyfikuj”: `coordinates` (WGS84; PL-1992 `easting_m`/`northing_m`; `pl2000` with `zone`, `epsg`, `easting_m` and `northing_m` in the PL-2000 zone of the longitude, EPSG:2176–2179; only the Polish systems), `elevation_m` and `slope_percent` (DEM rasters), `water` (per requested result whose `water_level` raster holds the point: `water_level_m`, `depth_m` = level − DEM, `null` where dry or below the terrain), `stream` (the nearest `bdot_streams` line up to 5 km away, a nearest-neighbour search over its GiST index, with `distance_m`), `water_body` (BDOT10k `OT_PTWP_A` polygon from `FRONTEND_DATA_DIR/bdot_lakes.geojson`, not in the database), `land_cover` (category, BDOT10k class, `cn` for AMC II as in the catchment CN, `cn_amc_i` and `cn_amc_iii` converted by Hydrolog's `SCSCN.adjust_cn_for_amc` as for the hydrograph, imperviousness), `soil_hsg`, `depression` and `subcatchment` (`stream_catchments` + `stream_network` at `threshold_m2`, floored to 10000; `channel_length_km`, the main channel at the segment's downstream end traced as for a watershed delineated there, and `distance_to_outlet_km`, the D8 flow distance from there to the outlet of the network, where the water leaves the data area, both from the in-memory `CatchmentGraph` and `null` without it). A member is `null` where its source has nothing; a point off the DEM is outside the data: 404 `no_data`; no DEM: 503 `store_unavailable`.
 
 The query parameters: `latitude` and `longitude` (required, WGS84), `threshold_m2` (optional, > 0) and `result_ids` (repeated, `&result_ids=a&result_ids=b`, up to 20, each 1–100 characters). An invalid parameter is a `validation_error` problem (400) whose `errors[].pointer` names it, e.g. `/query/latitude` or `/query/result_ids/0`. The answer has no side effects and can be cached; the front end keeps it for 5 minutes (`js/api.js`).
+
+`attribution` and `terms_notice` are the lines the manifest gives the results of `water`, each once (ADR-083), as in the terrain profile; empty without them.
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
@@ -1119,6 +1131,7 @@ frontend/
     ├── map.js                # Leaflet map, drawing, MVT; wheel zoom without the tail of a gesture or late input
     ├── coords.js             # Cursor coordinates (bottom left): WGS84, PL-1992 or PL-2000 by Gauss–Krüger in the browser; not on touch screens
     ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
+    ├── attribution.js        # The providers' lines of a response or a manifest entry (ADR-083): shown next to the data (addresses as links, text unchanged), the trailing CSV columns and the JSON/GeoJSON fields of the exports
     ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
@@ -1171,6 +1184,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc once hides the panel, twice clears the result.
 - **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 75 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
+- **The providers' lines** (`attribution.js`, ADR-083) — the `attribution` and `terms_notice` of the hydrograph response stand under the results of „Hietogram” (`#hietogram-attribution`, after the export) and of „Hydrogram” (`#hydrograph-attribution`, under the chart), and are cleared with them. An own series filled by „Wczytaj z bieżącego hietogramu” keeps the lines of the PMAXTP result it copied under its table (`#custom-rain-attribution`) and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed. The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
 - **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. Some catchments have `length_to_centroid_km = 0`: Snyder fails until the user gives Lc.
 - **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
@@ -1193,6 +1207,8 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
   `bounds` is [west, south, east, north] in WGS84; the tiles are XYZ PNG with transparency (`gdal2tiles --xyz`). Every `raster_tiles` result gives a row in the group `group` (the existing „Wyniki analiz” under „Linie spływu”; a new group is created above the basemaps only when a result needs it): an `L.tileLayer` in the pane `resultsPane` (z-index 300: above the DEM and the land cover, below the flow lines) with `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` from the manifest and the opacity from `opacity`; the legend (swatches from `legend.classes`, the unit in the title) only while the layer is on; `description` and `source` in the (i) explanation. The extent counts for „Przybliż do zasięgu warstw”. Other values of `kind` are skipped with a warning; a missing manifest, invalid JSON or another `schema` give one console warning and no rows.
 
   `water_level` (optional; a backward-compatible extension of `hydrograf-results/1` that older clients skip) names a GeoTIFF of the maximum water surface elevation on the model grid (float32, LZW, nodata where the maximum depth is below 0.05 m, the lowest legend class); `crs` and `unit` describe the raster. The API reads it, not the browser: `POST /api/terrain-profile` with `result_ids` (§2.2.5) samples the raster at the points of the profile (`core/analysis_results.py`). The path `/data/…` names a file in `FRONTEND_DATA_DIR` (default `/frontend/data`, the directory `frontend/data` mounted in the API container) and must stay in its subdirectory `results/`; otherwise the result is skipped. The terrain profile (`profile.js`) asks for the results with `water_level` whose layer is on (`results.shownWaterLevels()`), and switching such a layer on or off redraws an open profile. The water surface is a blue area between the terrain and the water level where the water lies above the DEM; under the chart the legend „Teren” and „Zwierciadło wody — <result title>”, and the readout under the cursor (under the finger on a phone) gives the terrain, the water level and the depth (water level minus DEM). A line that does not cross a result gives an unchanged chart. The raster is made by the publication script of a Hydraulik run from `zsmax` in `sfincs_map.nc`.
+
+  `attribution` and `terms_notice` (optional arrays of texts, ADR-083) are the lines the terms of the providers of a result's data require, written by its producer (the SFINCS result of a PMAXTP rainfall: PS, PP, M and N, RK of `core/attribution.py`). The legend of the result shows them below its classes while the layer is on, its (i) after „Źródła:”, the point card in „Woda” and the profile drawer under the chart; the API returns them with the result's water (§2.2.5, §2.2.5a). A value that is not a list of texts is ignored.
 - **Panel width** — handles between the panels (left 260–560 px, right 340–720 px), kept in `localStorage`; the panels can be closed.
 - **Phone (≤ 860 px)** — a full-screen map, a bottom bar (Mapa and Logowanie) instead of the rail, with the top-bar guide/feedback/theme icons still accessible, and panels as sheets that slide up from the bottom (a handle at the top hides them too). The map bar has two rows: „Warstwy” and „Zlewnia” („Sieć” in the option „Sieć zlewni”), then the four modes across the full width (labels may wrap), so nothing lies off a 375 px screen; the options of „Wybierz zlewnię” span the top of the map.
 
@@ -2103,11 +2119,12 @@ jobs:
 
 ---
 
-**Document version:** 2.15
-**Date of the last update:** 2026-11-12
+**Document version:** 2.16
+**Date of the last update:** 2026-11-13
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.16 (2026-11-13): the providers' lines (ADR-083, plan `2026-11-13-provider-attribution`): §1.2 ADR-083; §2.1 `core/attribution.py`, `provider_lines` of `core/analysis_results.py`; §2.2.3 `derived_from`, `attribution` and `terms_notice` of the hydrograph and its hand-off; §2.2.5 and §2.2.5a the lines of the results' water; §4.1 `js/attribution.js`; §4.2.0 the lines in the panel, the own series and the exports, and the manifest's `attribution` and `terms_notice`
 - 2.15 (2026-11-12): Nogat's GUI kit (ADR-082, plan `2026-11-12-nogat-kit`): §1.2 ADR-082; §2.1 `api/endpoints/gui.py` and `gui_table()` of `core/config.py`; §2.2.1a `GET /api/gui`; §4.1 `nogat/` (the kit and the marks), `js/nogat.js`, `js/handoff.js`, `tokens.css` of Nogat `7786271`; §4.2.0 the app menu „Aplikacje”; §5.1 `HYDROGRAF_GUI` in the environment of the API; §5.2 the versions of the imports of an ES module
 - 2.14 (2026-11-11): §4 „Sieć zlewni” is an option of the mode „Wybierz zlewnię” (the author's decision, ADR-080 note): four modes on the mode bar, the radio group „Co wyznaczyć” over the map, the module map and the phone layout
 - 2.13 (2026-11-11): every control point a node of the network (ADR-080 amended, plan `2026-11-11-network-nodes`): §2.1 `core/network_tree.py` draws the points to the nodes; §2.2.2b and §2.2.2c `outlet.id` required without the default `A`, `points` 0 to 30, `at_node` instead of `at_mouth`, `points[].node` and the junctions as nodes `J<n>` and `P<n>` numbered from the closing section upward, `junctions[].name`, the kinds `headwater` and `intermediate`, the outlet `O`, the new text of `network_points_coincide`; §2.4.10 the nodes and the ids of `core/network_tree.py`, the outlet `O` of `build_network_handoff`; §4 the mode „Sieć zlewni” without A, the markers labelled by their nodes' ids

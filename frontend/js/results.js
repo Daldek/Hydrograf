@@ -7,6 +7,10 @@
  * entries it can show (kind "raster_tiles": XYZ PNG tiles) and builds their
  * tile layers, legends and (i) texts; layers.js turns each entry into a row
  * of the "Warstwy" panel. No manifest, or no usable entry, means no rows.
+ * A result made with a provider's data (the SFINCS depths of a PMAXTP
+ * rainfall) carries the lines its producer wrote in `attribution` and
+ * `terms_notice`: its legend box shows them while its layer is on, and its
+ * (i) text ends with them (attribution.js).
  * A result with a `water_level` raster (sampled by the API) adds its water
  * surface to the terrain profile and its water depth to the point card of
  * the mode "Identyfikuj" while its layer is on the map.
@@ -50,14 +54,23 @@
         };
     }
 
-    /** Register the result's description and source as an (i) text; returns its key or null. */
+    /**
+     * Register the result's description, source and provider lines as an (i)
+     * text; returns its key or null.
+     */
     function registerInfo(result, raw) {
         var texts = window.Hydrograf.infoTexts;
         var description = typeof raw.description === 'string' ? raw.description : '';
         var source = typeof raw.source === 'string' ? raw.source : '';
-        if (!texts || (!description && !source)) return null;
+        if (!texts || (!description && !source && !Hydrograf.attribution.has(result.lines))) return null;
         var key = 'result:' + result.id;
-        texts[key] = { title: result.title, definition: description, sources: source };
+        texts[key] = {
+            title: result.title,
+            definition: description,
+            sources: source,
+            attribution: result.lines.attribution,
+            terms_notice: result.lines.terms_notice,
+        };
         return key;
     }
 
@@ -88,6 +101,8 @@
             opacity: opacity,
             legend: parseLegend(raw.legend),
             legendControl: null,
+            // Arrays of non-empty strings; anything else is ignored, as the API does
+            lines: Hydrograf.attribution.lines(raw),
             waterLevel: !!(raw.water_level && typeof raw.water_level.path === 'string'),
             layer: L.tileLayer(tiles, {
                 bounds: bounds,
@@ -130,24 +145,40 @@
             });
     }
 
-    /** Legend box: title with the unit in brackets, one swatch per class. */
-    function legendElement(legend) {
+    /**
+     * Legend box: title with the unit in brackets and one swatch per class (or
+     * the result's title without classes), then the provider lines.
+     */
+    function legendElement(result) {
+        var legend = result.legend;
         var div = L.DomUtil.create('div', 'layer-legend');
         var title = L.DomUtil.create('div', 'layer-legend-title', div);
-        title.textContent = legend.title + (legend.unit ? ' [' + legend.unit + ']' : '');
-        legend.classes.forEach(function (c) {
-            var item = L.DomUtil.create('div', 'legend-item', div);
-            var swatch = L.DomUtil.create('span', 'legend-swatch', item);
-            swatch.style.background = c.color;
-            item.appendChild(document.createTextNode(' ' + c.label));
-        });
+        if (legend) {
+            title.textContent = legend.title + (legend.unit ? ' [' + legend.unit + ']' : '');
+            legend.classes.forEach(function (c) {
+                var item = L.DomUtil.create('div', 'legend-item', div);
+                var swatch = L.DomUtil.create('span', 'legend-swatch', item);
+                swatch.style.background = c.color;
+                item.appendChild(document.createTextNode(' ' + c.label));
+            });
+        } else {
+            title.textContent = result.title;
+        }
+        var lines = Hydrograf.attribution.element(result.lines, 'layer-legend-lines');
+        if (lines) {
+            div.classList.add('has-provider-lines');
+            div.appendChild(lines);
+            // A click on a link of the lines, or scrolling them (phones), does not reach the map below
+            L.DomEvent.disableClickPropagation(div);
+            L.DomEvent.disableScrollPropagation(div);
+        }
         return div;
     }
 
     function showLegend(result) {
-        if (!result.legend || result.legendControl) return;
+        if (result.legendControl || !(result.legend || Hydrograf.attribution.has(result.lines))) return;
         result.legendControl = L.control({ position: 'bottomleft' });
-        result.legendControl.onAdd = function () { return legendElement(result.legend); };
+        result.legendControl.onAdd = function () { return legendElement(result); };
         result.legendControl.addTo(Hydrograf.map._getMap());
     }
 
@@ -170,11 +201,20 @@
         return _results.some(function (r) { return r.waterLevel; });
     }
 
+    /** The provider lines of the results whose layer is on the map, each once (attribution.js). */
+    function shownLines() {
+        var map = Hydrograf.map._getMap();
+        return Hydrograf.attribution.merge(_results
+            .filter(function (r) { return map.hasLayer(r.layer); })
+            .map(function (r) { return r.lines; }));
+    }
+
     window.Hydrograf.results = {
         load: load,
         showLegend: showLegend,
         hideLegend: hideLegend,
         shownWaterLevels: shownWaterLevels,
         hasWaterLevels: hasWaterLevels,
+        shownLines: shownLines,
     };
 })();

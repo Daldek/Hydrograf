@@ -379,14 +379,17 @@
 
     /**
      * Row of an analysis result (results.js): tile layer with the manifest's
-     * opacity and extent, legend while on, description and source in an (i).
+     * opacity and extent, legend with the provider lines while on, description,
+     * source and provider lines in an (i).
      * Turning on or off a result with a water level redraws an open terrain
-     * profile with or without its water surface.
+     * profile with or without its water surface, and one with provider lines
+     * with or without them (the open drawer hides the legends).
      */
     function addResultEntry(list, result) {
         function getLayer() { return result.layer; }
         function refreshProfile() {
-            if (result.waterLevel && window.Hydrograf.profile) Hydrograf.profile.refresh();
+            var drawn = result.waterLevel || Hydrograf.attribution.has(result.lines);
+            if (drawn && window.Hydrograf.profile) Hydrograf.profile.refresh();
         }
         var entry = addAsyncOverlayEntry(
             list,

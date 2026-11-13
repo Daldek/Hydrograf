@@ -4,9 +4,10 @@
  * A small round (i) button after a label opens one shared panel with the
  * structured text from Hydrograf.infoTexts: title and symbol, definition,
  * formulas, the "gdzie:" list of variables, unit, "Znaczenie dla analizy",
- * applicability, note and the literature line "Źródła:". Formulas are
- * typeset as MathML built with DOM calls from the notation described in
- * info-texts.js (never from HTML).
+ * applicability, note, the literature line "Źródła:" and the provider lines
+ * of an analysis result (`attribution`, `terms_notice`: as they are, by
+ * attribution.js). Formulas are typeset as MathML built with DOM calls from
+ * the notation described in info-texts.js (never from HTML).
  *
  * The panel opens only on a click or tap of the (i), or Enter or Space on it
  * (never on hover or focus); the same (i) again, Esc, a click or tap outside
@@ -384,6 +385,9 @@
             caption('Źródła:', sources, true);
             richText(sources, ' ' + entry.sources.replace(/(\w)-(?=\w)/g, '$1-\u2060'));
         }
+        // The provider lines byte for byte: no typesetting
+        var lines = Hydrograf.attribution.element(entry, 'info-tip-lines');
+        if (lines) parent.appendChild(lines);
     }
 
     function render(btn) {

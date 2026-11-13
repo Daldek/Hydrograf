@@ -13,6 +13,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from api.main import app
+from core.attribution import PMAXTP
 from core.config import Settings
 
 NODATA = -9999.0
@@ -331,6 +332,8 @@ class TestTerrainProfileWaterLevels:
                                 "crs": "EPSG:2180",
                                 "unit": "m n.p.m.",
                             },
+                            "attribution": list(PMAXTP.attribution),
+                            "terms_notice": list(PMAXTP.terms_notice),
                         }
                     ],
                 }
@@ -369,6 +372,19 @@ class TestTerrainProfileWaterLevels:
         assert data["water_levels"] == [
             {"result_id": "sfincs", "levels_m": [101.5, None, 102.0, None]}
         ]
+
+    def test_lines_of_the_results_whose_water_the_profile_shows(self, client, settings):
+        data = self._post(client, settings, result_ids=["sfincs", "unknown"]).json()
+
+        assert (data["attribution"], data["terms_notice"]) == (
+            list(PMAXTP.attribution),
+            list(PMAXTP.terms_notice),
+        )
+
+    def test_no_lines_without_water_levels(self, client, settings):
+        data = self._post(client, settings).json()
+
+        assert (data["attribution"], data["terms_notice"]) == ([], [])
 
     def test_samples_without_dem_data_are_gaps_and_0_m_is_not(self, client, settings):
         """A nodata sample is a gap; an elevation of 0 m is not."""

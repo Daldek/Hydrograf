@@ -20,7 +20,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the option „Sieć zlewni” of „Wybierz zlewnię” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended on 2026-11-11 by the plan `2026-11-11-network-nodes`: every point is a node, `J` at a confluence it is drawn to within 50 m up or down, `P` elsewhere, numbered from the closing section up, the outlet `O`; ADR-081); the plans `2026-11-10-network-delineation`, `2026-11-11-network-preview` and `2026-11-11-network-nodes` are done. Merged into `develop` with `feat/network-nodes` on 2026-11-11; networks above 60 M cells stay refused. Open methodology: Next 10. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
-| Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
+| Provider attribution | done on `fix/provider-attribution`, not merged | The author's order of 2026-11-13, step 4 of Nogat's plan `2026-11-13-provider-attribution` (DEV §20, ECO-060; ADR-083, plan `2026-11-13-provider-attribution`): the lines the PMAXTP terms require (PS, PP, M; N, RK) from `core/attribution.py` in the hydrograph response and its hand-off, the panel, the exports, an own series copied from PMAXTP, the results manifest's layer, point card and profile, `analyze_watershed` and the guide and slides. Next 13. |
+| Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
@@ -163,7 +164,14 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     menu is drawn. With the kit a copy on a plain-HTTP address no longer tries
     `document.execCommand('copy')`: the text is selected for Ctrl+C (Nogat D6); a one-click copy
     there would be a change of the kit in Nogat.
-13. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
+13. **Provider attribution, to deploy** (ADR-083, plan `2026-11-13-provider-attribution`): the
+    branch `fix/provider-attribution` waits for the author's merge. Production then follows
+    `develop` (the mounted code and `--reload`, no image build, no new dependency) and its
+    `frontend/data/results/index.json` needs `attribution` and `terms_notice` with the PMAXTP
+    lines in the SFINCS entry (the command printing them is in the plan's Deployment), or the
+    layer, the point card and the profile show none; Hydroni needs an image build. The GeoTIFFs
+    of the SFINCS result (`max_depth.tif`, `wse_max.tif`) carry no lines: Hydraulik's publication.
+14. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
     endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
@@ -189,3 +197,6 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 9. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
 10. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf
     store (ADR-061).
+11. Who writes the providers' lines of a result in `frontend/data/results/index.json`: the
+    publication script of a Hydraulik run, which makes its rasters, or the person who publishes
+    it (ADR-083)? Production's SFINCS entry needs them by hand until then.

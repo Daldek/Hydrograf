@@ -32,6 +32,7 @@ from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from api.errors import problem_responses
+from core.attribution import NO_PROVIDER, PMAXTP, ProviderLines
 from core.catchment_graph import loaded_catchment_graph
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
@@ -844,16 +845,20 @@ def generate_hydrograph(
 
         # ===== Precipitation: own series or PMAXTP design storm =====
         depth: DesignDepth | None = None
+        lines: ProviderLines
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
             handoff_rainfall = rainfall_series(custom.depths_mm, timestep_min)
             rainfall_origin = given_origin()
+            # A copy of a PMAXTP hyetogram still carries PMAXTP's lines (ADR-083)
+            lines = PMAXTP if custom.derived_from == "pmaxtp" else NO_PROVIDER
             logger.debug(
                 f"Custom precipitation: {precip_result.total_mm:.1f} mm "
                 f"in {duration_min:.0f} min"
             )
         else:
+            lines = PMAXTP
             # PMAXTP depth: the watershed mean, or at the point without the grid
             depth = _design_depth(
                 request, point_2180, pmaxtp_cells, duration_str, design_probability, db
@@ -1006,6 +1011,7 @@ def generate_hydrograph(
                     hydro_result.time_to_peak_min,
                     hydro_result.total_volume_m3,
                 ),
+                lines=lines,
             ),
         )
 
@@ -1067,6 +1073,8 @@ def generate_hydrograph(
                 nash_duration_h=nash_meta.get("duration_h"),
             ),
             handoff=handoff,
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
         logger.info(

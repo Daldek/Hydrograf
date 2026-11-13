@@ -104,7 +104,8 @@
      * @param {Object} lineGeojson - GeoJSON LineString geometry
      * @param {number} nSamples - Number of sample points
      * @param {Array<string>} [resultIds] - Analysis results whose water level is sampled too
-     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m, water_levels }
+     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m, water_levels,
+     *     attribution, terms_notice }
      */
     async function getTerrainProfile(lineGeojson, nSamples, resultIds) {
         var ids = resultIds || [];
@@ -128,8 +129,8 @@
 
     /**
      * Generate hydrograph for given parameters.
-     * With opts.custom_precipitation ({ timestep_min, depths_mm }) the PMAXTP
-     * design storm is replaced and duration/probability may be null. With
+     * With opts.custom_precipitation ({ timestep_min, depths_mm, derived_from? })
+     * the PMAXTP design storm is replaced and duration/probability may be null. With
      * opts.morphometry, opts.pmaxtp_grid (the delineation's) makes the PMAXTP
      * depth the watershed mean instead of the value at the point.
      */
@@ -313,7 +314,7 @@
      * @param {number} threshold - Flow accumulation threshold of the flow lines [m2]
      * @param {Array<string>} resultIds - Analysis results on the map whose water is read
      * @returns {Promise<Object>} { coordinates, elevation_m, slope_percent, water, stream,
-     *     water_body, land_cover, soil_hsg, depression, subcatchment }
+     *     water_body, land_cover, soil_hsg, depression, subcatchment, attribution, terms_notice }
      */
     async function identifyPoint(lat, lng, threshold, resultIds) {
         var ids = resultIds || [];

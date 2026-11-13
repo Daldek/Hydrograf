@@ -196,6 +196,13 @@ Wewnętrznie korzysta z danych opadowych:
 - `duration` — czas trwania opadu (np. `1h`, `24h`)
 - `probability` — prawdopodobieństwo [%] (np. `1`, `10`, `50`)
 
+**The terms of PMAXTP** (https://klimat.imgw.pl/opady-maksymalne; Nogat DEV-20.2, DEV-20.7,
+ADR-083): every product with the data, all of them processed here, carries the source with
+the address of the PMAXTP page, the note that the data were processed and the monograph of
+the project, then the notice that free use is private use only and the address of the
+terms. The response has them in `attribution` and `terms_notice`, from
+`backend/core/attribution.py`.
+
 ### 7.2 `GET /api/scenarios`
 
 Zwraca dostępne kombinacje parametrów:

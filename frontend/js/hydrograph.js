@@ -6,6 +6,8 @@
  * The number fields are checked against the limits of the API before a
  * request; an invalid field (or a server error at it) shows its message under
  * it, and the result of an earlier calculation is hidden until it is fixed.
+ * The lines of the rainfall's provider that a result carries (PMAXTP) are shown
+ * under its hietogram and under its hydrograph (attribution.js).
  */
 (function () {
     'use strict';
@@ -156,11 +158,18 @@
             '. Do tego czasu hietogram i hydrogram nie s\u0105 przeliczane.';
     }
 
+    /** The provider lines of a result under its hietogram and its hydrograph; null clears them. */
+    function showProviderLines(result) {
+        Hydrograf.attribution.render(document.getElementById('hietogram-attribution'), result);
+        Hydrograf.attribution.render(document.getElementById('hydrograph-attribution'), result);
+    }
+
     /** Hide the result of an earlier calculation: it no longer matches the form. */
     function hideResults() {
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        showProviderLines(null);
         if (Hydrograf.rainExport) Hydrograf.rainExport.clear();
         // The hand-off to Hydrolog keeps the watershed without the hidden result
         if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(Hydrograf.app.getCurrentWatershed(), null);
@@ -326,7 +335,7 @@
 
             // Hietogram and hydrograph: filled line charts, each on its own time range
             var precip = result.precipitation;
-            if (Hydrograf.customRain) Hydrograf.customRain.noteResult(data, precip);
+            if (Hydrograf.customRain) Hydrograf.customRain.noteResult(data, result);
             Hydrograf.charts.renderHietogramChart(
                 'chart-hietogram', precip.times_min,
                 precip.intensities_mm, precip.effective_mm || [],
@@ -359,6 +368,7 @@
             });
 
             displayPrecipBalance(result.water_balance, result.metadata, precip);
+            showProviderLines(result);
             if (Hydrograf.rainExport) {
                 Hydrograf.rainExport.show(result, {
                     duration: duration,

@@ -895,6 +895,9 @@ class CustomPrecipitation(BaseModel):
         Length of every interval of the series [min], > 0
     depths_mm : list[float]
         Rainfall depth in each interval [mm], >= 0, 1-2000 values
+    derived_from : str, optional
+        ``"pmaxtp"`` when the series started as a copy of a PMAXTP hyetogram, so the
+        products made with it carry PMAXTP's attribution (Nogat DEV-20.2)
     """
 
     timestep_min: float = Field(
@@ -904,6 +907,13 @@ class CustomPrecipitation(BaseModel):
         ...,
         description="Rainfall depth per interval [mm]",
         examples=[[0.5, 2.0, 6.5, 3.0, 1.0]],
+    )
+    derived_from: Literal["pmaxtp"] | None = Field(
+        None,
+        description="`pmaxtp` when the series started as a copy of a PMAXTP "
+        "hyetogram of this server (the interface's „Wczytaj z bieżącego "
+        "hietogramu”), edited or not: the response and its hand-off then carry "
+        "PMAXTP's `attribution` and `terms_notice`; null for the user's own data",
     )
 
     @field_validator("timestep_min")
@@ -1312,6 +1322,10 @@ class HydrographResponse(BaseModel):
         Calculation metadata
     handoff : dict
         The watershed, its rainfall, runoff and result as a hand-off to Hydrolog
+    attribution : list[str]
+        The lines the terms of the rainfall's provider require (Nogat DEV §20)
+    terms_notice : list[str]
+        The notice of the IMGW-PIB terms of use and the address of the terms
     """
 
     watershed: WatershedResponse | None = Field(
@@ -1327,7 +1341,25 @@ class HydrographResponse(BaseModel):
             "The watershed with the rainfall, runoff and unrounded result of this "
             "computation as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
             "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1 "
-            "(ADR-068)"
+            "(ADR-068), with `attribution` and `terms_notice` as this response"
+        ),
+    )
+    attribution: list[str] = Field(
+        ...,
+        description=(
+            "The lines the terms of the rainfall's provider require on every product "
+            "made with this result, verbatim, to show with it and to carry on (Nogat "
+            "DEV §20, ADR-083): for a PMAXTP rainfall, and an own series derived from "
+            "one, the source with the address of the PMAXTP page, the note that the "
+            "data were processed and the monograph of the project; empty for an own "
+            "series of the user's data"
+        ),
+    )
+    terms_notice: list[str] = Field(
+        ...,
+        description=(
+            "The notice of the IMGW-PIB terms of use and the address of the PMAXTP "
+            "terms (Nogat DEV-20.7), shown right after `attribution`; empty with it"
         ),
     )
 
@@ -1380,6 +1412,18 @@ class TerrainProfileResponse(BaseModel):
     water_levels: list[ProfileWaterLevel] = Field(
         default_factory=list,
         description="Requested results whose water level raster the line crosses",
+    )
+    attribution: list[str] = Field(
+        ...,
+        description=(
+            "The attribution lines of the results of `water_levels`, as their "
+            "manifest entries give them (Nogat DEV §20, ADR-083), each once; empty "
+            "without water levels or lines"
+        ),
+    )
+    terms_notice: list[str] = Field(
+        ...,
+        description="The terms-of-use lines of the same results, after `attribution`",
     )
 
 
@@ -1592,6 +1636,18 @@ class IdentifyPointResponse(BaseModel):
     )
     subcatchment: PointSubcatchment | None = Field(
         None, description="Sub-catchment of the precomputed network at the point"
+    )
+    attribution: list[str] = Field(
+        ...,
+        description=(
+            "The attribution lines of the results of `water`, as their manifest "
+            "entries give them (Nogat DEV §20, ADR-083), each once; empty without "
+            "water of a result or lines"
+        ),
+    )
+    terms_notice: list[str] = Field(
+        ...,
+        description="The terms-of-use lines of the same results, after `attribution`",
     )
 
 

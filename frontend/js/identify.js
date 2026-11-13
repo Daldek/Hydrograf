@@ -9,9 +9,10 @@
  * with its CN for AMC I, II and III, soil group, terrain depression and the
  * sub-catchment of the flow lines with the main channel at its end and the
  * distance to the outlet of the network. The answer fills the card
- * #identify-card over the map (a sheet at the bottom of the map on phones).
- * Turning a result or the flow lines threshold on or off reads the open point
- * again.
+ * #identify-card over the map (a sheet at the bottom of the map on phones);
+ * the provider lines of the results whose water it reads (attribution.js) end
+ * the section "Woda". Turning a result or the flow lines threshold on or off
+ * reads the open point again.
  */
 (function () {
     'use strict';
@@ -283,9 +284,13 @@
         els.body.innerHTML = '';
         els.body.appendChild(section('Położenie', [coordinates(data.coordinates), table(terrainRows(data))],
             'NMT (GUGiK), spadek z NMT — Hydrograf'));
-        els.body.appendChild(section('Woda', waterContent(data, shown),
+        var water = section('Woda', waterContent(data, shown),
             (shown.length ? 'wyniki analiz włączone w panelu „Warstwy”; ' : '') +
-            'cieki i wody powierzchniowe — BDOT10k (GUGiK)'));
+            'cieki i wody powierzchniowe — BDOT10k (GUGiK)');
+        // The lines of the data's providers that the water of the results carries
+        var lines = Hydrograf.attribution.element(data, 'identify-lines');
+        if (lines) water.appendChild(lines);
+        els.body.appendChild(water);
         els.body.appendChild(section('Teren i gleba', [table(landRows(data))],
             'pokrycie terenu — BDOT10k (GUGiK), CN — tablice TR-55 (Hydrolog) dla klasy pokrycia i grupy glebowej punktu (B, gdy jej brak), przeliczenie AMC — Hydrolog; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
         els.body.appendChild(section('Sieć spływu', [table(networkRows(data.subcatchment))],

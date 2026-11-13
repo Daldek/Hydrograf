@@ -23,6 +23,7 @@ from jsonschema import Draft202012Validator
 
 from api.endpoints.watershed import _watershed_handoff
 from api.main import app
+from core.attribution import NO_PROVIDER, PMAXTP
 from core.database import get_db
 from core.precipitation import DesignDepth
 from models.schemas import MorphometricParameters, OutletInfo, WatershedResponse
@@ -337,6 +338,49 @@ class TestWatershedOrigin:
         assert response.status_code == 400
         (error,) = response.json()["errors"]
         assert error["pointer"] == "/body/morphometry_origin/changed"
+
+
+class TestProviderLines:
+    @pytest.mark.parametrize(
+        ("options", "lines"),
+        [
+            ({}, PMAXTP),
+            (
+                {"custom_precipitation": {"timestep_min": 10, "depths_mm": [5.0, 2.0]}},
+                NO_PROVIDER,
+            ),
+            (
+                {
+                    "custom_precipitation": {
+                        "timestep_min": 10,
+                        "depths_mm": [5.0, 2.0],
+                        "derived_from": "pmaxtp",
+                    }
+                },
+                PMAXTP,
+            ),
+        ],
+        ids=["pmaxtp", "own-series", "own-series-copied-from-pmaxtp"],
+    )
+    def test_response_and_handoff_carry_the_lines_of_the_rainfall(
+        self, client, options, lines
+    ):
+        response = _post(client, **options)
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert (data["attribution"], data["terms_notice"]) == (
+            list(lines.attribution),
+            list(lines.terms_notice),
+        )
+        # The hand-off has the lines of the response; an envelope without any has no
+        # field, as the copy of Nogat's schema wants at least one line
+        doc = data["handoff"]
+        assert (doc.get("attribution", []), doc.get("terms_notice", [])) == (
+            list(lines.attribution),
+            list(lines.terms_notice),
+        )
+        assert _schema_problems(doc) == []
 
 
 class TestDelineatedWatershedHandoff:

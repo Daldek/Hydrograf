@@ -251,13 +251,14 @@ and with 2 when the command line is invalid.
 | GUGiK | DEM (NMT), BDOT10k land cover and hydrography | free reuse with attribution (Prawo geodezyjne i kartograficzne) |
 | Copernicus CLMS | CORINE Land Cover | Copernicus data policy, attribution required |
 | ISRIC SoilGrids | soil texture, input of the HSG groups | CC BY 4.0 |
-| IMGW-PIB | PMAXTP maximum precipitation | attribution to IMGW-PIB and the PMAXTP project; terms on the IMGW pages |
+| IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project; free use for private, non-commercial purposes only. Every response, view, export and hand-off with PMAXTP data carries these lines (`attribution`, `terms_notice`; `backend/core/attribution.py`, ADR-083) |
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
 | OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
 
 The data are downloaded by Kartograf and Obserwator, whose documentation has the details and
 the attribution texts. Downloaded and derived data are written to `data/` and `cache/`
-(outside Git) and to the database; pass on the attribution when you publish results.
+(outside Git) and to the database; pass on the attribution when you publish results: for
+PMAXTP the lines of `attribution` and `terms_notice` that Hydrograf gives with them.
 
 ## Documentation
 

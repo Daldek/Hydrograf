@@ -1,5 +1,5 @@
 """
-Water levels of analysis results along a terrain profile.
+Water levels of analysis results along a terrain profile, and their providers' lines.
 
 The analysis results manifest ``<frontend_data_dir>/results/index.json``
 (schema ``hydrograf-results/1``, also read by frontend/js/results.js) may give
@@ -11,16 +11,27 @@ a result a maximum water level raster::
 ``path`` is the address the browser sees (nginx serves ``/data/`` from
 ``frontend/data``). Here it maps to a file under ``<frontend_data_dir>``, which
 must stay inside ``<frontend_data_dir>/results``; anything else is skipped.
+
+A result made with a provider's data, as the SFINCS depths of a PMAXTP rainfall,
+carries the lines its producer wrote for it (Nogat DEV §20, ADR-083)::
+
+    "attribution": ["Źródłem pochodzenia danych jest …", …],
+    "terms_notice": ["Dane IMGW-PIB można wykorzystywać …", …]
+
+and a response with its water carries them on (:func:`provider_lines`).
 """
 
 import json
 import logging
 import math
 from pathlib import Path
+from typing import Any
 
 import rasterio
 from rasterio.errors import RasterioError
 from rasterio.warp import transform
+
+from core.attribution import NO_PROVIDER, ProviderLines, merge
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +40,32 @@ URL_PREFIX = "/data/"
 PROFILE_CRS = "EPSG:2180"
 
 
+def _manifest_entries(frontend_data_dir: str) -> dict[str, dict[str, Any]]:
+    """Return the entries of the results manifest by id; none when it is unusable."""
+    results_dir = Path(frontend_data_dir).resolve() / "results"
+    try:
+        manifest = json.loads((results_dir / "index.json").read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        logger.warning("Analysis results manifest not readable: %s", e)
+        return {}
+    if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
+        logger.warning("Analysis results manifest has an unsupported schema")
+        return {}
+    results = manifest.get("results")
+    return {
+        r["id"]: r
+        for r in (results if isinstance(results, list) else [])
+        if isinstance(r, dict) and isinstance(r.get("id"), str)
+    }
+
+
 def _water_level_rasters(
     frontend_data_dir: str, result_ids: list[str]
 ) -> list[tuple[str, Path]]:
     """Water level rasters of the requested results, in the order asked for."""
     data_dir = Path(frontend_data_dir).resolve()
     results_dir = (data_dir / "results").resolve()
-    try:
-        manifest = json.loads((results_dir / "index.json").read_text("utf-8"))
-    except (OSError, ValueError) as e:
-        logger.warning("Analysis results manifest not readable: %s", e)
-        return []
-    if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
-        logger.warning("Analysis results manifest has an unsupported schema")
-        return []
-    results = manifest.get("results")
-    entries = {
-        r["id"]: r
-        for r in (results if isinstance(results, list) else [])
-        if isinstance(r, dict) and isinstance(r.get("id"), str)
-    }
+    entries = _manifest_entries(frontend_data_dir)
 
     rasters = []
     for result_id in dict.fromkeys(result_ids):
@@ -67,6 +84,48 @@ def _water_level_rasters(
             continue
         rasters.append((result_id, path))
     return rasters
+
+
+def _lines(entry: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Return the lines of a manifest entry under ``key``; none unless texts."""
+    value = entry.get(key)
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(
+        isinstance(line, str) and line for line in value
+    ):
+        logger.warning("Result %s: %s is not a list of texts", entry["id"], key)
+        return ()
+    return tuple(value)
+
+
+def provider_lines(frontend_data_dir: str, result_ids: list[str]) -> ProviderLines:
+    """Return the providers' lines of analysis results, as their manifest gives them.
+
+    Parameters
+    ----------
+    frontend_data_dir : str
+        Directory served under ``/data/`` (holds ``results/index.json``)
+    result_ids : list[str]
+        Ids of the manifest results whose data a response carries
+
+    Returns
+    -------
+    ProviderLines
+        Their ``attribution`` and ``terms_notice`` lines, each once in the order of
+        the results; none for unknown ids and entries without lines
+    """
+    if not result_ids:
+        return NO_PROVIDER
+    entries = _manifest_entries(frontend_data_dir)
+    return merge(
+        ProviderLines(
+            _lines(entries[result_id], "attribution"),
+            _lines(entries[result_id], "terms_notice"),
+        )
+        for result_id in dict.fromkeys(result_ids)
+        if result_id in entries
+    )
 
 
 def _sample(path: Path, points: list[tuple[float, float]]) -> list[float | None] | None:

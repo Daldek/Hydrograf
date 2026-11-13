@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=8bb318a9a6">
-    <link rel="stylesheet" href="css/app.css?v=16d93d161c">
+    <link rel="stylesheet" href="css/app.css?v=b4a59a5b1e">
 </head>
 <body>
 <div class="shell">
@@ -155,6 +155,7 @@
                                 <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
                             </div>
                         </div>
+                        <div id="profile-attribution" class="provider-lines" hidden></div>
                     </section>
 
                     <!-- Point card (identify mode, js/identify.js) -->
@@ -380,6 +381,7 @@
                                                 </table>
                                             </div>
                                             <p id="custom-rain-sum" class="custom-rain-sum num"></p>
+                                            <div id="custom-rain-attribution" class="provider-lines" hidden></div>
                                             <p id="custom-rain-msg" class="notice d-none" role="status">
                                                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
                                                 <span id="custom-rain-msg-text"></span>
@@ -423,6 +425,7 @@
                                                 Punkty PMAXTP (GeoJSON)
                                             </button>
                                         </div>
+                                        <div id="hietogram-attribution" class="provider-lines" hidden></div>
                                     </div>
                                 </div>
                             </details>
@@ -512,6 +515,7 @@
                                             <div class="chart-title">Hydrogram odpływu</div>
                                             <div class="chart-container chart-md"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
                                         </div>
+                                        <div id="hydrograph-attribution" class="provider-lines" hidden></div>
                                     </div>
                                     <div id="hydrograph-info"></div>
                                 </div>
@@ -634,26 +638,27 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=83b893658e"></script>
+<script defer src="js/api.js?v=eadd8a22ff"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=71de73a7b9"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
-<script defer src="js/layers.js?v=e7ffddf7e5"></script>
-<script defer src="js/profile.js?v=adf70f4108"></script>
+<script defer src="js/attribution.js?v=b7900eaad6"></script>
+<script defer src="js/layers.js?v=63f6b6b2a7"></script>
+<script defer src="js/profile.js?v=b1aab93c09"></script>
 <script defer src="js/info-texts.js?v=5733dc44eb"></script>
-<script defer src="js/info.js?v=778110a063"></script>
-<script defer src="js/hydrograph.js?v=fe04bea933"></script>
-<script defer src="js/rain-export.js?v=83c1ad12e6"></script>
+<script defer src="js/info.js?v=dd4d3f83e0"></script>
+<script defer src="js/hydrograph.js?v=0fcf62b091"></script>
+<script defer src="js/rain-export.js?v=4657f2a52f"></script>
 <script defer src="js/advanced.js?v=48268e8668"></script>
-<script defer src="js/custom-rain.js?v=e0026dfb92"></script>
+<script defer src="js/custom-rain.js?v=8ba99db5f8"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
-<script defer src="js/results.js?v=73398284b4"></script>
+<script defer src="js/results.js?v=482914dc96"></script>
 <script defer src="js/feedback.js?v=8ce70a740a"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=54f8061114"></script>
-<script defer src="js/identify.js?v=b89f4b64cf"></script>
+<script defer src="js/identify.js?v=a6c0e7ebfe"></script>
 <script type="module" src="js/nogat.js?v=1a75bf5331"></script>
 <script defer src="js/handoff.js?v=53ec91cd4b"></script>
 <script defer src="js/network.js?v=dda978abcf"></script>
