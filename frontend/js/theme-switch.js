@@ -1,5 +1,5 @@
 /**
- * Hydrograf theme switch for the secondary pages (admin, instrukcja).
+ * Hydrograf theme switch for the guide (instrukcja), the secondary page.
  *
  * Binds the top bar buttons #theme-auto / #theme-light / #theme-dark: the choice
  * is stored under the same key theme-init.js reads, so it applies before first

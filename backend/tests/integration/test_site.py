@@ -59,7 +59,9 @@ def terms(monkeypatch):
     return serve
 
 
-@pytest.mark.parametrize("page", ["index.html", "admin.html", "instrukcja/index.html"])
+@pytest.mark.parametrize(
+    "page", ["index.html", "admin/index.html", "instrukcja/index.html"]
+)
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
 def test_nginx_sends_the_file_of_a_page(client, page, method):
     response = client.request(method, f"/{page}")
@@ -69,8 +71,9 @@ def test_nginx_sends_the_file_of_a_page(client, page, method):
     assert response.content == b""
 
 
-def test_an_unknown_page_is_not_found(client):
-    assert client.get("/other.html").status_code == 404
+@pytest.mark.parametrize("page", ["/other.html", "/admin.html"])
+def test_an_unknown_page_is_not_found(client, page):
+    assert client.get(page).status_code == 404
 
 
 def test_regulamin_of_a_public_deployment(client, terms):

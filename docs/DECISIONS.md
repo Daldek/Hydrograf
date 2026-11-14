@@ -44,7 +44,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-031](#adr-031-flaga---waterbody-mode-do-sterowania-obsługa-zbiornikow-wodnych) | The --waterbody-mode flag for handling water bodies | accepted | 2026-02-24 |
 | [ADR-032](#adr-032-wygladzanie-granic-zlewni-chaikin-smoothing) | Smoothing of catchment boundaries (Chaikin) | accepted | 2026-03-01 |
 | [ADR-033](#adr-033-podniesienie-budynkow-w-nmt-building-raising) | Raising buildings in the DEM | accepted | 2026-03-01 |
-| [ADR-034](#adr-034-panel-administracyjno-diagnostyczny) | Administration and diagnostics panel | accepted | 2026-03-01 |
+| [ADR-034](#adr-034-panel-administracyjno-diagnostyczny) | Administration and diagnostics panel | amended by ADR-086 | 2026-03-01 |
 | [ADR-035](#adr-035-uzupelnienie-konteneryzacji-multi-stage-entrypoint-prod-override) | Completing the containerisation (multi-stage build, entrypoint, production override) | accepted | 2026-03-02 |
 | [ADR-036](#adr-036-hardening-kontenerow-docker) | Docker container hardening | accepted | 2026-03-02 |
 | [ADR-037](#adr-037-separacja-cachedata--kartograf-v050) | Separating cache from data; Kartograf v0.5.0 | accepted | 2026-03-02 |
@@ -91,6 +91,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted, amended 2026-11-13 (one strip on screen; the terms linked, not restated); extended by ADR-085 | 2026-11-13 |
 | [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0); its logs and blocks replaced by ADR-085 | 2026-11-13 |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted | 2026-11-13 |
+| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted | 2026-11-14 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

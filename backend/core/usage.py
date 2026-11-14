@@ -7,7 +7,9 @@ salt and the hashes stay in this process's memory to count the day's distinct vi
 and are never written. Each UTC day is one JSON object per line of
 ``<data_dir>/hydrograf/stats.jsonl``, in date order, with the keys of ``TOTALS`` after
 ``date``; ``api.traffic`` rewrites the day's line every 10 minutes, at 00:00 UTC and at
-shutdown. What each total counts is in the README ("Statistics").
+shutdown, and ``GET /api/admin/stats`` reads the days of a period. What each total
+counts is in the README ("Statistics"); the requests of the admin panel count in none
+(Nogat DEV-15.13).
 """
 
 import datetime
@@ -123,6 +125,40 @@ class StatsFile:
             if known >= day - datetime.timedelta(days=1)
         }
         self._replace(lines)
+
+    def days(
+        self,
+        first: datetime.date,
+        last: datetime.date,
+        today: datetime.date,
+        totals: Mapping[str, int],
+    ) -> list[dict[str, Any]]:
+        """Return the days of the file from ``first`` to ``last``, in date order.
+
+        Each day is ``{"date": "YYYY-MM-DD", <the totals of TOTALS>}``. ``today``, when
+        in the period, is the day as counted so far: what earlier processes stored of
+        it plus this process's ``totals``, stored or not.
+
+        Raises
+        ------
+        OSError
+            When the file cannot be read.
+        """
+        lines = self._read()
+        found: dict[datetime.date, dict[str, int]] = {}
+        for date, line in lines.items():
+            try:
+                day = datetime.date.fromisoformat(date)
+            except ValueError:
+                continue
+            if first <= day <= last:
+                found[day] = _totals_of(line)
+        if first <= today <= last:
+            earlier = self._earlier.get(today)
+            if earlier is None:
+                earlier = _totals_of(lines.get(today.isoformat(), {}))
+            found[today] = {name: earlier[name] + totals[name] for name in TOTALS}
+        return [{"date": day.isoformat(), **found[day]} for day in sorted(found)]
 
     def _read(self) -> dict[str, dict[str, Any]]:
         """Return the lines of the file by date; none when it does not exist."""

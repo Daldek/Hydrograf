@@ -1,14 +1,18 @@
 """
-Admin panel API endpoints.
+The admin API of Hydrograf under /api/admin/ (Nogat DEV-15.13, ADR-086).
 
-Provides dashboard, resources, cleanup, and bootstrap management
-for the Hydrograf administration panel.
+The core routes of every GUI's panel, `status` and `stats` (the reports are in
+`feedback.py`), then the routes of Hydrograf's own sections of the panel: resources,
+cleanup, the DEM bootstrap, the boundary upload and the storm sewer. Every route needs
+the admin key (`api/dependencies/admin_auth.py`).
 """
 
 import asyncio
+import datetime
 import logging
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -17,10 +21,10 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 import psutil
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -28,7 +32,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import QueuePool
 
 from api.dependencies.admin_auth import verify_admin_key
+from api.traffic import Traffic
 from core.catchment_graph import get_catchment_graph, loaded_catchment_graph
+from core.config import get_settings
 from core.database import get_db, get_db_engine
 from core.errors import (
     ConflictError,
@@ -37,6 +43,7 @@ from core.errors import (
     InvalidRequestError,
     NotFoundError,
 )
+from core.usage import TOTALS, utc_today
 from core.version import get_version
 from scripts.clean import DB_TABLES, execute_clean
 from utils.kartograf_store import refuse_shared_store
@@ -57,8 +64,9 @@ CACHE_DIR = PROJECT_ROOT / "cache"
 ALLOWED_SEWER_EXTENSIONS = {".shp", ".gpkg", ".geojson", ".json", ".zip"}
 MAX_SEWER_UPLOAD_MB = 100
 
-# Module load time — for uptime calculation
-_start_time = time.time()
+# When this process started: the module is imported as the API starts
+_STARTED_AT = datetime.datetime.now(datetime.UTC)
+_STARTED = time.monotonic()
 
 # ---------------------------------------------------------------------------
 # Router (all endpoints require admin auth)
@@ -91,71 +99,208 @@ def _dir_size_mb(path: Path) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard
+# Status: GET /api/admin/status of Nogat DEV-15.13, the view „Stan” of the panel
 # ---------------------------------------------------------------------------
-# DB_TABLES imported from scripts.clean — single source of truth
+class DiskSpace(BaseModel):
+    """The file system of the data directory; null where it cannot be read."""
+
+    free_bytes: int | None = Field(description="Free space in bytes")
+    total_bytes: int | None = Field(description="Size in bytes")
 
 
-class DashboardResponse(BaseModel):
-    """Dashboard overview response."""
+class StatusCheck(BaseModel):
+    """One check of the status (README "Admin panel")."""
 
-    status: str = Field(description="healthy or unhealthy")
+    name: str = Field(description="database, catchment_graph or data_dir")
+    status: Literal["ok", "warning", "failed"] = Field(description="What it found")
+    detail: str = Field(description="What it found, in Polish")
+
+
+class StatusResponse(BaseModel):
+    """The server and its checks (Nogat DEV-15.13)."""
+
+    app: str = Field(description="Hydrograf")
     version: str = Field(description="Hydrograf version, from backend/pyproject.toml")
-    uptime_s: float = Field(description="Seconds since module loaded")
-    database: str = Field(description="connected or error message")
-    tables: dict[str, int] = Field(description="Row counts per table")
-    disk: dict[str, float] = Field(description="Disk usage in MB")
+    started_at: str = Field(description="Start of the process, ISO 8601 with offset")
+    uptime_s: int = Field(description="Seconds since the start")
+    data_dir: str = Field(description="The deployment's data_dir (HYDROGRAF_DATA_DIR)")
+    disk: DiskSpace
+    checks: list[StatusCheck]
 
 
-@router.get("/dashboard", response_model=DashboardResponse)
-def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
-    """Admin dashboard with system overview."""
-    # Database check
+@router.get("/status", response_model=StatusResponse)
+def server_status(db: Session = Depends(get_db)) -> StatusResponse:
+    """Return the server and its checks: the database, the catchment graph, data_dir."""
+    data_dir = Path(get_settings().hydrograf_data_dir)
+    return StatusResponse(
+        app="Hydrograf",
+        version=get_version(),
+        started_at=_STARTED_AT.isoformat(timespec="seconds"),
+        uptime_s=int(time.monotonic() - _STARTED),
+        data_dir=str(data_dir),
+        disk=_disk_space(data_dir),
+        checks=[
+            _database_check(db),
+            _catchment_graph_check(),
+            _data_dir_check(data_dir),
+        ],
+    )
+
+
+def _disk_space(path: Path) -> DiskSpace:
+    """Return the free and the total bytes of the file system that holds ``path``."""
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return DiskSpace(free_bytes=None, total_bytes=None)
+    return DiskSpace(free_bytes=usage.free, total_bytes=usage.total)
+
+
+def _database_check(db: Session) -> StatusCheck:
+    """Whether PostGIS answers a query."""
     try:
         db.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {e}"
+    except Exception as error:
+        cause = (str(error).splitlines() or [type(error).__name__])[0]
+        return StatusCheck(
+            name="database",
+            status="failed",
+            detail=f"Baza danych nie odpowiada: {cause}",
+        )
+    return StatusCheck(name="database", status="ok", detail="Baza danych odpowiada.")
 
-    # Table row counts
-    tables: dict[str, int] = {}
-    for table in DB_TABLES:
-        try:
-            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
-            tables[table] = result.scalar() or 0
-        except Exception:
-            tables[table] = 0
 
-    # Disk usage
-    frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
-    frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
-    nmt_data_mb = _dir_size_mb(DATA_NMT)
-    cache_mb = _dir_size_mb(CACHE_DIR)
-
-    status = "healthy" if db_status == "connected" else "unhealthy"
-
-    return DashboardResponse(
-        status=status,
-        version=get_version(),
-        uptime_s=round(time.time() - _start_time, 1),
-        database=db_status,
-        tables=tables,
-        disk={
-            "frontend_data_mb": frontend_data_mb,
-            "frontend_tiles_mb": frontend_tiles_mb,
-            "nmt_data_mb": nmt_data_mb,
-            "cache_mb": cache_mb,
-            "total_mb": round(
-                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
-                2,
+def _catchment_graph_check() -> StatusCheck:
+    """Whether the in-memory catchment graph of the delineation is loaded."""
+    graph = get_catchment_graph()
+    if not graph.loaded:
+        return StatusCheck(
+            name="catchment_graph",
+            status="warning",
+            detail=(
+                "Graf zlewni nie jest wczytany: baza danych nie ma sieci cieków albo "
+                "wczytanie się nie udało (log aplikacji). Wczyta go następne "
+                "wyznaczenie zlewni."
             ),
-        },
+        )
+    thresholds = ", ".join(_grouped(t) for t in graph.thresholds_m2())
+    return StatusCheck(
+        name="catchment_graph",
+        status="ok",
+        detail=(
+            f"Wczytany: {_grouped(graph._n)} zlewni cząstkowych, progi {thresholds} m²."
+        ),
+    )
+
+
+def _data_dir_check(data_dir: Path) -> StatusCheck:
+    """Whether the daily statistics can be written: ``<data_dir>/hydrograf``.
+
+    Before the first write that directory does not exist yet, and ``data_dir``,
+    where it is then made, is checked.
+    """
+    own = data_dir / "hydrograf"
+    folder = own if own.exists() else data_dir
+    if not folder.is_dir():
+        problem = f"Nie ma katalogu {folder}"
+    elif not os.access(folder, os.W_OK | os.X_OK):
+        problem = f"Katalog {folder} nie jest zapisywalny"
+    else:
+        return StatusCheck(
+            name="data_dir", status="ok", detail=f"Katalog {folder} jest zapisywalny."
+        )
+    return StatusCheck(
+        name="data_dir",
+        status="failed",
+        detail=f"{problem}: statystyki dzienne nie są zapisywane.",
+    )
+
+
+def _grouped(number: int) -> str:
+    """Return a whole number with its thousands apart, as Polish writes it: 41 515."""
+    return f"{number:,}".replace(",", "\u00a0")
+
+
+# ---------------------------------------------------------------------------
+# Statistics: GET /api/admin/stats of Nogat DEV-15.13, the view „Statystyki”
+# ---------------------------------------------------------------------------
+# Days of the period when the request gives no `from`, the last one included
+STATS_DAYS = 30
+
+
+class StatsDay(BaseModel):
+    """One UTC day of `stats.jsonl` (Nogat DEV-15.11; README "Public service")."""
+
+    date: datetime.date
+    visitors: int
+    page_views: int
+    stations_opened: int
+    analyses_run: int
+    downloads: int
+
+
+class StatsTotals(BaseModel):
+    """The sums of the days of the period: every total but the visitors."""
+
+    page_views: int
+    stations_opened: int
+    analyses_run: int
+    downloads: int
+
+
+class StatsResponse(BaseModel):
+    """The days of a period and their sums (Nogat DEV-15.13)."""
+
+    days: list[StatsDay] = Field(
+        description="The days of the file in the period, in date order; the current "
+        "day as counted so far"
+    )
+    totals: StatsTotals
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def daily_stats(
+    request: Request,
+    first: datetime.date | None = Query(
+        None, alias="from", description="First UTC day; default 29 days before `to`"
+    ),
+    last: datetime.date | None = Query(
+        None, alias="to", description="Last UTC day; default today"
+    ),
+) -> StatsResponse:
+    """Return the daily totals between two UTC days, both included, and their sums.
+
+    The lines of `<data_dir>/hydrograf/stats.jsonl` (Nogat DEV-15.11); the current day
+    is what earlier processes stored of it plus what this one has counted so far.
+    Runs in the event loop, like the middleware that counts, so it reads the totals
+    of this process between two of its requests.
+    """
+    last = last or utc_today()
+    first = first or last - datetime.timedelta(days=STATS_DAYS - 1)
+    if first > last:
+        raise InvalidRequestError(
+            "stats_period_reversed",
+            reason="stats_period_reversed",
+            first=first.isoformat(),
+            last=last.isoformat(),
+        )
+    traffic: Traffic = request.app.state.traffic
+    days = traffic.stats.days(first, last, traffic.usage.day, traffic.usage.totals())
+    totals = {
+        name: sum(day[name] for day in days) for name in TOTALS if name != "visitors"
+    }
+    return StatsResponse(
+        days=[StatsDay.model_validate(day) for day in days],
+        totals=StatsTotals.model_validate(totals),
     )
 
 
 # ---------------------------------------------------------------------------
-# Resources
+# Resources: the section „Zasoby” of the panel
 # ---------------------------------------------------------------------------
+# DB_TABLES imported from scripts.clean — single source of truth
+
+
 class ResourcesResponse(BaseModel):
     """System resource usage response."""
 
@@ -163,11 +308,13 @@ class ResourcesResponse(BaseModel):
     db_pool: dict[str, Any] = Field(description="Database connection pool stats")
     catchment_graph: dict[str, Any] = Field(description="Catchment graph status")
     db_size_mb: float = Field(description="Database size in MB")
+    tables: dict[str, int] = Field(description="Row counts per table")
+    disk: dict[str, float] = Field(description="Disk usage in MB")
 
 
 @router.get("/resources", response_model=ResourcesResponse)
 def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
-    """System resource usage."""
+    """System resource usage, the rows of the tables and the size of the data."""
     # Process info
     proc = psutil.Process(os.getpid())
     mem_info = proc.memory_info()
@@ -217,11 +364,39 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
     except Exception:
         db_size_mb = 0.0
 
+    # Table row counts; a failed count aborts the transaction, which is rolled back so
+    # that the next counts run
+    tables: dict[str, int] = {}
+    for table in DB_TABLES:
+        try:
+            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
+            tables[table] = result.scalar() or 0
+        except Exception:
+            db.rollback()
+            tables[table] = 0
+
+    # Disk usage
+    frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
+    frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
+    nmt_data_mb = _dir_size_mb(DATA_NMT)
+    cache_mb = _dir_size_mb(CACHE_DIR)
+
     return ResourcesResponse(
         process=process_info,
         db_pool=db_pool_info,
         catchment_graph=cg_info,
         db_size_mb=db_size_mb,
+        tables=tables,
+        disk={
+            "frontend_data_mb": frontend_data_mb,
+            "frontend_tiles_mb": frontend_tiles_mb,
+            "nmt_data_mb": nmt_data_mb,
+            "cache_mb": cache_mb,
+            "total_mb": round(
+                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
+                2,
+            ),
+        },
     )
 
 
@@ -240,7 +415,7 @@ class _CleanupTarget(TypedDict):
 # "all" runs every component except cache; "cache" is opt-in.
 _CLEANUP_COMPONENTS: dict[str, _CleanupTarget] = {
     "all": {
-        "label": "Wszystko (bez cache)",
+        "label": "Dane przetwarzania (bez pamięci podręcznej)",
         "components": [
             "rasters",
             "hydro",
@@ -252,7 +427,7 @@ _CLEANUP_COMPONENTS: dict[str, _CleanupTarget] = {
         ],
     },
     "cache": {
-        "label": "Download cache (NMT, BDOT10k)",
+        "label": "Pamięć podręczna pobrań (NMT, BDOT10k)",
         "components": ["cache"],
         "exclude_from_all": True,
     },
@@ -993,7 +1168,6 @@ def sewer_delete(db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     db.commit()
 
-    import shutil
     import stat as _stat
 
     if DATA_SEWER.exists():

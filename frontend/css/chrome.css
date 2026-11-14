@@ -1,5 +1,5 @@
 /*
- * Hydrograf shell chrome, shared by every page (map, admin, instrukcja):
+ * Hydrograf shell chrome, shared by the map and the guide (instrukcja):
  * shell grid, top bar, theme switch (segmented control) and navigation rail.
  * Page stylesheets load after it. Colours and sizes from tokens.css.
  */

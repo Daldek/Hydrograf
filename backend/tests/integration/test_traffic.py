@@ -156,6 +156,17 @@ class TestRequestLimit:
         assert state.usage.totals()["visitors"] == 0
         assert client.get("/api/gui", headers=THROUGH_TUNNEL).status_code == 200
 
+    def test_the_admin_panel_stays_under_the_limit(self, traffic, client):
+        traffic(limit=1)
+        page = client.get("/admin/index.html", headers=THROUGH_TUNNEL)
+
+        response = client.get("/api/admin/status", headers=THROUGH_TUNNEL)
+
+        assert page.status_code == 200
+        assert response.status_code == 429
+        assert response.json()["code"] == "rate_limited"
+        assert response.headers["cache-control"] == "no-store"
+
     def test_map_tiles_have_a_limit_of_their_own(self, traffic):
         state = traffic(limit=1)
         tile = "/api/tiles/streams/12/2240/1370.pbf"
@@ -220,6 +231,15 @@ class TestTotals:
             "analyses_run": 0,
             "downloads": 1,
         }
+
+    def test_the_admin_panel_counts_in_no_total(self, traffic, client):
+        state = traffic(limit=10)
+
+        page = client.get("/admin/index.html", headers=THROUGH_TUNNEL)
+        refused = client.get("/api/admin/stats", headers=THROUGH_TUNNEL)
+
+        assert (page.status_code, refused.status_code) == (200, 401)
+        assert set(state.usage.totals().values()) == {0}
 
     def test_an_analysis_counts_when_it_succeeds(self, traffic):
         state = traffic()
