@@ -179,25 +179,26 @@ class TestRequestLimit:
         assert state.check("GET", "/api/gui", CLIENT, 1.0) is None
 
 
-def test_no_log_holds_the_client_address(traffic, client, caplog):
+def test_no_log_holds_the_client_address(traffic, client, log_records, caplog):
     traffic(limit=3)
 
     with caplog.at_level(logging.DEBUG):
         for path in ("/api/gui", "/index.html", "/api/no-such-route", "/api/gui"):
             client.get(path, headers={**THROUGH_TUNNEL, "User-Agent": "Firefox/1"})
 
-    requests = [r for r in caplog.records if r.name == "api.requests"]
-    assert [json.loads(r.getMessage())["status_code"] for r in requests] == [
+    records = log_records()
+    # The refusal of the limit is logged too: the access log is outermost
+    assert [r["status"] for r in records if r["kind"] == "access"] == [
         200,
         200,
         404,
         429,
     ]
-    for record in requests:
-        assert "client" not in json.loads(record.getMessage())
-    for record in caplog.records:
-        assert CLIENT not in record.getMessage()
-        assert "172.18.0" not in record.getMessage()
+    for text in [json.dumps(r) for r in records] + [
+        r.getMessage() for r in caplog.records
+    ]:
+        assert CLIENT not in text
+        assert "172.18.0" not in text
 
 
 class TestTotals:

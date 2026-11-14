@@ -66,7 +66,8 @@
                     attribution: 'Zagłębienia (blue spots)',
                 });
 
-                // Add to layers panel — "Warstwy podkładowe" group
+                // Add to layers panel — "Warstwy podkładowe" group; the depressions
+                // of the NMT put its line into the view's strip while on (DEV §20)
                 if (Hydrograf.layers) {
                     var overlayGroup = document.getElementById('overlay-group-entries')
                         || document.getElementById('layers-list');
@@ -79,7 +80,10 @@
                             function (opacity) {
                                 if (depressionsOverlay) depressionsOverlay.setOpacity(opacity);
                             },
-                            30
+                            30,
+                            null,
+                            null,
+                            'elevation'
                         );
                     }
                 }

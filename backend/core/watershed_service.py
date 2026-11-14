@@ -21,6 +21,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.attribution import DRAINAGE, SOILS, TOPOGRAPHY, ProviderLines, instance_lines
 from core.catchment_graph import CatchmentGraph
 from core.divide_flow_path import (
     NO_FLOW_PATHS,
@@ -29,7 +30,7 @@ from core.divide_flow_path import (
     compute_flow_paths,
 )
 from core.morphometry import calculate_shape_indices
-from models.schemas import HsgStats, LandCoverStats
+from models.schemas import HsgStats, LandCoverStats, WatershedResponse
 from utils.geometry import transform_pl1992_to_wgs84
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,35 @@ logger = logging.getLogger(__name__)
 # Minimum area (m²) for interior holes to be preserved in watershed boundary.
 # Holes smaller than this threshold (~32×32m) are removed as artifacts.
 MIN_HOLE_AREA_M2 = 100
+
+
+def watershed_lines(
+    watershed: WatershedResponse, frontend_data_dir: str
+) -> ProviderLines:
+    """Return the providers' lines of a delineated watershed (Nogat DEV §20).
+
+    The boundary, the flow paths and the morphometry are of the NMT burned with the
+    BDOT10k watercourses; the land cover statistics are BDOT10k's and the soil groups
+    SoilGrids' with the BDOT10k wetlands, each only when the watershed has them.
+
+    Parameters
+    ----------
+    watershed : WatershedResponse
+        The delineated watershed.
+    frontend_data_dir : str
+        The directory of ``instance.json`` with the dates of the instance's data.
+
+    Returns
+    -------
+    ProviderLines
+        G, and SG with soil groups (``core.attribution``).
+    """
+    uses = set(DRAINAGE)
+    if watershed.land_cover_stats is not None:
+        uses |= TOPOGRAPHY
+    if watershed.hsg_stats is not None:
+        uses |= SOILS
+    return instance_lines(uses, frontend_data_dir)
 
 
 def get_stream_info_by_segment_idx(

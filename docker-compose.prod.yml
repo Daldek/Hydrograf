@@ -12,9 +12,9 @@ services:
       - db_password
       - admin_api_key
     # One process, no --reload: the request limit and the daily totals live in its
-    # memory (ADR-084); uvicorn's access log is off, api.main logs every request
-    # without its client
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --no-access-log
+    # memory (ADR-084); uvicorn's access log is off, api.main writes the logs (Nogat
+    # DEV-12.8)
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --no-access-log --log-level warning
 
   db:
     environment:

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Nogat/schemas/log/record-1.schema.json",
+  "title": "nogat-log/1",
+  "description": "One record of a server's logs, one JSON object per line of UTF-8 JSON Lines (DEV-12.4 to DEV-12.7): `access` for one HTTP request, `app` for a warning, an error or an exception, `lifecycle` for the start, the stop and the deletion of old log files. Written by Nogat standards/reference/nogat_logging.py, which every Python server copies byte for byte. No key other than those below is allowed: a record carries no IP address, cookie, header, request body or uploaded file name, and the User-Agent only as `agent`. On standard error an `app` record has `request_id` and `message` null and `error` with `type` alone. Projects copy this file like schemas/agent/ (DEV-15.6).",
+  "type": "object",
+  "required": ["time", "level", "app", "version", "kind", "request_id"],
+  "properties": {
+    "time": {
+      "description": "When the record was written: RFC 3339 in UTC with `Z`, milliseconds by the reference module",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+    },
+    "level": {"enum": ["debug", "info", "warning", "error", "critical"]},
+    "app": {
+      "description": "The project's name in the registry, in lower case",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {"description": "The server's version", "type": "string", "minLength": 1},
+    "kind": {"enum": ["access", "app", "lifecycle"]},
+    "request_id": {
+      "description": "16 random hexadecimal digits of the request the record belongs to, never sent to the client; null outside a request and on standard error",
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{16}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "access"}}},
+      "then": {
+        "required": ["method", "path", "status", "bytes", "duration_ms", "agent"],
+        "properties": {
+          "level": {"const": "info"},
+          "request_id": {"type": "string"},
+          "method": {"type": "string", "minLength": 1},
+          "path": {
+            "description": "The path as requested with its query; the parameters of the reference module's REDACTED keep their name and lose their value, and an IP address is `[ip]`",
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {"type": "integer", "minimum": 100, "maximum": 599},
+          "bytes": {"description": "The bytes of the body the server sent", "type": "integer", "minimum": 0},
+          "duration_ms": {"description": "From the request's arrival to its last byte", "type": "number", "minimum": 0},
+          "agent": {
+            "description": "The class of the User-Agent: `bot` when it names a robot, `browser` when it starts with `Mozilla/`, `script` for any other value, `none` without one",
+            "enum": ["browser", "bot", "script", "none"]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "app"}}},
+      "then": {
+        "required": ["event", "message", "error"],
+        "properties": {
+          "event": {"$ref": "#/$defs/event"},
+          "message": {
+            "description": "The formatted message, an IP address as `[ip]`; null on standard error",
+            "type": ["string", "null"]
+          },
+          "error": {
+            "description": "The exception, or null",
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "required": ["type"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {"description": "The exception's class, with its module unless built in", "type": "string", "minLength": 1},
+                  "message": {"type": "string"},
+                  "stack": {"description": "The formatted traceback, an IP address as `[ip]`", "type": "string"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "lifecycle"}}},
+      "then": {
+        "required": ["event", "message"],
+        "properties": {
+          "request_id": {"type": "null"},
+          "event": {"$ref": "#/$defs/event"},
+          "message": {"description": "A fixed text of the server", "type": "string"},
+          "settings": {
+            "description": "In `start` only: the summary of the server's settings, never a secret or the operator's details",
+            "type": "object",
+            "additionalProperties": {"type": ["string", "number", "boolean", "null"]}
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "event": {
+      "description": "A stable code of what happened (`start`, `stop`, `prune`, `unhandled_exception`), or the name of the logger that wrote the record",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "examples": [
+    {"time": "2026-11-13T21:04:05.123Z", "level": "info", "app": "hydrolog", "version": "1.0.0", "kind": "access", "request_id": "3f2a9c1b8e7d6c5a", "method": "GET", "path": "/api/stations?q=&bbox=14.1,49.0,24.2,54.9", "status": 200, "bytes": 5120, "duration_ms": 12.3, "agent": "browser"},
+    {"time": "2026-11-13T21:04:05.130Z", "level": "error", "app": "hydrolog", "version": "1.0.0", "kind": "app", "request_id": "3f2a9c1b8e7d6c5a", "event": "unhandled_exception", "message": "unhandled exception", "error": {"type": "KeyError", "message": "'lat'", "stack": "Traceback (most recent call last):\n  ...\nKeyError: 'lat'\n"}},
+    {"time": "2026-11-13T21:04:05.130Z", "level": "error", "app": "hydrolog", "version": "1.0.0", "kind": "app", "request_id": null, "event": "unhandled_exception", "message": null, "error": {"type": "KeyError"}},
+    {"time": "2026-11-13T21:00:00.002Z", "level": "info", "app": "hydrolog", "version": "1.0.0", "kind": "lifecycle", "request_id": null, "event": "start", "message": "hydrolog 1.0.0 started", "settings": {"host": "127.0.0.1", "port": 8070, "public": true}}
+  ]
+}

@@ -18,6 +18,7 @@ from scripts.analyze_watershed import (
     PMAXTP_PRECIPITATION_SOURCE,
     AnalysisConfig,
     calculate_morphometry,
+    data_lines,
     generate_hydrograph,
     save_results,
     write_attribution_file,
@@ -121,17 +122,22 @@ def test_results_with_pmaxtp_precipitation_carry_the_provider_lines(
     results = _saved_results(tmp_path, watershed, _pmaxtp_precipitation())
 
     assert results["hydrograph"]["design_storm"]["P_mm"] == 42.0
-    assert results["attribution"] == list(PMAXTP.attribution)
+    # PMAXTP's lines, then G and SG of the watershed (DEV-20.4)
+    assert results["attribution"] == [
+        *PMAXTP.attribution,
+        *data_lines().attribution,
+    ]
+    assert results["attribution"][3].startswith("Źródło: Główny Urząd Geodezji")
     assert results["terms_notice"] == list(PMAXTP.terms_notice)
 
 
-def test_results_without_pmaxtp_precipitation_carry_no_provider_lines(
+def test_results_without_pmaxtp_precipitation_carry_the_watershed_lines(
     tmp_path, watershed
 ):
     results = _saved_results(tmp_path, watershed, None)
 
     assert results["hydrograph"]["precipitation_source"] == "manual"
-    assert "attribution" not in results
+    assert results["attribution"] == list(data_lines().attribution)
     assert "terms_notice" not in results
 
 

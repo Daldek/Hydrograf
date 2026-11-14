@@ -80,6 +80,7 @@ def test_a_run_from_a_set_names_the_project_its_counties_and_its_nmt(boundary):
             "name": "2026-2",
             "closed_at": "2026-11-08T10:26:02Z",
         },
+        "sources": None,
         "generated_at": NOW,
     }
 

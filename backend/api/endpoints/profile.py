@@ -15,6 +15,7 @@ from pyproj import Transformer
 from shapely.geometry import LineString
 
 from core.analysis_results import provider_lines, sample_water_levels
+from core.attribution import ELEVATION, instance_lines, merge
 from core.config import get_settings
 from core.errors import (
     HydrografError,
@@ -145,9 +146,15 @@ def terrain_profile(
             )
         ]
 
-        # The lines of the results whose water the profile shows (ADR-083)
-        lines = provider_lines(
-            settings.frontend_data_dir, [w.result_id for w in water_levels]
+        # The lines of the results whose water the profile shows (ADR-083), then G of
+        # the NMT of the elevations (DEV §20)
+        lines = merge(
+            [
+                provider_lines(
+                    settings.frontend_data_dir, [w.result_id for w in water_levels]
+                ),
+                instance_lines(ELEVATION, settings.frontend_data_dir),
+            ]
         )
 
         response.headers["Cache-Control"] = "public, max-age=3600"

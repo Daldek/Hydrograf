@@ -49,9 +49,13 @@ from shapely.ops import unary_union
 
 from core._errors import BY_CODE
 from core.active_run import active_run_raster
+from core.data_sources import BDOT10K, NMT, SOILGRIDS
 from core.errors import HydrografError, InvalidRequestError
 from scripts.write_instance_info import (
     build_instance_info,
+    data_sources,
+    merged_sources,
+    read_sources,
     resolution_m,
     write_instance_info,
 )
@@ -446,24 +450,6 @@ def step_infra() -> str:
     )
     details.append("migracje OK")
 
-    # 1d. CDN integrity hashes
-    cdn_script = PROJECT_ROOT / "scripts" / "verify_cdn_hashes.sh"
-    if cdn_script.exists():
-        logger.info("Weryfikacja hashów SRI zasobów CDN...")
-        result = subprocess.run(
-            ["bash", str(cdn_script)],
-            capture_output=True,
-            text=True,
-            cwd=str(PROJECT_ROOT),
-        )
-        if result.returncode != 0:
-            logger.warning(
-                "Niezgodność hashów CDN! Napraw: ./scripts/verify_cdn_hashes.sh --fix"
-            )
-            details.append("CDN HASH MISMATCH")
-        else:
-            details.append("CDN OK")
-
     return ", ".join(details)
 
 
@@ -546,6 +532,12 @@ def _merged_hydro(packages: list[Path], output_path: Path) -> Path | None:
     return merged
 
 
+def _record(used: dict[str, set[Path]] | None, product: str, files: Any) -> None:
+    """Note the provider files of a product that a step used (instance.json sources)."""
+    if used is not None:
+        used.setdefault(product, set()).update(Path(f) for f in files)
+
+
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
@@ -562,6 +554,7 @@ def step_process_dem(
     units_resume: bool = True,
     resolution: str = "5m",
     fill_enclosed_nodata: bool = False,
+    used: dict[str, set[Path]] | None = None,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
@@ -576,7 +569,8 @@ def step_process_dem(
     when given; ``units_scratch_dir`` holds the scratch of the run and
     ``units_resume`` resumes a stopped run of the same inputs. The
     mosaic has the cells of the ``resolution`` sheets: finer sheets are averaged
-    onto their grid first (``utils.raster_utils.align_to_cellsize``).
+    onto their grid first (``utils.raster_utils.align_to_cellsize``). ``used``
+    gathers the NMT sheets and the BDOT10k packages of the burned streams.
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from core.constants import PIPELINE_THRESHOLDS_M2
@@ -640,6 +634,8 @@ def step_process_dem(
             burn_path = _merged_hydro(
                 list(bdot_paths.values()), hydro_out_dir / "hydro_merged.gpkg"
             )
+            if burn_path:
+                _record(used, BDOT10K, bdot_paths.values())
     except Exception as e:
         logger.warning(
             f"Hydro download/merge failed, proceeding without burning: "
@@ -681,6 +677,7 @@ def step_process_dem(
         units_resume=units_resume,
         fill_enclosed_nodata=fill_enclosed_nodata,
     )
+    _record(used, NMT, nmt_files)
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
@@ -721,11 +718,12 @@ def step_landcover(
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
     bdot10k: dict[str, Path] | None = None,
+    used: dict[str, set[Path]] | None = None,
 ) -> str:
     """Step 4: Download and import land cover data (per county).
 
     The packages are those of ``_bdot10k_packages``: of a set (``bdot10k``), else of
-    the counties of the area.
+    the counties of the area; ``used`` gathers those imported.
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.import_landcover import import_landcover
@@ -743,6 +741,7 @@ def step_landcover(
                 clear_existing=False,
             )
             total_features += lc_stats.get("records_inserted", 0)
+            _record(used, BDOT10K, [gpkg])
         except Exception as e:
             logger.warning(f"Land cover dla TERYT {teryt}: {e}")
 
@@ -757,6 +756,7 @@ def step_soil_hsg(
     hsg_raster: Path | None = None,
     bdot10k: dict[str, Path] | None = None,
     hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
+    used: dict[str, set[Path]] | None = None,
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
@@ -769,7 +769,8 @@ def step_soil_hsg(
     ``set_inputs`` chose by the same rule, used without a request. Processing: clip to
     project bbox -> warp to EPSG:2180 -> polygonize -> the soil under the wetlands
     (OT_OIMK_A) of the BDOT10k packages of the area (``_bdot10k_packages``, the
-    packages of step 4) becomes group D (ADR-078) -> import.
+    packages of step 4) becomes group D (ADR-078) -> import. ``used`` gathers the
+    raster and the packages of the wetlands once the soil groups are imported.
     """
     import numpy as np
     import rasterio
@@ -881,8 +882,9 @@ def step_soil_hsg(
         return "brak danych HSG"
 
     # --- 5. The soil under the wetlands is group D (ADR-078) ---
+    wetland_packages: list[Path] = []
     soils, wetlands_detail = _soils_with_wetlands(
-        soils, sheets, cache_dir, mosaic_bbox_2180, bdot10k
+        soils, sheets, cache_dir, mosaic_bbox_2180, bdot10k, wetland_packages
     )
     records = []
     for geom, group in soils:
@@ -910,6 +912,8 @@ def step_soil_hsg(
             records,
         )
         conn.commit()
+    _record(used, SOILGRIDS, [hsg_path])
+    _record(used, BDOT10K, wetland_packages)
 
     # --- 7. Export GeoJSON for frontend ---
     try:
@@ -959,12 +963,14 @@ def _soils_with_wetlands(
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None,
     bdot10k: dict[str, Path] | None,
+    read: list[Path] | None = None,
 ) -> tuple[list[tuple[Any, str]], str]:
     """Make the soil under the wetlands of the area's packages group D (ADR-078).
 
-    The wetlands are those of the BDOT10k packages of step 4 (``_bdot10k_packages``).
-    Returns the soil polygons and the detail of step 5: the area made group D, or that
-    no package was found, and then the soil groups of the raster stay.
+    The wetlands are those of the BDOT10k packages of step 4 (``_bdot10k_packages``);
+    ``read`` gathers the packages whose wetlands were read. Returns the soil polygons
+    and the detail of step 5: the area made group D, or that no package was found, and
+    then the soil groups of the raster stay.
     """
     from scripts.import_landcover import (
         WETLAND_HSG,
@@ -984,6 +990,8 @@ def _soils_with_wetlands(
     for teryt, gpkg in sorted(packages.items()):
         try:
             wetlands.extend(read_wetlands(gpkg))
+            if read is not None:
+                read.append(gpkg)
         except Exception as e:
             logger.warning("HSG: the wetlands of TERYT %s not read: %s", teryt, e)
     pieces = soils_with_wetlands(soils, wetlands)
@@ -1274,6 +1282,7 @@ def run_pipeline(
     scale: str = "1:10000",
     allow_uncovered: bool = False,
     hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
+    used: dict[str, set[Path]] | None = None,
 ):
     """Run the full 10-step bootstrap pipeline.
 
@@ -1285,6 +1294,8 @@ def run_pipeline(
     of it, or a hole of their mosaic, uncovered (ADR-076; ``allow_uncovered``: a
     warning); a run from a set is checked before step 1. Step 5 downloads the HSG
     raster of ``hsg_depth_rule`` (ADR-079); a set's raster has that rule already.
+    ``used`` gathers the provider files steps 3 to 5 used, by product, for the
+    sources of ``instance.json``.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1352,6 +1363,7 @@ def run_pipeline(
                 units_resume=units_resume,
                 resolution=resolution,
                 fill_enclosed_nodata=fill_enclosed_nodata,
+                used=used,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1369,6 +1381,7 @@ def run_pipeline(
                 cache_dir,
                 mosaic_bbox_2180=mosaic_bbox,
                 bdot10k=inputs.counties if inputs is not None else None,
+                used=used,
             )
             tracker.done(4, t0, detail)
         except Exception as e:
@@ -1387,6 +1400,7 @@ def run_pipeline(
                 hsg_raster=inputs.hsg if inputs is not None else None,
                 bdot10k=inputs.counties if inputs is not None else None,
                 hsg_depth_rule=hsg_depth_rule,
+                used=used,
             )
             tracker.done(5, t0, detail)
         except Exception as e:
@@ -2083,6 +2097,7 @@ def main():
 
     # Run pipeline
     total_start = time.time()
+    used: dict[str, set[Path]] = {}
     tracker = run_pipeline(
         sheets,
         bbox,
@@ -2106,6 +2121,7 @@ def main():
         scale=args.scale,
         allow_uncovered=args.allow_uncovered,
         hsg_depth_rule=hsg_depth_rule,
+        used=used,
     )
     total_elapsed = time.time() - total_start
 
@@ -2136,20 +2152,27 @@ def main():
         )
     if critical_failed:
         sys.exit(1)
-    write_instance(args, inputs, soil_rule)
+    write_instance(args, inputs, soil_rule, used)
 
 
 def write_instance(
-    args: argparse.Namespace, inputs: SetInputs | None, hsg_depth_rule: str | None
+    args: argparse.Namespace,
+    inputs: SetInputs | None,
+    hsg_depth_rule: str | None,
+    used: dict[str, set[Path]] | None = None,
 ) -> None:
     """Write ``frontend/data/instance.json`` after a run whose steps 1 to 3 passed.
 
     The area is the set's project area, else ``--boundary-file``; a run by ``--bbox``
     or ``--sheets`` has no boundary, so no area in km². ``hsg_depth_rule`` is the rule
-    of the soil groups of step 5 (None: the step was skipped). The file only describes
-    the instance to users: a failure to write it is a warning, not a failed run.
+    of the soil groups of step 5 (None: the step was skipped). The sources are the
+    products of the files the run used (``used``), dated from their Kartograf
+    metadata, over those of the file written before (a skipped step keeps its
+    product's entry). The file only describes the instance to users and dates the
+    line G of the API: a failure to write it is a warning, not a failed run.
     """
     boundary = inputs.area if inputs is not None else args.boundary_file
+    frontend_data = FRONTEND_DIR / "data"
     try:
         info = build_instance_info(
             generated_at=_utc_now(),
@@ -2159,8 +2182,11 @@ def write_instance(
             set_identity=inputs.identity() if inputs is not None else None,
             nmt_resolution_m=resolution_m(args.resolution),
             hsg_depth_rule=hsg_depth_rule,
+            sources=merged_sources(
+                read_sources(frontend_data), data_sources(used or {})
+            ),
         )
-        path = write_instance_info(FRONTEND_DIR / "data", info)
+        path = write_instance_info(frontend_data, info)
     except (OSError, ValueError) as e:
         logger.warning(f"instance.json not written: {e}")
         return

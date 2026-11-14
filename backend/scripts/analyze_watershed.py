@@ -41,9 +41,12 @@ from pathlib import Path
 from typing import Any
 
 from core.attribution import (
+    CATCHMENT,
+    DRAINAGE,
     NO_PROVIDER,
     PMAXTP,
     ProviderLines,
+    instance_lines,
     is_terms,
     merge,
 )
@@ -160,6 +163,27 @@ def scenario_lines(config: AnalysisConfig, hydrograph: dict[str, Any]) -> Provid
     if config.precipitation_scenarios_mm:
         return NO_PROVIDER
     return precipitation_lines(hydrograph["precipitation_source"])
+
+
+def data_lines(uses: frozenset[str] = CATCHMENT) -> ProviderLines:
+    """Return the lines of the GUGiK and SoilGrids data of the analysed watershed.
+
+    The watershed is delineated by the code of the API on the instance's data, the
+    NMT burned with the BDOT10k watercourses, and its CN comes from the BDOT10k land
+    cover and the SoilGrids soil groups (``CATCHMENT``); its boundary alone is of the
+    drainage (``DRAINAGE``). The dates are those of the instance's ``instance.json``
+    in FRONTEND_DATA_DIR (``core.data_sources``).
+    """
+    from core.config import get_settings
+
+    return instance_lines(uses, get_settings().frontend_data_dir)
+
+
+def analysis_lines(hydrograph: dict[str, Any]) -> ProviderLines:
+    """Return the lines of the analysis: its precipitation's, then its watershed's."""
+    return merge(
+        [precipitation_lines(hydrograph["precipitation_source"]), data_lines()]
+    )
 
 
 def write_attribution_file(output_dir: Path, lines: ProviderLines) -> Path | None:
@@ -956,8 +980,9 @@ def generate_visualizations(
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, max(times))
-    # The design storm is the PMAXTP depth when the precipitation came from IMGW
-    draw_provider_footer(fig1, precipitation_lines(hydrograph["precipitation_source"]))
+    # The design storm is the PMAXTP depth when the precipitation came from IMGW; the
+    # watershed and its CN are of GUGiK's and ISRIC's data
+    draw_provider_footer(fig1, analysis_lines(hydrograph))
 
     path1 = config.output_dir / "hydrograph.png"
     fig1.savefig(path1, dpi=150, bbox_inches="tight")
@@ -980,7 +1005,9 @@ def generate_visualizations(
     ax2.set_ylabel("Qmax [m³/s]", fontsize=11)
     ax2.set_title(f"Qmax vs Opad | A={area:.2f}km², CN={cn}", fontsize=12)
     ax2.grid(True, alpha=0.3, axis="y")
-    draw_provider_footer(fig2, scenario_lines(config, hydrograph))
+    draw_provider_footer(
+        fig2, merge([scenario_lines(config, hydrograph), data_lines()])
+    )
 
     path2 = config.output_dir / "qmax_scenarios.png"
     fig2.savefig(path2, dpi=150, bbox_inches="tight")
@@ -1038,6 +1065,8 @@ Tc ({hydrograph["tc_method"]}):   {hydrograph["tc_min"]:.1f} min"""
         family="monospace",
         bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5},
     )
+    # The hypsometric curve and the parameters, the CN with them
+    draw_provider_footer(fig3, data_lines())
 
     path3 = config.output_dir / "watershed_profile.png"
     fig3.savefig(path3, dpi=150, bbox_inches="tight")
@@ -1063,6 +1092,7 @@ Tc ({hydrograph["tc_method"]}):   {hydrograph["tc_min"]:.1f} min"""
     ax4.legend()
     ax4.set_aspect("equal")
     ax4.grid(True, alpha=0.3)
+    draw_provider_footer(fig4, data_lines(DRAINAGE))
 
     path4 = config.output_dir / "watershed_boundary.png"
     fig4.savefig(path4, dpi=150, bbox_inches="tight")
@@ -1083,8 +1113,9 @@ def save_results(
 ) -> Path:
     """Zapisz wyniki do JSON.
 
-    With PMAXTP precipitation the results carry the provider lines in the
-    top-level ``attribution`` and ``terms_notice``; without it they have neither.
+    The results carry the provider lines in the top-level ``attribution`` and
+    ``terms_notice``: those of PMAXTP precipitation, then G and SG of the watershed
+    (``analysis_lines``).
     """
     logger.info("=" * 60)
     logger.info("KROK 8: Zapisywanie wyników")
@@ -1124,7 +1155,7 @@ def save_results(
         "hydrograph": hydrograph,
     }
 
-    lines = precipitation_lines(hydrograph["precipitation_source"])
+    lines = analysis_lines(hydrograph)
     if lines.attribution:
         results["attribution"] = list(lines.attribution)
     if lines.terms_notice:
@@ -1287,12 +1318,9 @@ def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
         if config.save_json:
             save_results(config, watershed, morph, precipitation, hydrograph)
 
-        # The JSON and the plots of PMAXTP precipitation carry its lines
+        # The JSON and the plots carry the lines of the precipitation and the watershed
         if config.save_json or (config.generate_plots and not config.use_cached):
-            write_attribution_file(
-                config.output_dir,
-                precipitation_lines(hydrograph["precipitation_source"]),
-            )
+            write_attribution_file(config.output_dir, analysis_lines(hydrograph))
 
         elapsed_total = time.time() - start_total
 
@@ -1310,8 +1338,9 @@ def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
 
         logger.info(f"Qmax: {hydrograph['design_storm']['Qmax_m3s']:.2f} m³/s")
         logger.info(f"Całkowity czas: {elapsed_total:.1f}s")
-        # The rainfall and Qmax above come from PMAXTP when IMGW provided them
-        lines = precipitation_lines(hydrograph["precipitation_source"])
+        # The rainfall and Qmax above come from PMAXTP when IMGW provided them, the
+        # watershed and its parameters from GUGiK's and ISRIC's data
+        lines = analysis_lines(hydrograph)
         for line in (*lines.attribution, *lines.terms_notice):
             logger.info(line)
         logger.info("=" * 60)

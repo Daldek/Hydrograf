@@ -926,6 +926,8 @@
             dropSelection();
             draw(d.data, d.full);
         }
+        // The lines of the GUGiK and SoilGrids data of the network shown (DEV §20)
+        Hydrograf.attribution.show('network', state.active && d ? d.data : null);
         restyle();
         allPoints().forEach(refreshMarker);
         updatePoints();
@@ -1376,6 +1378,7 @@
         els.section.hidden = true;
         map().removeLayer(markers);
         hideDrawn();
+        Hydrograf.attribution.show('network', null);
     }
 
     function init() {

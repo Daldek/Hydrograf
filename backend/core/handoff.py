@@ -10,15 +10,17 @@ hydrograph of POST /api/generate-hydrograph adds the runoff and the rainfall the
 computation used and its result, which Hydrolog recomputes and shows beside its own.
 The values are the computation's own, never rounded, so the same version of Hydrolog
 gives the same result; the provenance names where the inputs came from, and
-``attribution`` and ``terms_notice`` give the lines the terms of the rainfall's
-provider require, which Hydrolog shows and carries on (Nogat DEV-20.6, ADR-083).
+``attribution`` and ``terms_notice`` give the lines the terms of the providers of its
+data require (the rainfall's, GUGiK's and ISRIC's: ``core.attribution``), which
+Hydrolog shows and carries on (Nogat DEV-20.6, ADR-083).
 
 A network of POST /api/delineate-network (``build_network_handoff``) is its
 subcatchments, reaches, nodes and outlet ``O`` in one payload, without rainfall, time
 step, result and the sections of the reaches, which the person gives in Hydrolog's
 „Sieć i trasowanie”; its nodes are junctions named by where they lie, ``J`` at a
 confluence and ``P`` elsewhere, never by the ids of the request, and
-``node_provenance`` gives the origin of every node but the outlet.
+``node_provenance`` gives the origin of every node but the outlet. It carries the lines
+of its data as the watershed does.
 """
 
 import re
@@ -399,9 +401,6 @@ class DesignHydrograph:
         ``runoff``).
     result : dict[str, Any]
         Hydrograf's result (``hydrograph_result``).
-    lines : ProviderLines
-        The lines of the providers of the rainfall (``core.attribution``):
-        ``NO_PROVIDER`` for the user's own series.
     """
 
     timestep_min: float
@@ -409,7 +408,14 @@ class DesignHydrograph:
     rainfall: dict[str, Any]
     provenance: dict[str, dict[str, Any]]
     result: dict[str, Any]
-    lines: ProviderLines
+
+
+def _with_lines(document: dict[str, Any], lines: ProviderLines) -> None:
+    """Add the providers' lines to a hand-off, each field only with lines (DEV-20.6)."""
+    if lines.attribution:
+        document["attribution"] = list(lines.attribution)
+    if lines.terms_notice:
+        document["terms_notice"] = list(lines.terms_notice)
 
 
 def build_handoff(
@@ -417,6 +423,7 @@ def build_handoff(
     name: str,
     watershed: dict[str, Any],
     watershed_origin: dict[str, Any],
+    lines: ProviderLines,
     hydrograph: DesignHydrograph | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -430,6 +437,9 @@ def build_handoff(
         The watershed of the subcatchment (``watershed_parameters``).
     watershed_origin : dict[str, Any]
         Its provenance (``delineated_origin`` or ``given_origin``).
+    lines : ProviderLines
+        The lines of the providers of its data (``core.attribution``): those of the
+        response that carries the hand-off.
     hydrograph : DesignHydrograph, optional
         The design hydrograph computed for the watershed. Without it the subcatchment
         has the SCS-CN runoff with Hydrolog's defaults and no rainfall, and the
@@ -441,9 +451,9 @@ def build_handoff(
     -------
     dict[str, Any]
         The document: Hydrograf and its version as the producer, the payload
-        ``hydrolog-network/1`` of the subcatchment and its outlet, the provenance and,
-        with the hydrograph, its result and the lines of its rainfall's providers
-        (``attribution`` and ``terms_notice``, left out without any).
+        ``hydrolog-network/1`` of the subcatchment and its outlet, the provenance, the
+        lines of its data's providers (``attribution`` and ``terms_notice``, left out
+        without any) and, with the hydrograph, its result.
     """
     moment = created_at or datetime.now(UTC)
     subcatchment: dict[str, Any] = {
@@ -469,10 +479,7 @@ def build_handoff(
         "subject": name,
         "provenance": provenance,
     }
-    if hydrograph and hydrograph.lines.attribution:
-        document["attribution"] = list(hydrograph.lines.attribution)
-    if hydrograph and hydrograph.lines.terms_notice:
-        document["terms_notice"] = list(hydrograph.lines.terms_notice)
+    _with_lines(document, lines)
     document["payload"] = payload
     if hydrograph:
         document["result"] = hydrograph.result
@@ -505,6 +512,8 @@ def flat_reach_lag_min(length_km: float) -> int:
 def build_network_handoff(
     network: "Network",
     names: Mapping[str, str],
+    *,
+    lines: ProviderLines,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Return the hand-off ``nogat-handoff/1`` of a network (ADR-080, D14, N7).
@@ -516,6 +525,9 @@ def build_network_handoff(
     names : Mapping[str, str]
         The names of the points that have one, by the id of the point in the
         request; those ids, the client's handles, stay out of the hand-off (N1).
+    lines : ProviderLines
+        The lines of the providers of its data (``core.attribution``): those of the
+        response that carries the hand-off.
     created_at : datetime, optional
         When the hand-off is written (now).
 
@@ -531,7 +543,7 @@ def build_network_handoff(
         node (``J`` at a confluence, ``P`` elsewhere) and the outlet ``O``; no
         rainfall, time step or result. ``provenance`` names the closing section's
         node and place, ``node_provenance`` the origin of every subcatchment, reach
-        and node.
+        and node; ``attribution`` and ``terms_notice`` the lines, left out without any.
     """
     moment = created_at or datetime.now(UTC)
     outlet = network.points[0]
@@ -575,7 +587,7 @@ def build_network_handoff(
         f"{_count(len(junctions), 'węzeł', 'węzły', 'węzłów')}. Opad sieci i przekroje "
         "odcinków (n Manninga, szerokość) podaje się w Hydrologu."
     )
-    return {
+    document: dict[str, Any] = {
         "schema": HANDOFF_SCHEMA,
         "created_at": moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "producer": {"tool": PRODUCER, "version": get_version()},
@@ -590,13 +602,15 @@ def build_network_handoff(
             }
         },
         "node_provenance": node_provenance,
-        "payload": {
-            "schema": PAYLOAD_SCHEMA,
-            "name": subject,
-            "description": _description(description),
-            "nodes": nodes,
-        },
     }
+    _with_lines(document, lines)
+    document["payload"] = {
+        "schema": PAYLOAD_SCHEMA,
+        "name": subject,
+        "description": _description(description),
+        "nodes": nodes,
+    }
+    return document
 
 
 def _subcatchment_node(

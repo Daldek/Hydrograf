@@ -71,10 +71,10 @@ MESSAGES: Final[dict[str, Message]] = {
     "internal_error": Message(
         "An internal error occurred.",
         "Wystąpił błąd wewnętrzny.",
-        "Try again later; if it persists, report the X-Request-ID header of the "
-        "response.",
-        "Spróbuj ponownie później; jeśli błąd się powtarza, zgłoś nagłówek "
-        "X-Request-ID tej odpowiedzi.",
+        "Try again later; if it persists, report it with the date and time of the "
+        "request.",
+        "Spróbuj ponownie później; jeśli błąd się powtarza, zgłoś go, podając datę "
+        "i godzinę żądania.",
     ),
     # --- Admin authentication ---
     "admin_key_missing": Message(

@@ -12,9 +12,11 @@ import re
 import tomllib
 from copy import deepcopy
 from functools import cache, lru_cache
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import platformdirs
 import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -83,14 +85,16 @@ def _checked_gui(table: object, source: str) -> dict[str, str]:
 
 
 @cache
-def nogat_table(path: str) -> dict[str, Any]:
-    """Return the section ``[nogat]`` of the ``nogat.toml`` at ``path`` (DEV-18.1).
+def nogat_table(path: str, section: str = "nogat") -> dict[str, Any]:
+    """Return a section of the ``nogat.toml`` at ``path`` (DEV-18.1).
 
-    Hydrograf reads two of its tables: ``operator``, who runs a deployment open to
-    others (the regulamin, DEV-15.7, ADR-084), and ``gui`` when HYDROGRAF_GUI is not
-    set. An empty path, an empty file (the Docker default mounts ``/dev/null``) or a
-    file that cannot be read or parsed give an empty table; the last two are logged.
-    The file is read once per process: a change needs a restart of the API.
+    Hydrograf reads two tables of ``[nogat]``: ``operator``, who runs a deployment
+    open to others (the regulamin, DEV-15.7, ADR-084), and ``gui`` when HYDROGRAF_GUI
+    is not set; and ``state_dir`` of ``[hydrograf]`` and ``[nogat]`` (``state_dir()``).
+    An empty path, an empty file (the Docker default mounts ``/dev/null``), a missing
+    section or a file that cannot be read or parsed give an empty table; the last two,
+    and a section that is not a table, are logged. The file is read once per process
+    and section: a change needs a restart of the API.
     """
     if not path:
         return {}
@@ -100,11 +104,13 @@ def nogat_table(path: str) -> dict[str, Any]:
     except (OSError, tomllib.TOMLDecodeError) as error:
         logger.warning("nogat.toml at NOGAT_CONFIG=%s cannot be read: %s", path, error)
         return {}
-    section = document.get("nogat", {})
-    if not isinstance(section, dict):
-        logger.warning("nogat.toml at NOGAT_CONFIG=%s: [nogat] is not a table", path)
+    table = document.get(section, {})
+    if not isinstance(table, dict):
+        logger.warning(
+            "nogat.toml at NOGAT_CONFIG=%s: [%s] is not a table", path, section
+        )
         return {}
-    return section
+    return table
 
 
 def deployment_gui(settings: "Settings") -> dict[str, str]:
@@ -124,6 +130,28 @@ def deployment_gui(settings: "Settings") -> dict[str, str]:
     except ValueError as error:
         logger.warning("%s", error)
         return {}
+
+
+def state_dir(settings: "Settings") -> Path:
+    """Return the deployment's ``state_dir`` (DEV-18.1, DEV-18.2).
+
+    The first of HYDROGRAF_STATE_DIR, NOGAT_STATE_DIR, ``state_dir`` of
+    ``[hydrograf]`` and of ``[nogat]`` in the ``nogat.toml`` of NOGAT_CONFIG, and
+    ``platformdirs.user_state_path("nogat")`` (``~/.local/state/nogat`` on Linux).
+    The server's logs are ``<state_dir>/hydrograf/logs`` (DEV-12.6); in Docker
+    NOGAT_STATE_DIR is ``/state``, where the host's ``<state_dir>/hydrograf`` is
+    mounted. A value of the file that is not a text is logged and skipped.
+    """
+    for variable in (settings.hydrograf_state_dir, settings.nogat_state_dir):
+        if variable.strip():
+            return Path(variable).expanduser()
+    for section in ("hydrograf", "nogat"):
+        value = nogat_table(settings.nogat_config, section).get("state_dir")
+        if isinstance(value, str) and value.strip():
+            return Path(value).expanduser()
+        if value is not None and not isinstance(value, str):
+            logger.warning("[%s] state_dir of nogat.toml is not a path", section)
+    return platformdirs.user_state_path("nogat")
 
 
 class Settings(BaseSettings):
@@ -191,6 +219,11 @@ class Settings(BaseSettings):
     # The deployment's data_dir (DEV-18.2): the daily statistics are
     # <data_dir>/hydrograf/stats.jsonl (DEV-15.11)
     hydrograf_data_dir: str = "/data"
+
+    # The deployment's state_dir (DEV-18.1, DEV-18.2), resolved by state_dir(): the
+    # server's logs are <state_dir>/hydrograf/logs (DEV-12.6)
+    hydrograf_state_dir: str = ""
+    nogat_state_dir: str = ""
 
     @field_validator("hydrograf_gui")
     @classmethod

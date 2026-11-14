@@ -19,6 +19,18 @@ from pydantic import (
 
 from core.constants import DEFAULT_THRESHOLD_M2
 
+# The providers' lines of a response with GUGiK or SoilGrids data (core/attribution.py)
+DATA_ATTRIBUTION = (
+    "The lines the terms of its data's providers require on every product made with "
+    "it, verbatim, to show with it and to carry on (Nogat DEV §20, ADR-083): G for "
+    "the GUGiK products used (NMT, BDOT10k) with the years their data were created "
+    "and the days they were downloaded, and SG for SoilGrids (the soil groups)"
+)
+DATA_TERMS_NOTICE = (
+    "The links to the terms of the same providers (Nogat DEV-20.7), shown right after "
+    "`attribution`; empty: G and SG need none"
+)
+
 
 class DelineateRequest(BaseModel):
     """Request for watershed delineation.
@@ -467,9 +479,12 @@ class DelineateResponse(BaseModel):
         description=(
             "The watershed as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
             "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1, "
-            "without rainfall and result (ADR-068)"
+            "without rainfall and result (ADR-068), with `attribution` and "
+            "`terms_notice` as this response"
         ),
     )
+    attribution: list[str] = Field(..., description=DATA_ATTRIBUTION)
+    terms_notice: list[str] = Field(..., description=DATA_TERMS_NOTICE)
 
 
 class DelineatePreviewRequest(DelineateRequest):
@@ -508,6 +523,8 @@ class DelineatePreviewResponse(BaseModel):
             "at the watershed's extent; at most 5000 sub-catchments nearest the outlet"
         ),
     )
+    attribution: list[str] = Field(..., description=DATA_ATTRIBUTION)
+    terms_notice: list[str] = Field(..., description=DATA_TERMS_NOTICE)
 
 
 # ===================== NETWORK MODELS =====================
@@ -784,8 +801,11 @@ class DelineateNetworkResponse(BaseModel):
         ...,
         description="The network as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
         "with node_provenance, carrying hydrolog-network/1 without rainfall, time "
-        "step, result and the sections of the reaches",
+        "step, result and the sections of the reaches, with `attribution` and "
+        "`terms_notice` as this response",
     )
+    attribution: list[str] = Field(..., description=DATA_ATTRIBUTION)
+    terms_notice: list[str] = Field(..., description=DATA_TERMS_NOTICE)
 
 
 class NetworkPreviewPointInfo(NetworkPointInfo):
@@ -876,6 +896,8 @@ class DelineateNetworkPreviewResponse(BaseModel):
         description="Subcatchments above 250 km2, reaches shorter than 200 m or of "
         "the minimum slope (the slope from the NMT at the ends, as the full run's)",
     )
+    attribution: list[str] = Field(..., description=DATA_ATTRIBUTION)
+    terms_notice: list[str] = Field(..., description=DATA_TERMS_NOTICE)
 
 
 # ===================== HYDROGRAPH MODELS =====================
@@ -1322,9 +1344,9 @@ class HydrographResponse(BaseModel):
     handoff : dict
         The watershed, its rainfall, runoff and result as a hand-off to Hydrolog
     attribution : list[str]
-        The lines the terms of the rainfall's provider require (Nogat DEV §20)
+        The lines the terms of the providers of its data require (Nogat DEV §20)
     terms_notice : list[str]
-        The links to the terms of the rainfall's provider (Nogat DEV-20.7)
+        The links to the terms of the same providers (Nogat DEV-20.7)
     """
 
     watershed: WatershedResponse | None = Field(
@@ -1346,20 +1368,23 @@ class HydrographResponse(BaseModel):
     attribution: list[str] = Field(
         ...,
         description=(
-            "The lines the terms of the rainfall's provider require on every product "
+            "The lines the terms of its data's providers require on every product "
             "made with this result, verbatim, to show with it and to carry on (Nogat "
-            "DEV §20, ADR-083): for a PMAXTP rainfall, and an own series derived from "
-            "one, the source with the address of the PMAXTP page, the note that the "
-            "data were processed and the monograph of the project; empty for an own "
-            "series of the user's data"
+            "DEV §20, ADR-083), in the order of DEV-20.4: for a PMAXTP rainfall, and "
+            "an own series derived from one, the source with the address of the "
+            "PMAXTP page, the note that the data were processed and the monograph of "
+            "the project; then G for the GUGiK products of a watershed Hydrograf "
+            "delineated (NMT, BDOT10k) with the years their data were created and "
+            "the days they were downloaded, and SG for its soil groups; empty for "
+            "the user's own series and watershed"
         ),
     )
     terms_notice: list[str] = Field(
         ...,
         description=(
-            "The links to the terms of the rainfall's provider, one line each "
-            "(Nogat DEV-20.7): for PMAXTP data the link to the PMAXTP terms; shown "
-            "right after `attribution`; empty with it"
+            "The links to the terms of the same providers, one line each (Nogat "
+            "DEV-20.7): for PMAXTP data the link to the PMAXTP terms; shown right "
+            "after `attribution`; G and SG need none"
         ),
     )
 
@@ -1416,9 +1441,9 @@ class TerrainProfileResponse(BaseModel):
     attribution: list[str] = Field(
         ...,
         description=(
-            "The attribution lines of the results of `water_levels`, as their "
-            "manifest entries give them (Nogat DEV §20, ADR-083), each once; empty "
-            "without water levels or lines"
+            "The lines of the results of `water_levels`, as their manifest entries "
+            "give them, then G of the NMT the elevations come from (Nogat DEV §20, "
+            "ADR-083), each once"
         ),
     )
     terms_notice: list[str] = Field(
@@ -1640,9 +1665,9 @@ class IdentifyPointResponse(BaseModel):
     attribution: list[str] = Field(
         ...,
         description=(
-            "The attribution lines of the results of `water`, as their manifest "
-            "entries give them (Nogat DEV §20, ADR-083), each once; empty without "
-            "water of a result or lines"
+            "The lines of the results of `water`, as their manifest entries give "
+            "them, then G of the GUGiK products of the members given (NMT, BDOT10k) "
+            "and SG with a soil group (Nogat DEV §20, ADR-083), each once"
         ),
     )
     terms_notice: list[str] = Field(
@@ -1724,11 +1749,19 @@ class FeedbackUpdate(BaseModel):
 # ===================== PUBLIC SERVICE MODELS =====================
 
 
+class LayerLines(BaseModel):
+    """The providers' lines of one kind of the map's data (Nogat DEV §20)."""
+
+    attribution: list[str] = Field(..., description=DATA_ATTRIBUTION)
+    terms_notice: list[str] = Field(..., description=DATA_TERMS_NOTICE)
+
+
 class TermsInfo(BaseModel):
     """The regulamin of the deployment and the lines of the service's data (ADR-084).
 
     Nogat DEV-15.7 for the regulamin; DEV-20.5 and DEV-20.7 for the lines, which the
-    welcome window of the front end shows in full on the first visit.
+    welcome window of the front end shows in full on the first visit, and the strip
+    of the map while a layer of the data is shown.
     """
 
     url: str | None = Field(
@@ -1744,12 +1777,22 @@ class TermsInfo(BaseModel):
     )
     attribution: list[str] = Field(
         ...,
-        description="The attribution lines of the PMAXTP data of IMGW-PIB every "
-        "hydrograph is made with (Nogat DEV-20.2), as `attribution` of POST "
-        "/api/generate-hydrograph",
+        description="Every attribution line of the service's data (Nogat DEV §20), "
+        "in the order of DEV-20.4: those of the PMAXTP data of IMGW-PIB every "
+        "hydrograph is made with (DEV-20.2), then G of the GUGiK products of the "
+        "instance's data with their dates, and SG for its soil groups",
     )
     terms_notice: list[str] = Field(
         ...,
         description="The terms-of-use lines of the same data (Nogat DEV-20.7), after "
         "`attribution`",
+    )
+    layers: dict[str, LayerLines] = Field(
+        ...,
+        description="The lines of each kind of data of the map's layers, for the "
+        "strip of the view while a layer of the kind is shown: `elevation` (the NMT "
+        "layer, the depressions), `drainage` (the streams and catchments of the flow "
+        "analysis, the NMT burned with the BDOT10k watercourses), `topography` "
+        "(BDOT10k land cover, water bodies and stream lines) and `soils` (the soil "
+        "groups); empty lines for a kind the instance has no data of",
     )

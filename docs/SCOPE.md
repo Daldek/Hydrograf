@@ -32,7 +32,7 @@ This document defines precisely:
 #### 2.1.1 PHASE 1: Watershed Delineation
 
 **✅ In scope:**
-- An interactive web map with base layers: OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), ESRI orthophoto, no base layer
+- An interactive web map with base layers: OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer
 - Point selection by clicking on the map (polygon drawing mode + object selection mode)
 - Automatic detection of the nearest stream (snap-to-stream ST_Distance + fallback ST_Contains)
 - Delineation of the watershed boundary with BFS on the in-memory graph (CatchmentGraph)
@@ -529,7 +529,7 @@ This document defines precisely:
 - pyflwdir (hydrological analysis — D8, flow accumulation)
 - Pydantic (data validation)
 - SQLAlchemy (ORM)
-- structlog (structured logging)
+- Nogat's logging module (a copy in `core/nogat_logging.py`; access, application and lifecycle logs, DEV-12.4 to DEV-12.9)
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
@@ -541,16 +541,16 @@ This document defines precisely:
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
 **Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
-**UI framework:** none on the main page (own shell `chrome.css` + `app.css`); Bootstrap 5.3.3 (CDN) only in `/admin` (grid, modal dialogs), recoloured with the tokens
+**UI framework:** none on the main page (own shell `chrome.css` + `app.css`); Bootstrap 5.3.3 (vendored in `frontend/vendor/`) only in `/admin` (grid, modal dialogs), recoloured with the tokens
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
 **Modules:** 24 JS modules on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, info, info-texts, advanced, depressions, sewer, results, terms, feedback, welcome, shell, app + 6 admin modules; outside the namespace: `theme-init.js`, `theme-switch.js`
-**Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), ESRI orthophoto, no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
+**Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
 **Pages:** `index.html` (main), `admin.html` (admin panel), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure
 **Containerization:** Docker + Docker Compose (3 containers: db, api, nginx)
 **Reverse proxy:** Nginx (alpine); it passes the pages and `/api/` to the API and sets no limit of its own
-**Public service (ADR-084):** Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG, a request limit per client address in the API (one process), logs without client addresses kept at most 14 days in the host's journal, anonymous daily totals in `<data_dir>/hydrograf/stats.jsonl`, „Zgłoś uwagę” with the text and the view's context only
+**Public service (ADR-084):** Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG, a request limit per client address in the API (one process), logs without client addresses that the API deletes after 14 days (`<state_dir>/hydrograf/logs`, Nogat DEV-12.4 to DEV-12.9; nginx keeps none), anonymous daily totals in `<data_dir>/hydrograf/stats.jsonl`, „Zgłoś uwagę” with the text and the view's context only
 **Server:** Own
 **CI/CD:** GitHub Actions (or GitLab CI)
 **Monitoring:** The admin panel `/admin` (CPU/RAM, DB pool, uptime) + the health check `/health`

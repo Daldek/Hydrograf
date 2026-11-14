@@ -5,7 +5,9 @@ Provides mock database sessions, sample data, and common fixtures
 used across unit and integration tests.
 """
 
+import json
 from collections.abc import Callable, Iterator, Sequence
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -37,6 +39,45 @@ def _fresh_traffic(tmp_path_factory: pytest.TempPathFactory) -> None:
 
     data_dir = tmp_path_factory.getbasetemp() / "data"
     app.state.traffic = Traffic(Settings(hydrograf_data_dir=str(data_dir)))
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _logs_in_session_temp(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Write the app's logs (Nogat DEV-12.6) into the session's temporary directory.
+
+    ``api.main.log`` resolves its directory from the shell's state_dir when imported;
+    no test may write into ``~/.local/state/nogat`` or prune the files there.
+    """
+    from api.main import log
+
+    log.close()
+    log.directory = tmp_path_factory.getbasetemp() / "state" / "hydrograf" / "logs"
+
+
+@pytest.fixture
+def log_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Callable[[], list[dict[str, Any]]]]:
+    """Give the app's logs a directory of the test alone; return the records' reader.
+
+    The reader returns every record written during the test, file by file in the
+    order of their names (``access``, ``app``, ``lifecycle``), each in written order.
+    """
+    from api.main import log
+
+    directory = tmp_path / "logs"
+    log.close()
+    monkeypatch.setattr(log, "directory", directory)
+
+    def read() -> list[dict[str, Any]]:
+        return [
+            json.loads(line)
+            for path in sorted(directory.glob("*.jsonl"))
+            for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+
+    yield read
+    log.close()
 
 
 @pytest.fixture

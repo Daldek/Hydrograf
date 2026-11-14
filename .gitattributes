@@ -1,2 +1,5 @@
 # Line endings (DEV-14.1): LF in the repository and in every working copy.
 * text=auto eol=lf
+# Vendored libraries are byte-exact: their `integrity` hashes cover the upstream bytes
+# (leaflet.css has CRLF line endings).
+frontend/vendor/** -text

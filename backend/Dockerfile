@@ -82,4 +82,6 @@ USER hydro
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+# uvicorn prints no access line (it would name the client) and nothing below a warning;
+# api.main writes the logs of Nogat DEV-12.4 to DEV-12.8
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "warning"]

@@ -7,6 +7,7 @@ escaped, and a value missing means no page at all.
 """
 
 import logging
+import re
 
 import pytest
 
@@ -89,6 +90,12 @@ def test_the_kit_template_has_every_block_hydrograf_keeps():
         assert f"<!-- block: {name} -->" in template, name
 
 
+def _block_headings() -> dict[str, str]:
+    """The heading of every block of the kit's template, by the block's name."""
+    template = (KIT_DIR / TEMPLATE).read_text(encoding="utf-8")
+    return dict(re.findall(r"<!-- block: ([a-z-]+) -->\n<h3>(.+?)</h3>", template))
+
+
 class TestBuildTerms:
     def test_page_of_the_deployment(self, deployment):
         terms = build_terms(deployment(OPERATOR))
@@ -96,33 +103,41 @@ class TestBuildTerms:
         assert terms is not None
         assert terms.operator_email == "kontakt@example.pl"
         page = terms.page
+        # Every field is filled: the project's, the operator's and the address
         assert "<h1>Regulamin serwisu Hydrograf</h1>" in page
         assert "Wersja 1.0, obowiązuje od 2026-11-20" in page
         assert "Serwis prowadzi Jan Kowalski" in page
+        assert 'href="mailto:kontakt@example.pl"' in page
+        assert "Ruch do serwisu przechodzi przez Cloudflare, Inc." in page
         assert "https://hydrograf.example/" in page
         assert "w usłudze Poczta &lt;Example&gt;." in page
         assert "Dane mogą być przekazywane do USA." in page
         assert "na licencji MIT" in page
-        for heading in (
-            "IMGW-PIB: opady maksymalne PMAXTP",
-            "GUGiK",
-            "Copernicus",
-            "ISRIC SoilGrids",
-            "Wody Polskie",
-            "OpenStreetMap (kafelki OpenFreeMap, podkład OSM serwisu geoportal.gov.pl)",
-            "Esri World Imagery",
-        ):
-            assert f"<h3>{heading}</h3>" in page, heading
-        # The PMAXTP block links the terms in RK's words, and restates none (ECO-065)
+        assert 'href="https://github.com/Daldek/Hydrograf"' in page
+        assert 'href="css/tokens.css"' in page
+        assert 'href="nogat/nogat-terms.css"' in page
+        assert "{{" not in page
+        assert "<!-- block" not in page
+        # Only the blocks of Hydrograf's data sources: no Copernicus (CORINE is not
+        # used) and no other provider's
+        headings = _block_headings()
+        assert set(BLOCKS) <= set(headings)
+        for name, heading in headings.items():
+            assert (f"<h3>{heading}</h3>" in page) is (name in BLOCKS), name
+        assert "Copernicus" not in page
+        assert "Esri" not in page
+        # GUGiK's block links its conditions of reuse; the PMAXTP block the terms in
+        # RK's words, restating none (ECO-065, ECO-068)
+        assert (
+            "Warunki ponownego wykorzystywania danych GUGiK: "
+            '<a href="https://www.gov.pl/web/gugik/ponowne-wykorzystanie-informacji-'
+            'sektora-publicznego">'
+        ) in page
         assert (
             'Regulamin danych PMAXTP: <a href="https://klimat.imgw.pl/opady-maksymalne">'
             in page
         )
         assert "nieodpłatnie" not in page
-        for heading in ("IMGW-PIB: dane publiczne", "ČHMÚ", "ČÚZK"):
-            assert f"<h3>{heading}</h3>" not in page, heading
-        assert "{{" not in page
-        assert "<!-- block" not in page
 
     def test_no_operator_no_page(self, deployment):
         assert build_terms(deployment('[nogat]\ngui = {hydrograf = "/"}\n')) is None

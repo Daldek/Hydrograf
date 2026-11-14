@@ -6,16 +6,11 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # Logs without the client's address (Nogat DEV-15.10, ADR-084): see nginx.conf. With
-    # TLS here nginx's peer is the client itself, so its error log takes `crit` and worse
-    # only (an error of a request names the client; limit_req and limit_conn would log at
-    # `error`, below it).
-    log_format hydrograf '$time_iso8601 "$request_method $request_uri" $status '
-                         '$body_bytes_sent request_time=$request_time '
-                         'upstream_time=$upstream_response_time request_id=$request_id '
-                         '"$http_user_agent"';
-    access_log /dev/stdout hydrograf;
-    error_log /dev/stderr crit;
+    # No log here (Nogat DEV-12.8, ECO-066; ADR-084): see nginx.conf. With TLS here
+    # nginx's peer is the client itself, which an error of a request, a failed TLS
+    # handshake included, would name at every level.
+    access_log off;
+    error_log /dev/null;
 
     # Gzip
     gzip on;
@@ -63,14 +58,13 @@ http {
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://server.arcgisonline.com https://wody.isok.gov.pl; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
         # Tile proxy
         location ^~ /api/tiles/ {
             proxy_pass http://api_backend/api/tiles/;
             proxy_set_header Host $host;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 15s;
         }
@@ -91,7 +85,6 @@ http {
         location ~* \.html$ {
             proxy_pass http://api_backend;
             proxy_set_header Host $host;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 30s;
             error_page 502 504 = @page_file;
@@ -140,7 +133,6 @@ http {
         location /api/admin/ {
             proxy_pass http://api_backend/api/admin/;
             proxy_set_header Host $host;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
@@ -155,7 +147,6 @@ http {
         # Admin SSE stream (longer timeout for bootstrap)
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Admin-Key $http_x_admin_key;
@@ -166,7 +157,6 @@ http {
         # API proxy
         location /api/ {
             proxy_pass http://api_backend/api/;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -178,7 +168,6 @@ http {
         # Health check
         location /health {
             proxy_pass http://api_backend/health;
-            proxy_set_header X-Request-ID $request_id;
             proxy_set_header Host $host;
         }
     }

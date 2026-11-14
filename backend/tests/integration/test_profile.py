@@ -16,6 +16,11 @@ from api.main import app
 from core.attribution import PMAXTP
 from core.config import Settings
 
+# G of the NMT alone, without an instance.json that dates it
+ELEVATION_LINE = (
+    "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT "
+    "(wytworzono b.d., pozyskano b.d.); dane przetworzone"
+)
 NODATA = -9999.0
 # The line of most tests (WGS84) and the extent the DEM of `dem_settings` covers
 LINE = [[21.0, 52.0], [21.01, 52.01]]
@@ -376,15 +381,16 @@ class TestTerrainProfileWaterLevels:
     def test_lines_of_the_results_whose_water_the_profile_shows(self, client, settings):
         data = self._post(client, settings, result_ids=["sfincs", "unknown"]).json()
 
+        # The results' lines, then G of the NMT of the elevations, no dates known
         assert (data["attribution"], data["terms_notice"]) == (
-            list(PMAXTP.attribution),
+            [*PMAXTP.attribution, ELEVATION_LINE],
             list(PMAXTP.terms_notice),
         )
 
-    def test_no_lines_without_water_levels(self, client, settings):
+    def test_without_water_levels_only_the_nmt_line(self, client, settings):
         data = self._post(client, settings).json()
 
-        assert (data["attribution"], data["terms_notice"]) == ([], [])
+        assert (data["attribution"], data["terms_notice"]) == ([ELEVATION_LINE], [])
 
     def test_samples_without_dem_data_are_gaps_and_0_m_is_not(self, client, settings):
         """A nodata sample is a gap; an elevation of 0 m is not."""

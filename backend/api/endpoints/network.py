@@ -24,12 +24,15 @@ from sqlalchemy.orm import Session
 
 from api.errors import problem_responses
 from core import network_delineation, network_preview
+from core.attribution import DRAINAGE, ProviderLines, instance_lines, merge
 from core.catchment_graph import loaded_catchment_graph
+from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2, M_PER_KM
 from core.database import get_db
 from core.errors import HydrografError, InternalError, StoreUnavailableError
 from core.handoff import build_network_handoff, flat_reach_lag_min
 from core.network_tree import Junction
+from core.watershed_service import watershed_lines
 from models.schemas import (
     DelineateNetworkPreviewResponse,
     DelineateNetworkRequest,
@@ -104,7 +107,10 @@ def delineate_network(
             for point in (request.outlet, *request.points)
             if point.name is not None
         }
-        return _response(network, names, build_network_handoff(network, names))
+        lines = _network_lines(network)
+        return _response(
+            network, names, build_network_handoff(network, names, lines=lines), lines
+        )
     except HydrografError:
         raise
     except Exception as e:
@@ -167,10 +173,29 @@ def _click(point: NetworkPoint) -> network_delineation.Click:
     return network_delineation.Click(point.id, place.x, place.y)
 
 
+def _network_lines(network: network_delineation.Network) -> ProviderLines:
+    """Return the providers' lines of a network (Nogat DEV §20).
+
+    Its boundary, reaches and nodes are of the drainage of the NMT burned with the
+    BDOT10k watercourses; its subcatchments add the lines of their parameters.
+    """
+    frontend_data_dir = get_settings().frontend_data_dir
+    return merge(
+        [
+            instance_lines(DRAINAGE, frontend_data_dir),
+            *(
+                watershed_lines(item.watershed, frontend_data_dir)
+                for item in network.subcatchments
+            ),
+        ]
+    )
+
+
 def _response(
     network: network_delineation.Network,
     names: dict[str, str],
     handoff: dict[str, Any],
+    lines: ProviderLines,
 ) -> DelineateNetworkResponse:
     """Build the response of a delineated network."""
     boundary = transform_geometry_pl1992_to_wgs84(network.boundary_2180)
@@ -247,6 +272,8 @@ def _response(
         ],
         notices=notices,
         handoff=handoff,
+        attribution=list(lines.attribution),
+        terms_notice=list(lines.terms_notice),
     )
 
 
@@ -259,6 +286,7 @@ def _preview_response(
         for item in preview.subcatchments
         if item.area_km2 > HYDROGRAPH_AREA_LIMIT_KM2
     ]
+    lines = instance_lines(DRAINAGE, get_settings().frontend_data_dir)
     return DelineateNetworkPreviewResponse(
         threshold_m2=preview.threshold_m2,
         unit_threshold_m2=DEFAULT_THRESHOLD_M2,
@@ -325,6 +353,8 @@ def _preview_response(
             else []
         )
         + _reach_notices(preview.reach_notices),
+        attribution=list(lines.attribution),
+        terms_notice=list(lines.terms_notice),
     )
 
 

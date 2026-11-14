@@ -19,6 +19,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from core.analysis_results import provider_lines, sample_water_levels
+from core.attribution import (
+    DRAINAGE,
+    ELEVATION,
+    SOILS,
+    TOPOGRAPHY,
+    instance_lines,
+    merge,
+)
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2
 from core.database import get_db
@@ -141,8 +149,23 @@ def identify_point(
         zone, easting_2000, northing_2000 = transform_wgs84_to_pl2000(
             request.latitude, request.longitude
         )
-        # The lines of the results whose water the point card shows (ADR-083)
-        lines = provider_lines(settings.frontend_data_dir, [w.result_id for w in water])
+        # The lines of the results whose water the point card shows (ADR-083), then
+        # those of the GUGiK and SoilGrids data of the members it gives (DEV §20)
+        uses = set(ELEVATION)
+        if stream is not None or water_body is not None or land_cover is not None:
+            uses |= TOPOGRAPHY
+        if soil_hsg is not None:
+            uses |= SOILS
+        if subcatchment is not None:
+            uses |= DRAINAGE
+        lines = merge(
+            [
+                provider_lines(
+                    settings.frontend_data_dir, [w.result_id for w in water]
+                ),
+                instance_lines(uses, settings.frontend_data_dir),
+            ]
+        )
 
         return IdentifyPointResponse(
             coordinates=PointCoordinates(

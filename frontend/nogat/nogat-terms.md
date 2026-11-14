@@ -68,9 +68,9 @@ Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 <!-- block: gugik -->
 ### GUGiK
 
-> Źródło: Główny Urząd Geodezji i Kartografii
+> Źródło: Główny Urząd Geodezji i Kartografii – GUGiK
 
-Regulamin geoportalu: <https://www.geoportal.gov.pl/pl/o-geoportalu/regulamin/>
+Warunki ponownego wykorzystywania danych GUGiK: <https://www.gov.pl/web/gugik/ponowne-wykorzystanie-informacji-sektora-publicznego>
 <!-- /block -->
 
 <!-- block: cuzk -->
@@ -113,14 +113,6 @@ Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 Licencja ODbL: <https://www.openstreetmap.org/copyright>
 <!-- /block -->
 
-<!-- block: esri -->
-### Esri World Imagery
-
-> Źródło: Esri, Maxar, Earthstar Geographics i społeczność użytkowników GIS
-
-Warunki Esri: <https://www.esri.com/en-us/legal/terms/full-master-agreement>
-<!-- /block -->
-
 ## 6. Twoje obowiązki
 
 1. Korzystasz z serwisu zgodnie z prawem i regulaminem.
@@ -137,9 +129,9 @@ Warunki Esri: <https://www.esri.com/en-us/legal/terms/full-master-agreement>
 
 1. Administratorem Twoich danych osobowych przetwarzanych w związku z serwisem jest operator, {{operator_name}}, kontakt: [{{operator_email}}](mailto:{{operator_email}}).
 2. Serwis nie wymaga podania żadnych danych i nie zapisuje adresów IP. Twój adres IP, bez którego nie da się dostarczyć strony, serwer przetwarza tylko w pamięci operacyjnej: liczy żądania z tego adresu, aby ograniczyć ich liczbę w krótkim czasie, oraz tworzy z adresu IP, oznaczenia przeglądarki (User-Agent) i losowej wartości skrót, którym liczy odwiedzających danego dnia. Losowa wartość i skróty są tylko w pamięci i znikają najpóźniej o północy UTC; na dysk trafiają wyłącznie łączne liczby z każdego dnia: odwiedzający, odsłony, otwarte stacje, wykonane analizy i pobrania. Podstawą jest prawnie uzasadniony interes operatora: bezpieczeństwo serwisu, ochrona przed nadmierną liczbą żądań i statystyka użycia (art. 6 ust. 1 lit. f RODO).
-3. Dzienniki serwera, także dzienniki błędów, nie zawierają adresu IP i są usuwane po 14 dniach. Dziennik żądań zapisuje czas, metodę i adres żądanej strony z parametrami, kod i rozmiar odpowiedzi, czas obsługi, losowy identyfikator żądania i oznaczenie przeglądarki.
+3. Dzienniki serwera nie zawierają adresu IP. Dziennik żądań i dziennik błędów są usuwane po 14 dniach, a komunikaty o uruchomieniu i zatrzymaniu serwera oraz o jego błędach nie zawierają danych żądań. Dziennik żądań zapisuje czas, metodę i adres żądanej strony z parametrami, kod i rozmiar odpowiedzi, czas obsługi, losowy identyfikator żądania i rodzaj programu, który je wysłał: przeglądarka, robot albo inny program.
 4. Ruch do serwisu przechodzi przez {{processor}}, który przetwarza go, w tym Twój adres IP, w imieniu operatora jako podmiot przetwarzający na podstawie umowy powierzenia zawartej w jego warunkach świadczenia usług, i może prowadzić własne dzienniki bezpieczeństwa zgodnie ze swoją polityką prywatności. {{processor_transfer}}
-5. Podkład mapowy (§ 5) Twoja przeglądarka pobiera bezpośrednio z serwerów jego dostawcy, który otrzymuje przy tym Twój adres IP.
+5. Podkład mapowy i warstwy map innych dostawców (§ 5) Twoja przeglądarka pobiera bezpośrednio z ich serwerów, które otrzymują przy tym Twój adres IP.
 6. Formularz „Zgłoś uwagę” przesyła tylko treść zgłoszenia i kontekst dodany przez serwis: widok, stację, parametry widoku i wersję aplikacji; nie ma pól kontaktowych i nie zapisuje adresu IP. Nie wpisuj w nim danych osobowych; jeśli chcesz odpowiedzi, napisz e-mail. Zgłoszenia i e-maile operator przetwarza, aby je załatwić (art. 6 ust. 1 lit. f RODO), i usuwa po załatwieniu sprawy. E-maile do operatora są przechowywane w jego skrzynce w usłudze {{mail_provider}}. {{mail_transfer}}
 7. Ustawienia (motyw, układ widoków, układ współrzędnych) i wprowadzone dane serwis zapamiętuje w pamięci Twojej przeglądarki (localStorage), bo o to prosisz, korzystając z tych funkcji; usuniesz je w ustawieniach przeglądarki. Wartości i pliki, które przekazujesz do obliczeń, serwer wykorzystuje tylko do ich wykonania. Serwis nie ustawia własnych plików cookie i nie korzysta z zewnętrznych narzędzi analitycznych ani reklamowych. {{processor_cookie}}
 8. Masz prawo dostępu do swoich danych, ich sprostowania, usunięcia i ograniczenia przetwarzania oraz prawo sprzeciwu (art. 15–18 i 21 RODO); w praktyce dotyczą one e-maili i zgłoszeń, bo adresu IP, skrótu ani dzienników operator nie potrafi przypisać do osoby (art. 11 RODO). Żądanie wyślij na adres operatora; odpowiada w ciągu miesiąca (art. 12 ust. 3 RODO). Przysługuje Ci prawo wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych (<https://uodo.gov.pl>).
@@ -166,4 +158,4 @@ Uwagi, pytania i błędy zgłaszaj na adres [{{operator_email}}](mailto:{{operat
 
 - **1.0**: pierwsza wersja.
 
-Poprzednie wersje regulaminu są w historii jego wzoru w repozytorium Nogat: <https://github.com/Daldek/Nogat/commits/main/design/kit/nogat-terms.md>
+Poprzednie wersje regulaminu są w historii jego wzoru w repozytorium Nogat: <https://github.com/Daldek/Nogat/commits/develop/design/kit/nogat-terms.md>

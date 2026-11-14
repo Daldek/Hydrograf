@@ -60,7 +60,10 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   The app menu „Aplikacje” and the hand-off are Nogat's GUI kit, copied byte for byte with
   the marks into `frontend/nogat/` and never edited here either (DEV-15.6); `js/nogat.js`
   hands it to the IIFE scripts, and the menu lists the GUIs of `HYDROGRAF_GUI` (ADR-082).
-  Libraries from a CDN always carry SRI (`integrity` + `crossorigin`). Own JS and CSS files
+  Third-party scripts, styles and fonts are vendored, never loaded from another origin
+  (DEV-15.7): `frontend/vendor/<package>-<version>/` holds the published files byte for byte
+  (`-text` in `.gitattributes`) with their licence files, referenced with their `integrity`
+  (`tests/contract/test_frontend_vendor.py` checks both). JS and CSS files (own and vendored)
   in `index.html`, `admin.html` and `instrukcja/index.html` are referenced with
   `?v=<content hash>`, the only way a deployment gets through the caches of Cloudflare and
   of the browsers: after changing a JS or CSS file or adding a `<script>` or `<link>`, run
@@ -68,8 +71,11 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   `?v=`, the script adds it; it versions the imports of `js/nogat.js` too); the gate and the
   CI job `frontend-assets` run it with `--check`.
 - Public service (ADR-084): the client's address never reaches the front end or any log
-  (DEV-15.10): not nginx's access or error log, not the API's records, not a traceback; it
-  lives only in the memory of `api/traffic.py` (the limit's window, the day's salted hash).
+  (DEV-15.10, DEV-12.5): nginx keeps no log, and the API's logs (`core/nogat_logging.py`, a
+  copy of Nogat's module never edited here: access, app and lifecycle records in
+  `<state_dir>/hydrograf/logs`, 14 days, DEV-12.4 to DEV-12.9) hold none, not even in a
+  traceback; it lives only in the memory of `api/traffic.py` (the limit's window, the day's
+  salted hash).
   The request limit and the daily totals are per process, so the API runs one uvicorn
   process (no `--workers`); a change that needs more processes needs a shared store first.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
@@ -120,9 +126,10 @@ backend/                 # the Python project: pyproject.toml, uv.lock, .venv (n
 ├── migrations/          # Alembic
 └── tests/               # unit, integration, contract, performance, fixtures
 frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
-                         #   nogat/ the copies of Nogat's GUI kit and marks (ADR-082)
+                         #   nogat/ the copies of Nogat's GUI kit and marks (ADR-082);
+                         #   vendor/ the third-party libraries, as published
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
-scripts/                 # gate.sh, check-commits.sh, verify_cdn_hashes.sh, bump_asset_versions.py
+scripts/                 # gate.sh, check-commits.sh, bump_asset_versions.py
 docs/                    # documentation
 ```
 

@@ -1,18 +1,21 @@
 /**
  * Hydrograf provider lines (Nogat DEV §20).
  *
- * A product made with a provider's data (the PMAXTP precipitation of IMGW-PIB,
- * and the analysis results made with it) carries the lines the provider's terms
- * require: `attribution`, then `terms_notice`, arrays of strings in the API
- * responses and the entries of the results manifest (backend/core/attribution.py
- * is their one place). On screen the view has one strip of them, the kit's
- * <nogat-sources id="view-sources"> under the map (DEV-20.5, ECO-064): every
- * surface of the view (the hydrograph panel, the own rainfall series, the result
- * layers on the map, the point card, the terrain profile) hands it the lines of
- * the data it shows with show(), and the strip holds their union, each line once.
- * The exports carry them in full, byte for byte: the trailing CSV columns
- * `attribution` and `terms_notice`, and the JSON and GeoJSON fields of the same
- * names. Without lines nothing is shown or added.
+ * A product made with a provider's data (the PMAXTP precipitation of IMGW-PIB and
+ * the analysis results made with it, the NMT and BDOT10k of GUGiK and the SoilGrids
+ * of ISRIC behind every layer and result of Hydrograf) carries the lines the
+ * provider's terms require: `attribution`, then `terms_notice`, arrays of strings in
+ * the API responses and the entries of the results manifest
+ * (backend/core/attribution.py is their one place). On screen the view has one strip
+ * of them, the kit's <nogat-sources id="view-sources"> under the map (DEV-20.5,
+ * ECO-064, ECO-068): every surface of the view (the hydrograph panel, the own
+ * rainfall series, the delineated watershed, the network, the layers of Hydrograf's
+ * data and the result layers on the map, the point card, the terrain profile) hands
+ * it the lines of the data it shows with show(), and the strip holds their union,
+ * each line once, grouped by provider in the order of DEV-20.4; the kit draws GK and
+ * SK from G and SG. The exports carry them in full, byte for byte: the trailing CSV
+ * columns `attribution` and `terms_notice`, and the JSON and GeoJSON fields of the
+ * same names. Without lines nothing is shown or added.
  */
 (function () {
     'use strict';
@@ -22,6 +25,26 @@
     var KEYS = ['attribution', 'terms_notice'];
     // The lines each surface of the view shows, by surface (show)
     var _shown = {};
+    // DEV-20.4 orders the lines by provider: IMGW-PIB (S, P, PS, PP, M), ČHMÚ (C, CP),
+    // GUGiK (G), ISRIC (SG), ČÚZK (Z); a line of another provider follows them. The
+    // lines themselves come from the responses, in their order within a provider.
+    var PROVIDERS = [/Meteorologii i Gospodarki Wodnej/, /ČHMÚ/, /GUGiK/, /ISRIC/, /ČÚZK/];
+
+    /** The place of a line's provider in the order of DEV-20.4. */
+    function providerRank(text) {
+        for (var i = 0; i < PROVIDERS.length; i++) {
+            if (PROVIDERS[i].test(text)) return i;
+        }
+        return PROVIDERS.length;
+    }
+
+    /** The lines grouped by provider in the order of DEV-20.4, each group in its order. */
+    function byProvider(texts) {
+        return texts
+            .map(function (text, i) { return { text: text, rank: providerRank(text), i: i }; })
+            .sort(function (a, b) { return a.rank - b.rank || a.i - b.i; })
+            .map(function (item) { return item.text; });
+    }
 
     /** The lines under `key`: an array of non-empty strings, or none. */
     function list(source, key) {
@@ -85,7 +108,7 @@
         }).map(function (surface) { return _shown[surface].source; }));
         // Attributes, not properties: they hold before the kit's module defines the element.
         // Unchanged lines are not set again, so an open dialog of the strip stays open.
-        var attribution = JSON.stringify(l.attribution);
+        var attribution = JSON.stringify(byProvider(l.attribution));
         var terms = JSON.stringify(l.terms_notice);
         if (strip.getAttribute('attribution') !== attribution) strip.setAttribute('attribution', attribution);
         if (strip.getAttribute('terms-notice') !== terms) strip.setAttribute('terms-notice', terms);

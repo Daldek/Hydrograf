@@ -36,6 +36,7 @@ Usage
 """
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -60,6 +61,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.active_run import active_run_raster
+from core.attribution import CATCHMENT, ProviderLines, instance_lines
 from core.cell_parameters import (
     INTERMEDIATE_SUFFIXES,
     CellWindow,
@@ -819,8 +821,9 @@ def write_output(
     output: Path,
     layer: str,
     metadata: dict[str, str],
+    lines: ProviderLines,
 ) -> None:
-    """Write the polygons with their columns and the table of the units.
+    """Write the polygons with their columns, the table of the units and the lines.
 
     Parameters
     ----------
@@ -834,6 +837,11 @@ def write_output(
         Layer of the polygons; the units go to ``<layer>_units``.
     metadata : dict[str, str]
         Metadata of the layer (GDAL metadata items of the GeoPackage).
+    lines : ProviderLines
+        The lines of the providers of the data (Nogat DEV §20): the metadata items
+        ``attribution`` and ``terms_notice`` of the layer, each a JSON array as in a
+        Parquet file, and the table ``<layer>_attribution``, one line per row in
+        their order.
     """
     values = pd.DataFrame(list(rows), columns=list(COLUMN_NAMES), index=polygons.index)
     for column in COLUMNS:
@@ -843,6 +851,11 @@ def write_output(
         geometry=polygons.geometry,
         crs=CRS_PL1992,
     )
+    metadata = {
+        **metadata,
+        "attribution": json.dumps(list(lines.attribution), ensure_ascii=False),
+        "terms_notice": json.dumps(list(lines.terms_notice), ensure_ascii=False),
+    }
     frame.to_file(output, layer=layer, driver="GPKG", metadata=metadata)
     units = pd.DataFrame(
         {
@@ -854,6 +867,14 @@ def write_output(
         }
     )
     gpd.GeoDataFrame(units).to_file(output, layer=f"{layer}_units", driver="GPKG")
+    kinds = [("attribution", lines.attribution), ("terms_notice", lines.terms_notice)]
+    attribution = pd.DataFrame(
+        [{"field": field, "line": text} for field, texts in kinds for text in texts],
+        columns=["field", "line"],
+    )
+    gpd.GeoDataFrame(attribution).to_file(
+        output, layer=f"{layer}_attribution", driver="GPKG"
+    )
 
 
 def export(
@@ -926,6 +947,9 @@ def export(
                 row["quality_flag"] or "ok",
                 time.perf_counter() - t0,
             )
+    # The parameters are of the NMT burned with the BDOT10k watercourses, the BDOT10k
+    # land cover and the SoilGrids soil groups (Nogat DEV §20)
+    lines = instance_lines(CATCHMENT, get_settings().frontend_data_dir)
     write_output(
         polygons,
         rows,
@@ -938,7 +962,10 @@ def export(
             "threshold_m2": str(threshold_m2),
             "created": datetime.now(UTC).isoformat(timespec="seconds"),
         },
+        lines,
     )
+    for line in (*lines.attribution, *lines.terms_notice):
+        logger.info(line)
     return len(rows)
 
 

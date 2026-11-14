@@ -274,15 +274,21 @@ class TestIdentifyPoint:
         # 'other' does not hold the point, 'nope' is not in the manifest
         data = _get(client, settings, result_ids=["sfincs", "other", "nope"]).json()
 
-        assert (data["attribution"], data["terms_notice"]) == (
-            list(PMAXTP.attribution),
-            list(PMAXTP.terms_notice),
-        )
+        # The results' lines first, then G and SG of the members (DEV-20.4)
+        assert data["attribution"][:3] == list(PMAXTP.attribution)
+        assert "Źródło: inny dostawca" not in data["attribution"]
+        assert data["terms_notice"] == list(PMAXTP.terms_notice)
 
-    def test_no_lines_without_water_of_a_result(self, client, settings, database):
+    def test_without_water_of_a_result_only_the_data_lines(
+        self, client, settings, database
+    ):
         data = _get(client, settings).json()
 
-        assert (data["attribution"], data["terms_notice"]) == ([], [])
+        assert data["attribution"][0].startswith(
+            "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT"
+        )
+        assert not set(PMAXTP.attribution) & set(data["attribution"])
+        assert data["terms_notice"] == []
 
     @pytest.mark.parametrize(
         ("requested", "used"),

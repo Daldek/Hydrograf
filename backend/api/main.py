@@ -7,16 +7,12 @@ Configures the API with routers, middleware, and exception handlers.
 import asyncio
 import contextlib
 import logging
-import time
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.base import RequestResponseEndpoint
 
 from api.endpoints import (
     admin,
@@ -40,53 +36,42 @@ from api.errors import (
 )
 from api.traffic import Traffic, keep_traffic, limit_and_count
 from core.catchment_graph import loaded_catchment_graph
-from core.config import get_settings
+from core.config import get_settings, state_dir
 from core.database import get_db_session
+from core.nogat_logging import AccessLog, ServerLog
 from core.terms import current_terms
 from core.version import get_version
 
-# Configure structured logging
 settings = get_settings()
-log_level = getattr(logging, settings.log_level)
-
-structlog.configure(
-    processors=[
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-        if settings.log_level != "DEBUG"
-        else structlog.dev.ConsoleRenderer(),
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
-)
-
-logging.basicConfig(
-    format="%(message)s",
-    level=log_level,
-)
 logger = logging.getLogger(__name__)
-request_logger = structlog.get_logger("api.requests")
+
+# The access, application and lifecycle logs of Nogat DEV-12.4 to DEV-12.9, files of
+# <state_dir>/hydrograf/logs deleted after 14 days; standard error gets only the
+# lifecycle records and the errors reduced to their type
+log = ServerLog("hydrograf", get_version(), state_dir(settings) / "hydrograf" / "logs")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler.
 
-    Loads the in-memory catchment graph, fills the regulamin of the deployment and
-    keeps the request limit and the daily totals (ADR-084), whose last totals it
-    stores at shutdown.
+    Starts the logs with a summary of the settings (scalars only: no secret, admin
+    key, database URL or operator's details), loads the in-memory catchment graph,
+    fills the regulamin of the deployment and keeps the request limit and the daily
+    totals (ADR-084), whose last totals it stores at shutdown, before the logs stop.
     """
-    logger.info("Starting Hydrograf API...")
+    # First: from here the warnings and errors of the process go to the app log. The
+    # summary reads no file, so that nothing is printed before the log starts
+    log.start(
+        {
+            "request_limit": settings.hydrograf_request_limit,
+            "request_window_s": settings.hydrograf_request_window,
+            "data_dir": settings.hydrograf_data_dir,
+            "dem_dir": settings.dem_dir,
+            "cors_origins": settings.cors_origins,
+            "nogat_config": bool(settings.nogat_config),
+        }
+    )
 
     # Load the catchment graph now rather than at the first request; requests
     # load it again when the network in the database changes
@@ -105,7 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     with contextlib.suppress(asyncio.CancelledError):
         await keeper
     traffic.store()
-    logger.info("Shutting down Hydrograf API...")
+    log.stop()
 
 
 app = FastAPI(
@@ -134,46 +119,12 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# The request limit and the daily totals of this process (ADR-084), inside the request
-# ID below, so that a refused request is logged with its ID too
+# The request limit and the daily totals of this process (ADR-084)
 app.state.traffic = Traffic(settings)
 app.middleware("http")(limit_and_count)
-
-
-@app.middleware("http")
-async def add_request_id(
-    request: Request, call_next: RequestResponseEndpoint
-) -> Response:
-    """Correlate proxy and API logs with one request ID."""
-    forwarded_id = request.headers.get("x-request-id", "")
-    request_id = (
-        forwarded_id.lower()
-        if len(forwarded_id) == 32
-        and all(char in "0123456789abcdefABCDEF" for char in forwarded_id)
-        else uuid.uuid4().hex
-    )
-    structlog.contextvars.clear_contextvars()
-    structlog.contextvars.bind_contextvars(request_id=request_id)
-    started = time.perf_counter()
-    log_fields = {"method": request.method, "path": request.url.path}
-    try:
-        response = await call_next(request)
-    except Exception:
-        request_logger.exception(
-            "request_failed",
-            **log_fields,
-            status_code=500,
-            duration_ms=round((time.perf_counter() - started) * 1000, 2),
-        )
-        raise
-    response.headers["X-Request-ID"] = request_id
-    request_logger.info(
-        "request_completed",
-        **log_fields,
-        status_code=response.status_code,
-        duration_ms=round((time.perf_counter() - started) * 1000, 2),
-    )
-    return response
+# Outermost, so the refusals of the limit are logged too (DEV-12.8); map tiles, the
+# same for every client, only when they fail (DEV-12.5)
+app.add_middleware(AccessLog, log=log, quiet=r"^/api/tiles/")
 
 
 # Include routers
