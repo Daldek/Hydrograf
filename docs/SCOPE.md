@@ -533,7 +533,7 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `9e2cb61` of `develop`, the release set candidate-4 of Nogat, with the official inputs of tc; hydrological calculations)
+- Hydrolog 0.8.0.dev0 (commit `e5df06d` of `develop`, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
 - Kartograf 0.8.0.dev0 (commit `c9afdd3` of `develop`, the release set candidate-4 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `0394af7`, the release set candidate-4 of Nogat, package `obserwator`; design precipitation from IMGW)
 
