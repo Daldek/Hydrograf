@@ -361,7 +361,7 @@ fail_under = 80
 - ✅ A full preprocessing pipeline (bootstrap.py + 10 steps)
 - ✅ The CN calculation from HSG + land cover (Kartograf)
 - ✅ Land cover MVT tiles
-- ✅ An admin panel with the bootstrap over SSE (ADR-034; on Nogat's GUI kit 0.7.0 at `/admin/` since ADR-086)
+- ✅ An admin panel with the bootstrap over SSE (ADR-034; on Nogat's GUI kit 1.0.0 at `/admin/` since ADR-086)
 - ✅ Time of concentration: 6 methods of Hydrolog's `WatershedParameters.calculate_tc` (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
 - ✅ NashIUH: 2 parameter estimations (from_lutz, from_urban_regression)
 - ✅ The UH model selector (scs/nash/snyder)

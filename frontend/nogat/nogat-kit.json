@@ -1,6 +1,6 @@
 {
   "name": "nogat-kit",
-  "version": "0.7.1",
+  "version": "1.0.0",
   "description": "Nogat's GUI kit (DEV-15.4 to DEV-15.7, DEV-15.13, DEV-20.5, DEV-20.7, ECO-058, ECO-061 to ECO-068, ECO-071): plain files a GUI copies byte for byte and never edits. Change them in Nogat design/kit/ and copy again.",
   "files": {
     "nogat-admin.css": "a4bdf8bd02d016dc39da978f869ccde3d43edf03361f24c4450934ae03477422",

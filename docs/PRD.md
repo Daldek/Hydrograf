@@ -486,7 +486,7 @@ Launch:                                                            🚀
 - ☑ 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app (today 26 modules of `js/` without `draggable`, SCOPE 5.1)
 
 #### **Phase 3b: Admin panel (ADR-034)**
-**Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit 0.7.0 at `/admin/`, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
+**Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit 1.0.0 at `/admin/`, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
 - ☑ Frontend `/admin` — glassmorphism, 4 sections (Dashboard, Bootstrap, Resources, Cleanup)
 - ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream); `GET /api/admin/dashboard` is gone, replaced by `GET /api/admin/status`, with `GET /api/admin/stats` and the reports `GET /api/admin/feedback` beside it
 - ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY; today also ADMIN_API_KEY_FILE, and without either every admin route answers 401 `admin_key_not_configured`)
