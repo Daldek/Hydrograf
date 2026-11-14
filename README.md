@@ -42,7 +42,7 @@ Requirements: Docker with Compose for the full stack; for development also Pytho
 ```bash
 git clone https://github.com/Daldek/Hydrograf.git
 cd Hydrograf
-cp .env.example .env      # set POSTGRES_PASSWORD, and ADMIN_API_KEY for the admin panel
+cp .env.example .env      # set POSTGRES_PASSWORD (and the admin key, see below)
 docker compose up -d      # PostGIS, API and web server
 ```
 
@@ -54,8 +54,20 @@ from the map's top-bar "Instrukcja" button via the welcome dialog. The API is un
 (`127.0.0.1:${HYDROGRAF_PORT:-8080}`); the test server is reached through a Cloudflare
 Tunnel. In development `docker-compose.override.yml` is loaded automatically (hot
 reload, the code mounted from `./backend`); production runs
-`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (secrets from
-`SECRETS_DIR`, no reload, one API process).
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (the database
+password from `SECRETS_DIR`, the admin key file required, no reload, one API process).
+
+The admin key of a deployment lives in one file of the host, never as a value in `.env`, a
+unit file or compose: `~/.config/nogat/keys/hydrograf-admin.key`, the key alone. The API's
+container runs as UID 999, so the file gets mode 0640 and a group the container joins
+(`install -m 0640 -g GROUP /dev/null ~/.config/nogat/keys/hydrograf-admin.key`, then write
+the key into it), and `.env` names the file and the group's numeric id (`stat -c %g FILE`):
+`ADMIN_API_KEY_HOST_FILE=/home/USER/.config/nogat/keys/hydrograf-admin.key` and
+`HYDROGRAF_SECRETS_GID=GID`. Compose mounts the file read-only at
+`/run/secrets/admin_api_key`, sets `ADMIN_API_KEY_FILE` to it and adds the group to the
+container's user; the production overlay refuses to start without `ADMIN_API_KEY_HOST_FILE`
+and ignores `ADMIN_API_KEY`, which is for development only (it wins over the file). The file
+is read on every request, so a new key needs no restart.
 
 A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
 `NOGAT_CONFIG=/home/USER/.config/nogat/nogat.toml`, which Compose mounts read-only into the
@@ -143,8 +155,9 @@ Every variable is listed in
 (`POSTGRES_*`, `DATABASE_URL`, `DB_STATEMENT_TIMEOUT_MS`), the API (`LOG_LEVEL`,
 `CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
 manifest of the analysis results and `instance.json`), the admin key
-(`ADMIN_API_KEY` or the file named by `ADMIN_API_KEY_FILE`, read on every request; without
-either, every admin route refuses with `admin_key_not_configured`), the shared Kartograf
+(`ADMIN_API_KEY` for development or the file named by `ADMIN_API_KEY_FILE`, read on every
+request; without either, every admin route refuses with `admin_key_not_configured`; for
+Docker Compose `ADMIN_API_KEY_HOST_FILE` and `HYDROGRAF_SECRETS_GID`), the shared Kartograf
 store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
 through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
 the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
@@ -156,9 +169,10 @@ daily statistics, `/data` in Docker), the logs (`HYDROGRAF_STATE_DIR`, then `NOG
 then `state_dir` of `[hydrograf]` or `[nogat]` in the file of `NOGAT_CONFIG`, by default
 `~/.local/state/nogat`; for Docker Compose `NOGAT_STATE_DIR` is the host's directory) and
 Docker Compose
-(`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, and the names and host paths of an instance:
-`HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets are read from the environment only
-and `.env` is not committed.
+(`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, `ADMIN_API_KEY_HOST_FILE`,
+`HYDROGRAF_SECRETS_GID`, and the names and host paths of an instance:
+`HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets come from the environment or from
+files outside the checkout (the admin key), and `.env` is not committed.
 
 ### Service logs
 
@@ -250,8 +264,9 @@ The panel is Nogat's kit page at `/admin/` (Nogat DEV-15.13, ADR-086; `/admin` a
 to it): „Zgłoszenia”, „Statystyki” and „Stan” of the kit, then Hydrograf's „Zasoby”,
 „Przetwarzanie NMT”, „Czyszczenie” and „Granice i kanalizacja”. Its API is under
 `/api/admin/`; every route needs the header `X-Admin-Key` with the key of `ADMIN_API_KEY`
-or of the file `ADMIN_API_KEY_FILE` names (the Docker secret `admin_api_key.txt` of the
-production overlay), read on every request. No key is generated or logged: without one
+or of the file `ADMIN_API_KEY_FILE` names (a deployment's
+`~/.config/nogat/keys/hydrograf-admin.key`, see [Run and Deploy](#run-and-deploy)), read on
+every request. No key is generated or logged: without one
 every admin route answers 401 with `admin_key_not_configured`. The access paths are
 `/admin`, `/admin/*` and `/api/admin/*`, nothing else; Cloudflare Access protects them
 besides the key. Every admin answer is `Cache-Control: no-store`; the page has CSP
