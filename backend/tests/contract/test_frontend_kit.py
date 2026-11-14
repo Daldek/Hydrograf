@@ -1,14 +1,16 @@
 """
-Nogat's GUI kit in the front end (ADR-082, ADR-086) and the view's strip of provider
-lines.
+Nogat's GUI kit in the front end (ADR-082, ADR-086), the view's strip of provider
+lines and the link to the regulamin.
 
 The kit in `frontend/nogat/` is copied byte for byte from Nogat `design/kit/`
 (DEV-15.6): every file has the SHA-256 its manifest `nogat-kit.json` names. The map is
 one view, so it has one `<nogat-sources>` (DEV-20.5): the provider lines of all its data
 go into that one strip, never into a block of their own beside a chart, card, legend or
-drawer. The admin page is the kit's shell `<nogat-admin>` alone with Hydrograf's
-sections in it (DEV-15.13): no app menu, regulamin or statement of the public views, no
-inline script or style (CSP `'self'`), not indexed.
+drawer. A public view has no footer: its own link „Regulamin” is the last item of its
+left navigation (DEV-15.7), opens a new tab and stays hidden until `js/terms.js` has the
+address of a deployment with an operator. The admin page is the kit's shell
+`<nogat-admin>` alone with Hydrograf's sections in it (DEV-15.13): no app menu or
+regulamin of the public views, no inline script or style (CSP `'self'`), not indexed.
 """
 
 import hashlib
@@ -16,6 +18,8 @@ import json
 import re
 from html.parser import HTMLParser
 from pathlib import Path
+
+import pytest
 
 FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
 KIT = FRONTEND / "nogat"
@@ -51,11 +55,33 @@ class _Page(HTMLParser):
             self.inline_scripts += 1
 
 
-def _admin_page() -> tuple[str, _Page]:
-    text = (FRONTEND / "admin" / "index.html").read_text(encoding="utf-8")
+def _page(name: str) -> tuple[str, _Page]:
+    text = (FRONTEND / name).read_text(encoding="utf-8")
     page = _Page()
     page.feed(text)
     return text, page
+
+
+def _admin_page() -> tuple[str, _Page]:
+    return _page("admin/index.html")
+
+
+def _children(page: _Page, class_name: str) -> list[tuple[str, dict[str, str]]]:
+    """The direct children of the one element whose class list has `class_name`."""
+    starts = [
+        index
+        for index, (_, _, attrs) in enumerate(page.elements)
+        if class_name in attrs.get("class", "").split()
+    ]
+    assert len(starts) == 1
+    depth = page.elements[starts[0]][0]
+    children = []
+    for level, tag, attrs in page.elements[starts[0] + 1 :]:
+        if level <= depth:
+            break
+        if level == depth + 1:
+            children.append((tag, attrs))
+    return children
 
 
 def test_the_admin_page_is_the_kit_shell():
@@ -97,7 +123,6 @@ def test_the_admin_page_is_no_public_view():
 
     assert not tags & {"nogat-app-menu", "nogat-sources", "style", "footer"}
     assert "regulamin" not in text.lower()
-    assert "niekomercyjny" not in text
     assert page.inline_scripts == 0
     assert all("style" not in attrs for _, _, attrs in page.elements)
 
@@ -118,3 +143,21 @@ def test_the_map_view_has_one_strip_of_provider_lines():
 
     assert len(re.findall(r"<nogat-sources[\s>]", page)) == 1
     assert "provider-lines" not in page
+
+
+@pytest.mark.parametrize(
+    ("name", "navigation"),
+    [("index.html", "rail"), ("instrukcja/index.html", "guide-toc")],
+)
+def test_a_public_view_links_the_regulamin_at_the_bottom_of_its_navigation(
+    name, navigation
+):
+    _, page = _page(name)
+
+    tag, attrs = _children(page, navigation)[-1]
+
+    assert (tag, attrs["href"]) == ("a", "/regulamin.html")
+    assert (attrs["target"], attrs["rel"]) == ("_blank", "noopener")
+    # Without [nogat.operator] js/terms.js never shows it
+    assert "hidden" in attrs
+    assert "footer" not in {tag for _, tag, _ in page.elements}

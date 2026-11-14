@@ -20,10 +20,10 @@
 
     <!-- Nogat design tokens, shell chrome, the kit's app menu, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
-    <link rel="stylesheet" href="css/chrome.css?v=48d05ea29d">
+    <link rel="stylesheet" href="css/chrome.css?v=54f78beb83">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
     <link rel="stylesheet" href="nogat/nogat-sources.css?v=b02762f078">
-    <link rel="stylesheet" href="css/app.css?v=d9f7ed1ac8">
+    <link rel="stylesheet" href="css/app.css?v=7431a05950">
 </head>
 <body>
 <div class="shell">
@@ -76,6 +76,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
             Logowanie
         </a>
+        <!-- The regulamin of a public deployment (DEV-15.7): js/terms.js shows it at the rail's bottom -->
+        <a class="rail-terms" id="terms-link" href="/regulamin.html" target="_blank" rel="noopener" hidden>Regulamin</a>
     </nav>
 
     <main class="main">
@@ -547,10 +549,6 @@
             <div class="view-foot" id="view-foot">
                 <!-- The view's one strip of provider lines and its dialog (Nogat DEV-20.5, kit nogat-sources; js/attribution.js) -->
                 <nogat-sources id="view-sources" hidden></nogat-sources>
-                <!-- The statement of the service and its regulamin (DEV-15.7, DEV-15.8): js/terms.js shows it on a public deployment -->
-                <footer class="site-footer" id="site-footer" hidden>
-                    <p>Serwis jest niekomercyjny i bezpłatny, nie zawiera reklam i nie służy działalności gospodarczej operatora. Służy celom badawczym i edukacyjnym. Dane IMGW-PIB są w nim wykorzystywane do celów niezarobkowych, zgodnie z regulaminami IMGW-PIB. <a href="/regulamin.html" id="terms-link" target="_blank" rel="noopener">Regulamin</a></p>
-                </footer>
             </div>
         </div>
     </main>
@@ -645,12 +643,12 @@
 <script defer src="js/results.js?v=5a51c06405"></script>
 <script defer src="js/feedback.js?v=20fe9e98b9"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
-<script defer src="js/welcome.js?v=575d5f0064"></script>
+<script defer src="js/welcome.js?v=cce6fdfe51"></script>
 <script defer src="js/identify.js?v=81397cda55"></script>
 <script type="module" src="js/nogat.js?v=eda7cd4906"></script>
 <script defer src="js/handoff.js?v=79b2c2e3be"></script>
 <script defer src="js/network.js?v=567f2fc265"></script>
-<script defer src="js/terms.js?v=447b91c3d6"></script>
+<script defer src="js/terms.js?v=5b87c2c7ae"></script>
 <script defer src="js/app.js?v=c4da048f67"></script>
 </body>
 </html>

@@ -157,3 +157,17 @@ PMAXTP RK, „Regulamin danych PMAXTP: …”). `core/terms.py` no longer adds `
 the blocks it keeps; the blocks are `pmaxtp`, `gugik`, `copernicus`, `isric`,
 `wody-polskie`, `osm` and `esri`. The footer's statement (DEV-15.8) is unchanged. The page
 is filled once per process, so a deployment serves the new regulamin after its restart.
+
+## Amendment 2026-11-14: no footer (Nogat DEV-15.7, DEV-15.8)
+
+The author's decision of 2026-11-14: the footer with the statement of DEV-15.8 took space,
+and „Regulamin” is easy to reach elsewhere. The statement stays as the opening of § 3 of
+the regulamin (its text and version 1.0 unchanged); no view shows it. A public view links
+„Regulamin”, in a new tab, in three places only: the menu „Aplikacje” (the kit's `terms`,
+unchanged); a small, muted last item of its left navigation, `#terms-link`, which
+`js/terms.js` shows (the rail of the map, the last item of the bottom bar on phones, and
+under the guide's table of contents); and the welcome window, whose content from the kit's
+`fillSources` ends with „Regulamin serwisu”. The strip `<nogat-sources>` and its dialog
+(„Źródła i warunki”, with „Regulamin serwisu”) stay as they are: the providers' lines on
+screen are required by IMGW-PIB § 5. The page without an operator is unchanged: no link
+anywhere.
