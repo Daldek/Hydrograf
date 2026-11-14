@@ -1058,7 +1058,7 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=9e2cb618b115d94d93fb7caaf871a5fa5c1770a1" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=e5df06d85f7ca7a0fde2547393748bc17ea3669c" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
@@ -1099,8 +1099,8 @@ dev = [
 
 [[package]]
 name = "hydrolog"
-version = "1.0.0.dev0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=9e2cb618b115d94d93fb7caaf871a5fa5c1770a1#9e2cb618b115d94d93fb7caaf871a5fa5c1770a1" }
+version = "0.8.0.dev0"
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=e5df06d85f7ca7a0fde2547393748bc17ea3669c#e5df06d85f7ca7a0fde2547393748bc17ea3669c" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
