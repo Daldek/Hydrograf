@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.8 | Data: 2026-11-11
+> Wersja: 1.9 | Data: 2026-11-14
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -23,21 +23,21 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ## Faza 1: Preprocessing NMT
 
-**Skrypt:** `backend/scripts/process_dem.py` (~700 linii — cienki orkiestrator)
+**Script:** `backend/scripts/process_dem.py` (~1,960 lines, the orchestrator)
 **Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`
 **Uruchamianie:** jednorazowo per arkusz NMT, ~3-8 min
 
-> **Uwaga:** Skrypt `process_dem.py` został zrefaktoryzowany z ~2800 linii monolitu do ~700 linii cienkiego orkiestratora, ktory deleguje logike do 7 modulow w `backend/core/` (ADR-017). Funkcje opisane ponizej naleza teraz do odpowiednich modulow core.
+> **Note:** `process_dem.py` delegates the computation to the modules of `backend/core/` (ADR-017) named at each function below, and no longer re-exports their functions.
 
 ### 1.1 Wczytanie NMT
 
-**Funkcja:** `read_raster()` (linie 153-204)
+**Function:** `read_raster()` (`core/raster_io.py`)
 - Wejście: ASC / VRT / GeoTIFF
 - Wyjście: `(data: np.ndarray, metadata: dict)` z kluczami: `ncols`, `nrows`, `xllcorner`, `yllcorner`, `cellsize`, `nodata_value`, `crs`, `bounds`, `transform`
 
 ### 1.2 Łatanie wewnętrznych luk nodata
 
-**Funkcja:** `fill_internal_nodata_holes()` (linie 296-377)
+**Function:** `fill_internal_nodata_holes()` (`core/hydrology.py`)
 - Algorithm: a numba pass per iteration over the 3×3 window of every nodata cell, the neighbour values from the DEM before the pass (results as the earlier `scipy.ndimage.generic_filter`)
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
@@ -59,7 +59,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.3 Przetwarzanie hydrologiczne
 
-**Funkcja:** `process_hydrology_pyflwdir()` (linie 684-792)
+**Function:** `process_hydrology_pyflwdir()` (`core/hydrology.py`)
 
 #### Krok 1: Wypełnienie zagłębień (depression filling)
 - Algorytm: Wang & Liu 2006 (`pyflwdir.dem.fill_depressions()`)
@@ -98,14 +98,14 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.5 Rząd Strahlera
 
-**Funkcja:** `compute_strahler_from_fdir()` (linie 1271-1329)
+**Function:** `compute_strahler_from_fdir()` (`core/morphometry_raster.py`)
 - Maska cieków: `acc >= stream_threshold`
 - Algorithm: `pyflwdir.streams.strahler_order(flw.idxs_ds, flw.idxs_seq, mask=stream_mask)` on the FlwdirRaster of the run; `FlwdirRaster.stream_order` caches the orders of its first call and would ignore the mask of the next threshold
 - Komórki niebędące ciekiem: `strahler = 0`
 
 ### 1.6 Wektoryzacja cieków
 
-**Funkcja:** `vectorize_streams()` (linie 1395-1588)
+**Function:** `vectorize_streams()` (`core/stream_extraction.py`)
 
 **Algorytm:**
 1. **Znalezienie źródeł** (headwaters): komórki ciekowe bez napływu z góry
@@ -123,7 +123,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.7 Delimitacja zlewni cząstkowych
 
-**Funkcja:** `delineate_subcatchments()` (linie 1687-1740)
+**Function:** `delineate_subcatchments()` (`core/stream_extraction.py`)
 - Algorytm: `pyflwdir.FlwdirRaster.basins(idxs=stream_idxs, ids=segment_ids)` — propagacja etykiet upstream po grafie D8 w C/Numba (ADR-016)
 - Złożoność: O(n), jedno przejście downstream→upstream po posortowanej sekwencji
 - Seed: komórki ciekowe z `label_raster` (1-based segment_id z `vectorize_streams()`)
@@ -131,11 +131,10 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.8 Poligonizacja zlewni cząstkowych
 
-**Funkcja:** `polygonize_subcatchments()` (linie 1773-1891)
+**Function:** `polygonize_subcatchments()` (`core/stream_extraction.py`)
 - `rasterio.features.shapes()` z transformacją
 - Grupowanie po `segment_idx`, `unary_union()`
-- Uproszczenie: `merged.simplify(cellsize/2, preserve_topology=True)`
-- Statystyki strefowe:
+- Zonal statistics of every label in two passes over the raster (`zonal_summary()`, `core/zonal_stats.py`), no simplification of the polygons:
   - `area_km2 = n_cells × cell_area_km2`
   - `mean_elevation_m = mean(dem[cell_mask])`
   - `mean_slope_percent = mean(slope[cell_mask])`
@@ -144,22 +143,22 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową**:
 
-1. Tworzenie tabeli tymczasowej (`temp_flow_import` / `temp_stream_import` / `temp_catchments_import`)
+1. Creating the temporary table (`temp_stream_import` / `temp_catchments_import`)
 2. Budowanie bufora TSV w pamięci
 3. `COPY temp_table FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')`
 4. `INSERT INTO target_table (...) SELECT ST_SetSRID(ST_GeomFromText(wkt), 2180), ... FROM temp_table`
 
-#### ~~Sieć przepływów (flow_network)~~ — USUNIETA (ADR-028, migracja 015)
+#### ~~Sieć przepływów (flow_network)~~ — USUNIETA (ADR-028)
 
 > Krok pominięty — tabela `flow_network` została usunięta. Pipeline nie importuje danych per-piksel do bazy.
 
 #### Segmenty cieków (stream_network)
-**Funkcja:** `insert_stream_segments()` (linie 1591-1684)
+**Function:** `insert_stream_segments()` (`core/db_bulk.py`)
 - WKT: `LINESTRING(x1 y1, x2 y2, ...)`
 - Kolumna `threshold_m2` identyfikuje próg FA
 
 #### Zlewnie cząstkowe (stream_catchments)
-**Funkcja:** `insert_catchments()` (linie 1894-1986)
+**Function:** `insert_catchments()` (`core/db_bulk.py`)
 - WKT: `MULTIPOLYGON(...)` po `unary_union`
 
 ---
@@ -182,7 +181,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 | **Węzły** | ~44k | Jeden węzeł = jedna zlewnia cząstkowa (per segment cieku per próg FA) |
 | **Krawędzie** | upstream adjacency | `adj[i, j] = 1` oznacza, że węzeł j spływa do węzła i |
 | **Macierz sąsiedztwa** | `scipy.sparse.csr_matrix` | Rzadka macierz CSR — wydajny BFS |
-| **Atrybuty węzłów** | `numpy arrays` (float32/int32) | `area_km2`, `elev_min/max/mean`, `slope_mean`, `perimeter_km`, `stream_length_km`, `strahler` |
+| **Atrybuty węzłów** | `numpy arrays` (float32/int32) | `area_km2`, `elev_min/max/mean`, `slope_mean`, `stream_length_km`, `strahler`, `max_flow_dist_m`, `outlet_flow_dist_m`, the flow path heads and overland segments (ADR-070) |
 | **Lookup** | `dict[(threshold_m2, segment_idx) → idx]` | Szybkie mapowanie klucza biznesowego na indeks wewnętrzny |
 | **Histogramy wysokości** | `list[dict]` (JSONB z bazy) | Histogram ze stałym interwałem 1m — mergowalny przy agregacji |
 
@@ -225,7 +224,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 **Moduł:** `backend/core/watershed_service.py` (ADR-022)
 **Endpoint:** `POST /api/delineate-watershed`
 
-> **Uwaga (ADR-022, ADR-028):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~44k węzłów, ~0.5 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Tabela `flow_network` została usunięta (migracja 015), a funkcje działające na komórkach (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2` i funkcje komórkowe `core/morphometry.py`) usunięto razem z `core/watershed.py`. Skrypt `scripts/analyze_watershed.py` wywołuje tę samą funkcję trasy co endpoint.
+> **Uwaga (ADR-022, ADR-028):** Since 2026-02-14 the endpoints of the API (`watershed.py`, which took over `select_stream.py` in ADR-050, and `hydrograph.py`) use the CatchmentGraph (~44k nodes, ~0.5 MB) instead of the FlowGraph (~19.7M cells, ~1 GB). Tabela `flow_network` została usunięta, a funkcje działające na komórkach (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2` i funkcje komórkowe `core/morphometry.py`) usunięto razem z `core/watershed.py`. Skrypt `scripts/analyze_watershed.py` wywołuje tę samą funkcję trasy co endpoint.
 
 ### 2.1 Znalezienie zlewni cząstkowej punktu
 
@@ -347,14 +346,14 @@ Klucze wyjściowe (wybór):
 
 ## Faza 4: Dane opadowe
 
-**Moduł:** `backend/core/precipitation.py` (321 linii)
+**Moduł:** `backend/core/precipitation.py` (479 lines)
 
 ### 4.1 Walidacja parametrów
 
 | Parametr | Dozwolone wartości |
 |----------|--------------------|
-| **Czas trwania** | 15min, 30min, 1h, 2h, 6h, 12h, 24h |
-| **Prawdopodobieństwo** | 1%, 2%, 5%, 10%, 20%, 50% |
+| **Czas trwania** | the 16 PMAXTP durations, 5min to 72h (`VALID_DURATIONS_STR`, §6.7) |
+| **Prawdopodobieństwo** | the 27 PMAXTP probabilities, 0.01 % to 99.9 % (`VALID_PROBABILITIES`, §6.7) |
 
 ### 4.2 The design depth: the watershed mean by Thiessen polygons (ADR-069)
 
@@ -548,7 +547,7 @@ Przekazanie do Hydrologa (ADR-068) niesie w zlewni te same pola (z `runoff_coeff
 | **Block** | Opad równomierny | — |
 | **Euler II** | Krzywa Eulera typu II | peak_position=0.33 |
 
-Wszystkie implementują: `generate(total_mm, duration_min, timestep_min) → PrecipitationResult`
+Wszystkie implementują: `generate(total_mm, duration_min, timestep_min) → HietogramResult`
 
 ### 6.4 Metoda SCS-CN
 
@@ -579,25 +578,16 @@ tp = Δt/2 + 0.6 × tc
 
 **Wydatek szczytowy:**
 ```
-qp = C × A / tp
+qp = 0.208 × A / tp
 ```
-Gdzie: C = 2.08 (jednostki SI), A [km²], tp [h]
+Where: qp [m³/s per mm of effective rainfall], A [km²], tp [h] (the triangular approximation, time base 2.67 × tp).
 
-**Gałąź wstępująca (t ≤ tp):**
-```
-q(t) = qp × (t/tp)^2.3
-```
-
-**Gałąź opadająca (t > tp):**
-```
-q(t) = qp × exp(-α × (t - tp))
-α = 1.67 / tp
-```
+**Ordinates:** `q(t) = qp × (q/qp)(t/tp)`, the ratio interpolated in the NRCS dimensionless unit hydrograph table (t/tp from 0 to 5, q/qp 1 at t/tp = 1), up to `5 × tp` (Hydrolog `SCSUnitHydrograph`).
 
 ### 6.6 Splot (convolution)
 
 ```
-Q(t) = Σ[Pe(i) × UH(t - i×Δt) × A]    dla i = 0..len(Pe)-1
+Q(t) = Σ[Pe(i) × UH(t - i×Δt)]    dla i = 0..len(Pe)-1    (UH in m³/s per mm, the area already in it)
 ```
 
 ### 6.7 432 scenariusze
@@ -683,7 +673,7 @@ No measure of 7.5, no check of 7.4 (the areas add up by construction), no hand-o
 
 ## Schemat bazy danych
 
-### ~~flow_network~~ — USUNIETA (ADR-028, migracja 015)
+### ~~flow_network~~ — USUNIETA (ADR-028)
 
 > Tabela usunięta. Przechowywała dane per-piksel DEM (~39.4M wierszy). Wszystkie endpointy API korzystają z `stream_network`, `stream_catchments` i CatchmentGraph.
 
@@ -698,7 +688,7 @@ CREATE TABLE stream_network (
     mean_slope_percent FLOAT,
     source TEXT,                      -- 'DEM_DERIVED' lub 'BDOT10k'
     threshold_m2 INTEGER,            -- próg FA użyty do generacji
-    segment_idx INTEGER              -- 1-based per threshold (migracja 014, ADR-026)
+    segment_idx INTEGER              -- 1-based per threshold (ADR-026)
 );
 -- Indeksy: GIST(geom), B-tree(threshold_m2, strahler_order), B-tree(upstream_area_km2)
 ```
@@ -807,8 +797,13 @@ CREATE TABLE land_cover (
 
 | Parametr | Wartość | Lokalizacja |
 |----------|---------|-------------|
-| HYDROGRAPH_AREA_LIMIT_KM2 | 250.0 | hydrograph.py (SCS-CN) |
+| HYDROGRAPH_AREA_LIMIT_KM2 | 250.0 | core/constants.py (SCS-CN) |
 | NETWORK_MAX_POINTS | 30 | models/schemas.py (points besides the closing section, 0 to 30) |
 | NETWORK_SNAP_M | 100.0 | core/network_delineation.py |
 | NETWORK_MAX_WINDOW_CELLS | 60 000 000 | core/network_delineation.py |
 | NETWORK_LOCK_WAIT_S | 15.0 | api/endpoints/network.py (one network at a time per worker) |
+
+---
+
+**Change history:**
+- 1.9 (2026-11-14): audit against the code of 2026-11-14: Phase 1 names the module of each function instead of line numbers of the former monolith, `process_dem.py` ~1,960 lines without re-exports, no `temp_flow_import`, no simplification of the sub-catchment polygons (`zonal_summary`); the graph's attributes without `perimeter_km`; `select_stream.py` merged into `watershed.py` (ADR-050); 4.1 the 16 durations and 27 probabilities of PMAXTP; 6.3 `HietogramResult`; 6.5 and 6.6 the SCS unit hydrograph and the convolution of Hydrolog (qp = 0.208 A/tp, the dimensionless table, no `× A`); the migration numbers of before the squash dropped; `HYDROGRAPH_AREA_LIMIT_KM2` in `core/constants.py`

@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-11 (the network hand-off with every control point a node, `J…` at a confluence and `P…` elsewhere, numbered from the closing section upward, the outlet `O` and the names and `node_provenance` of plan `2026-11-11-network-nodes`; Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
+**Ostatnia aktualizacja:** 2026-11-14 (audit against the code of 2026-11-14: the exchange format is Hydrograf's `MorphometricParameters` handed in the keys of Hydrolog's `WatershedParameters`; the provider lines of every hand-off (PMAXTP, G, SG) and the envelope copy of Nogat `b29eada`; the interpolation of the PMAXTP provenance; tc through `WatershedParameters.calculate_tc`, no `ConcentrationTime`; the Hydrolog imports of every module; the 27 probabilities; the inputs of the urban regression; `trace_main_channel`). 2026-11-11: the network hand-off with every control point a node, `J…` at a confluence and `P…` elsewhere, numbered from the closing section upward, the outlet `O` and the names and `node_provenance` of plan `2026-11-11-network-nodes`; Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production then still ran
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -56,35 +56,20 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 
 ## Format wymiany danych
 
-### JSON Schema
+### The morphometry and Hydrolog's `WatershedParameters`
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "WatershedParameters",
-  "description": "Standaryzowany format parametrów zlewni dla integracji GIS ↔ Hydrolog",
-  "type": "object",
-  "required": ["area_km2", "perimeter_km", "length_km", "elevation_min_m", "elevation_max_m"],
-  "properties": {
-    "name": {"type": "string", "description": "Nazwa zlewni"},
-    "area_km2": {"type": "number", "minimum": 0, "description": "Powierzchnia [km²]"},
-    "perimeter_km": {"type": "number", "minimum": 0, "description": "Obwód [km]"},
-    "length_km": {"type": "number", "minimum": 0, "description": "Długość zlewni [km]"},
-    "elevation_min_m": {"type": "number", "description": "Min wysokość [m n.p.m.]"},
-    "elevation_max_m": {"type": "number", "description": "Max wysokość [m n.p.m.]"},
-    "elevation_mean_m": {"type": "number", "description": "Średnia wysokość [m n.p.m.]"},
-    "mean_slope_m_per_m": {"type": "number", "minimum": 0, "description": "Średni spadek [m/m]"},
-    "channel_length_km": {"type": "number", "minimum": 0, "description": "Długość cieku [km]"},
-    "channel_slope_m_per_m": {"type": "number", "minimum": 0, "description": "Spadek cieku [m/m]"},
-    "longest_flow_path_km": {"type": "number", "minimum": 0, "description": "Najdłuższa ścieżka spływu [km]"},
-    "divide_flow_path_km": {"type": "number", "minimum": 0, "description": "Droga spływu z działu wodnego [km]"},
-    "centroid_flow_path_km": {"type": "number", "minimum": 0, "description": "Droga spływu z centroidu [km] (dla modeli izochron)"},
-    "cn": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Curve Number"},
-    "source": {"type": "string", "description": "Źródło danych"},
-    "crs": {"type": "string", "description": "Układ współrzędnych"}
-  }
-}
-```
+Hydrograf gives the morphometry of a watershed as `MorphometricParameters`
+(`backend/models/schemas.py`; `morphometry` of `POST /api/delineate-watershed`; required
+`area_km2`, `perimeter_km`, `length_km`, `elevation_min_m`, `elevation_max_m`). Hydrolog's
+`WatershedParameters` (1.0.0.dev0) requires only `area_km2`; each method checks the fields it
+needs (the Tc table below). `watershed_parameters()` (`backend/core/handoff.py`) hands over the
+values Hydrolog has a key for: `area_km2`, `perimeter_km`, `length_km`, the elevations,
+`mean_slope_m_per_m`, `channel_length_km`, `channel_slope_m_per_m`, `cn`, `runoff_coeff`,
+`retardance`, `overland_length_km`, `overland_slope_m_per_m`, `length_to_centroid_km` as
+`Lc_km`, `manning_n`, `urban_pct`, `forest_pct`, `flow_path_length_km` and
+`flow_path_slope_m_per_m`. The other fields (the shape and relief indices,
+`longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`, the hydraulic length,
+the imperviousness) have no key in Hydrolog, and `source` and `crs` are left to the provenance.
 
 ### Przykład JSON (output z Hydrografa)
 
@@ -127,8 +112,10 @@ GUI Hydrologa („Wczytaj z Hydrografa” w „Hydrogramie zlewni”) czyta kope
   wynik (`backend/tests/unit/test_handoff.py`).
 
 Pochodzenie (`provenance`): zlewnia z Hydrografa z ujściem i polami zmienionymi w trybie
-zaawansowanym (pole żądania `morphometry_origin`; bez niego `user`), opad `pmaxtp`
-(POT, prawdopodobieństwo, czas trwania, punkt żądania, `interpolation: idw`) albo `user`,
+zaawansowanym (pole żądania `morphometry_origin`; bez niego `user`), the rainfall `pmaxtp`
+(POT, the probability, the duration, the request's point, `interpolation` `thiessen` for the
+watershed mean or `idw` at a point without a boundary, and `areal_reduction_factor` when the user
+gave one) or `user`,
 parametry odpływu (metoda tc, estymacja Nasha). W interfejsie: „Kopiuj do Hydrologa” i
 „Plik przekazania” pod sekcjami panelu „Zlewnia” (`frontend/js/handoff.js`).
 
@@ -138,12 +125,17 @@ computation used) and the provenance of `runoff` is Hydrolog's own record `{"sou
 "hydrograf", "method": "lutz"}`, so Hydrolog opens Nash in Lutz mode and its `uh nash`
 gives Hydrograf's n and K; `runoff` keeps them for the recomputation.
 
-The hand-off of a hydrograph with a PMAXTP rainfall, or with an own series copied from one
-(`custom_precipitation.derived_from`), carries the top-level `attribution` and
-`terms_notice` of Nogat DEV-20.6 and DEV-20.7 (ADR-083; the copy of the schema from Nogat
-`b29eada`): the lines the PMAXTP terms require, which Hydrolog shows with the loaded data and
-carries into its own products. The hand-offs of a delineation and of a network hold no
-PMAXTP value and have neither field.
+Every hand-off carries the top-level `attribution` and `terms_notice` of Nogat DEV-20.6 and
+DEV-20.7 (ADR-083, ADR-085; the envelope copy of Nogat `b29eada`): the lines the terms of the
+providers of its data require (`backend/core/attribution.py`), left out when there are none.
+A hydrograph with a PMAXTP rainfall, or with an own series copied from one
+(`custom_precipitation.derived_from`), carries the PMAXTP source, the processing note and the
+monograph in `attribution` and the link to the PMAXTP terms in `terms_notice`; a watershed of
+Hydrograf's data adds G (GUGiK: NMT, BDOT10k, with the dates of `instance.json` `sources`) and,
+with soil groups, SG (SoilGrids) to `attribution`. The hand-offs of a delineation and of a
+network carry G (and SG) and no `terms_notice`. Hydrolog's `develop` shows the lines with the
+loaded data and carries them into its own products since `9537463`; the pinned `930915d`
+takes them as unknown fields.
 
 ---
 
@@ -154,7 +146,7 @@ PMAXTP value and have neither field.
 (`build_network_handoff` in `backend/core/handoff.py`; plans
 `docs/plans/2026-11-10-network-delineation.md`, D14 and D15, and
 `docs/plans/2026-11-11-network-nodes.md`, N1, N7 and N8). The envelope is the copy of
-Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
+Nogat `b29eada`, with the optional `node_provenance` of `8848c26` (`schemas/nogat/README.md`).
 
 Every control point is a node of the network, the closing section included: `J<n>` at a
 confluence (a point drawn to one within 50 m, or a junction the network makes) and `P<n>`
@@ -223,7 +215,7 @@ lays the network out from its structure. The hand-offs of `delineate-watershed` 
 The pin: Hydrolog `930915d` (Nogat's release set candidate-3, `b0ac85b`) has the
 `description` (and `position`) of every node in `hydrolog-network/1`, which a network's
 hand-off needs (Hydrolog `46c743f` or later). The pinned Hydrolog reads the envelope copy of
-Nogat `8727f6e` and takes `node_provenance` as an unknown field; its step 3 of the Nogat plan
+Nogat `8727f6e` and takes `node_provenance`, `attribution` and `terms_notice` as unknown fields; its step 3 of the Nogat plan
 `2026-11-10-node-provenance-in-handoff` (`cead00a`, in Hydrolog's `develop` after `930915d`)
 copies `8848c26`.
 `backend/tests/unit/test_network_endpoint.py` and
@@ -261,7 +253,7 @@ Obliczenia rastrowe na numpy arrays:
 In-memory graf zlewni (~44k nodes, ~0.5 MB):
 - `traverse_upstream(node_idx)` - BFS w górę sieci
 - `aggregate_stats(indices)` - agregacja parametrów (area, elevation, slope)
-- `trace_main_channel(segment_idx, threshold)` - śledzenie głównego cieku (do channel_slope)
+- `trace_main_channel(outlet_idx, upstream_indices)` - śledzenie głównego cieku (do channel_slope)
 - `find_catchment_at_point(x, y, threshold, db)` - lokalizacja zlewni cząstkowej (ST_Contains)
 
 ### 4. Moduł: `backend/core/watershed_service.py`
@@ -294,10 +286,16 @@ Dodane klasy:
 
 **Importy Hydrologa:**
 ```python
+from hydrolog.exceptions import InvalidParameterError
 from hydrolog.morphometry import WatershedParameters
-from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
-from hydrolog.runoff import HydrographGenerator, NashIUH
-from hydrolog.time.concentration import ConcentrationTime
+from hydrolog.precipitation import (
+    BetaHietogram,
+    BlockHietogram,
+    EulerIIHietogram,
+    Hietogram,
+    HietogramResult,
+)
+from hydrolog.runoff import AMC, SCSCN, HydrographGenerator, NashIUH
 ```
 
 **Przepływ danych:**
@@ -318,7 +316,7 @@ from hydrolog.time.concentration import ConcentrationTime
 **Parametry wejściowe:**
 - `latitude`, `longitude` - współrzędne WGS84
 - `duration` - czas trwania opadu: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
-- `probability` - prawdopodobieństwo: 1%, 2%, 5%, 10%, 20%, 50%
+- `probability` - the exceedance probability [%], one of the 27 PMAXTP values (0.01 to 99.9; `GET /api/scenarios`)
 - `timestep_min` - krok czasowy (default: 5 min)
 - `tc_method` - metoda tc: kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
@@ -337,7 +335,7 @@ from hydrolog.time.concentration import ConcentrationTime
 
 **Status:** ✅ Zaimplementowane
 
-Zwraca dostępne kombinacje parametrów hydrogramu (durations, probabilities, tc_methods, hietogram_types, area_limit_km2).
+Zwraca dostępne kombinacje parametrów hydrogramu (`durations`, `probabilities`, `tc_methods`, `hietogram_types`, `uh_models`, `snyder_defaults`, `nash_estimation_methods`, `amc`, `custom_precipitation_max_steps`, `area_limit_km2`); the route is in `api/endpoints/hydrograph.py`.
 
 ### 8. Rozszerzenie endpointu watershed
 
@@ -362,10 +360,13 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Moduł | Importy z Hydrologa | Zastosowanie |
 |-------|---------------------|--------------|
-| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator`, `NashIUH`, `ConcentrationTime` | Endpoint API generowania hydrogramu |
+| `api/endpoints/hydrograph.py` | `InvalidParameterError`, `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `Hietogram`, `HietogramResult`, `AMC`, `SCSCN`, `HydrographGenerator`, `NashIUH` | Endpoint API generowania hydrogramu; tc through `WatershedParameters.calculate_tc` |
 | `core/precipitation.py` | `Station`, `thiessen_polygons`, `inverse_distance_weighting` | The PMAXTP design depth: the watershed mean, IDW at a point (ADR-069) |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
-| `core/morphometry.py` | `WatershedParameters` (w docstring/example) | Dokumentacja formatu wymiany |
+| `core/cn_tables.py` | `AMC`, `SCSCN`, `HydrologicCondition`, `LandCover`, `get_cn` | The CN of the land cover rows from Hydrolog's TR-55 table, the AMC conversion |
+| `core/land_cover.py`, `core/cn_calculator.py` | `calculate_weighted_cn` | The area-weighted CN of a watershed |
+| `core/point_info.py` | `AMC`, `SCSCN` | The CN of a point at AMC I and III |
+| `scripts/export_catchment_parameters.py` | `AMC` | The export of the catchment parameters |
 
 ---
 
@@ -390,7 +391,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/api/endpoints/network.py`, `backend/core/handoff.py` | `POST /api/delineate-network` and `build_network_handoff`: the hand-off of a network (ADR-080) | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
 | `backend/tests/unit/test_morphometry.py` | Testy wskaźników kształtu | ✅ |
-| `backend/tests/integration/test_hydrograph.py` | 16 testów integracyjnych | ✅ |
+| `backend/tests/integration/test_hydrograph.py` | Testy integracyjne endpointu | ✅ |
 
 ### Hydrolog
 
@@ -457,7 +458,7 @@ Tc liczy wyłącznie Hydrolog: `_calculate_tc` (`api/endpoints/hydrograph.py`) b
 | Metoda | Klucz API | Parametry wymagane | Uwagi |
 |--------|-----------|---------------------|-------|
 | Lutz (domyślna) | `from_lutz` | `channel_length_km`, `length_to_centroid_km`, `channel_slope_m_per_m`; `forest_pct`, `urban_pct` | Lutz (1984) after KZGW 2017, eq. 6.17: Manning's n 0.035 (`LUTZ_MANNING_N`), W = share of forest (`las`), U = share of urbanised land (`zabudowa_mieszkaniowa`, `zabudowa_przemysłowa`, `droga`) from the land cover of the delineation, 0 without it; `area_km2` passed too. The hand-off carries `manning_n`, `forest_pct` and `urban_pct` in the watershed and `{"source": "hydrograf", "method": "lutz"}` as the provenance of `runoff`, so Hydrolog reopens Nash by Lutz (ADR-068, erratum 2026-11-05) |
-| Regresja zurbanizowana | `from_urban_regression` | `nash_urban_fraction` | Rao et al. (1972), wymaga wskaźnika urbanizacji |
+| Regresja zurbanizowana | `from_urban_regression` | `area_km2`, the imperviousness of the land cover as `urban_fraction` (0 without it), the effective rainfall and its duration of SCS-CN | Rao et al. (1972); the response gives the values in `nash_urban_fraction`, `nash_effective_precip_mm`, `nash_duration_h` |
 
 **Removed 2026-11-05:** the estimation from the time of concentration (`nash_estimation: "from_tc"`, `NashIUH.from_tc()`, deprecated in Hydrolog since 0.6.2 and announced for removal in 1.0.0) and the request field `nash_n` it used. The relation $t_{lag} = 0.6·T_c$ of the SCS hydrograph has no ground in the Nash cascade, so Hydrograf no longer offers it: a request with `from_tc` gets 400 `validation_error` at `/body/nash_estimation` with the allowed values, `GET /api/scenarios` lists only `from_lutz` and `from_urban_regression`, and no Nash estimation computes Tc.
 
@@ -575,6 +576,10 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 }
 ```
 
+The response also carries `handoff` (above) and the provider lines `attribution` and
+`terms_notice` (`core/attribution.py`): with a PMAXTP rainfall the PMAXTP lines and the link
+to its terms, then G and SG of the watershed's data.
+
 ---
 
 ## Repozytorium Hydrologa
@@ -587,4 +592,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-11-11
+**Ostatnia aktualizacja:** 2026-11-14

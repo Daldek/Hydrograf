@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -69,13 +69,19 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "930915d5eee9
 
 | Hydrograf module | Imports from Hydrolog | Use |
 |------------------|-----------------------|-----|
-| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | The hydrograph generation endpoint |
-| `api/endpoints/hydrograph.py` | `ConcentrationTime` | Time of concentration: 6 methods: kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti |
+| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `Hietogram`, `HietogramResult`, `HydrographGenerator`, `SCSCN`, `AMC`, `InvalidParameterError` | The hydrograph generation endpoint |
+| `api/endpoints/hydrograph.py` | `WatershedParameters.calculate_tc` | Time of concentration, computed only by Hydrolog: 6 methods: kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti |
 | `api/endpoints/hydrograph.py` | `NashIUH` | The Nash model: 2 parameter estimations: from_lutz, from_urban_regression |
 | `api/endpoints/hydrograph.py` | `uh_model` selector | The choice of the unit hydrograph model: scs / nash / snyder |
+| `core/cn_tables.py` | `AMC`, `SCSCN`, `HydrologicCondition`, `LandCover`, `get_cn` | The TR-55 CN of the soil-cover complexes (ADR-075) |
+| `core/cn_calculator.py`, `core/land_cover.py` | `calculate_weighted_cn` | The area-weighted CN |
+| `core/point_info.py` | `AMC`, `SCSCN` | The CN for AMC I, II and III of „Identyfikuj” |
+| `core/precipitation.py` | `Station`, `inverse_distance_weighting`, `thiessen_polygons` | The design depth of a watershed: Thiessen weights (ADR-069), IDW without a boundary |
+| `core/handoff.py` | none (writes Hydrolog's `hydrolog-network/1` and reads the version of the distribution `hydrolog`) | The hand-off to Hydrolog's GUI (ADR-068, ADR-080) |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | The CLI script of the full analysis |
+| `scripts/export_catchment_parameters.py` | `AMC` | The control columns of the runoff (ADR-075) |
 | `core/morphometry.py` | `WatershedParameters` (in a docstring) | Documentation of the exchange format |
-| `tests/unit/test_tc_methods.py` | `ConcentrationTime` | Tests of the tc methods (faa, kerby, kerby_kirpich) |
+| `tests/unit/test_tc_methods.py` | `WatershedParameters` | Tests of the tc methods |
 
 ### 3.2 Kartograf: imports in Hydrograf
 
@@ -84,9 +90,13 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "930915d5eee9
 | `utils/sheet_lookup.py` | `BBox`, `find_sheets_for_bbox` | Point + buffer to sheet codes (ADR-057) |
 | `utils/kartograf_store.py` | `MetadataCache`, `download_landcover`, `BBox`, `KartografError`, `NoCoverageError` | The store of the pipeline, the metadata cache, the BDOT10k packages of the counties of an area (ADR-061) |
 | `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `MetadataCache`, `find_sheets_for_geometry` | NMT download into the store |
-| `scripts/download_landcover.py` | `MetadataCache`, `download_landcover` | BDOT10k / CORINE download into the store |
-| `scripts/bootstrap.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | The preprocessing orchestrator |
-| `scripts/prepare_area.py` | `BBox`, `SheetParser` | The area preparation pipeline |
+| `scripts/download_landcover.py` | `MetadataCache`, `download_landcover`, `LandCoverReport` | BDOT10k / CORINE download into the store (the pipeline uses BDOT10k only) |
+| `scripts/bootstrap.py` | `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | The preprocessing orchestrator |
+| `scripts/write_instance_info.py` | `Sidecar`, `read_sidecar`, `InvalidSidecarError` | The dates of the GUGiK data in `instance.json` (line G, ADR-085) |
+| `utils/nmt_coverage.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox` | The coverage check of the NMT sheets (ADR-076) |
+| `utils/kartograf_set.py` | `find_sheets_for_geometry`, `BBox`, `Bdot10kProvider`, `KartografError`, `read_sidecar`, `transform_bbox` | A bootstrap from a set of an Archiwista project (ADR-067) |
+| `utils/archiwista_project.py` | `KartografError`, `store_state` | The check of the project's Kartograf store (ADR-067) |
+| `scripts/prepare_area.py` | `BBox` | The area preparation pipeline |
 | `scripts/analyze_watershed.py` | `iter_store`, `list_segments` | The NMT sheets of the store |
 | `core/cn_calculator.py` | `BBox`, `calculate_hsg`, `download_landcover`, `hsg_statistics`, `KartografError` | The CN calculation (HSG + land cover) |
 | `core/db_bulk.py` | none (works on the BDOT10k GeoPackage that Kartograf downloaded) | BDOT stream matching (ADR-044): the `is_real_stream` flag, the table `bdot_streams`, overlap-based matching |
@@ -99,8 +109,8 @@ Hydrograf imports the package `obserwator` (`IMGWTools` before its v3.0.0).
 
 | Hydrograf module | Imports from `obserwator` | Use |
 |------------------|------------------------|-----|
-| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Downloading PMAXTP from IMGW (432 scenarios) |
-| `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Downloading the precipitation for the CLI script |
+| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError` | Downloading PMAXTP from IMGW (432 scenarios) |
+| `scripts/analyze_watershed.py` | `fetch_pmaxtp`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError` | Downloading the precipitation for the CLI script |
 
 ---
 
@@ -174,7 +184,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 | **Linter** | ruff | flake8 | flake8 | ruff |
 | **Type checker** | mypy | mypy | - | mypy |
 | **Docstrings** | NumPy (PL) | NumPy (EN) | NumPy (PL/EN) | NumPy (EN) |
-| **Build** | setuptools | setuptools | setuptools | hatchling |
+| **Build** | uv, no package build (`[tool.uv] package = false`) | setuptools | setuptools | hatchling |
 | **Tests** | pytest | pytest | pytest | pytest |
 | **Coverage** | ≥80% | ≥80% | ≥80% | 80% (target) |
 | **Git workflow** | main/develop | main/develop | main/develop | master/slave |
@@ -189,8 +199,8 @@ qp = 0.208 * self.area_km2 / tp_hours
 |------------|-----------|----------|-----------|-----------|
 | **numpy** | >=1.26.3 | >=1.24 | >=1.24.0 | - |
 | **scipy** | >=1.12.0 | >=1.10 (opt) | - | - |
-| **requests** | - | - | >=2.31.0 | - |
-| **httpx** | >=0.26.0 | - | - | >=0.25 |
+| **requests** | >=2.31 | - | >=2.31.0 | - |
+| **httpx** | - (dev group: >=0.26.0) | - | - | >=0.25 |
 | **pydantic** | >=2.5.3 | - | - | >=2.0 |
 | **rasterio** | >=1.3.9 | - | >=1.3.0 | - |
 | **psutil** | >=5.9 | - | - | - |
@@ -288,7 +298,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 | Project | PROGRESS.md | DEVELOPMENT_STANDARDS.md | Status |
 |---------|-------------|--------------------------|--------|
-| Hydrograf | ✅ Detailed | ✅ | Updated (session 48) |
+| Hydrograf | ✅ Detailed | — (deleted; the Nogat standard 1.0 is cited by ID, DEV-1.3) | Updated (session 48) |
 | Hydrolog | ✅ Detailed | ✅ | Updated (session 18) |
 | Kartograf | ✅ Detailed | ✅ | Updated (cross-project) |
 | IMGWTools | ✅ Detailed | ✅ | Updated (2026-01-21) |
@@ -298,13 +308,15 @@ qp = 0.208 * self.area_km2 / tp_hours
 | File | Description | Status |
 |------|-------------|--------|
 | `docs/integrations/HYDROLOG.md` | The exchange format, endpoints, modules | ✅ Current |
-| `docs/integrations/KARTOGRAF.md` | The Kartograf store, NMT, BDOT10k, HSG, building raising, MVT (version 7.0, ADR-061) | ✅ Current |
+| `docs/integrations/KARTOGRAF.md` | The Kartograf store, NMT, BDOT10k, HSG, building raising, MVT (ADR-061) | ✅ Current |
 | `docs/integrations/OBSERWATOR.md` | PMAXTP, `fetch_pmaxtp`, the errors | ✅ Current |
 | `docs/CROSS_PROJECT_ANALYSIS.md` | Dependencies, standards, metrics | ✅ Current |
 
 ---
 
 ## 10. Recommended common standard
+
+Superseded by the Nogat standard 1.0 (Hydrograf: ruff with `E F W I UP B SIM C4 D` and the NumPy convention, DEV-7.2; mypy `strict`, DEV-7.3; pytest with `--strict-markers`, DEV-10.1; coverage `fail_under = 80`). The recommendation of 2026-01:
 
 ```toml
 # A common configuration for all the projects
@@ -349,8 +361,8 @@ fail_under = 80
 - ✅ A full preprocessing pipeline (bootstrap.py + 10 steps)
 - ✅ The CN calculation from HSG + land cover (Kartograf)
 - ✅ Land cover MVT tiles
-- ✅ An admin panel with the bootstrap over SSE (ADR-034)
-- ✅ ConcentrationTime: 6 tc methods (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
+- ✅ An admin panel with the bootstrap over SSE (ADR-034; on Nogat's GUI kit 0.7.0 at `/admin/` since ADR-086)
+- ✅ Time of concentration: 6 methods of Hydrolog's `WatershedParameters.calculate_tc` (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
 - ✅ NashIUH: 2 parameter estimations (from_lutz, from_urban_regression)
 - ✅ The UH model selector (scs/nash/snyder)
 - ✅ County (TERYT) discovery by Kartograf (ADR-061; it replaced the WFS PRG code of ADR-045)
@@ -382,4 +394,4 @@ fail_under = 80
 
 ---
 
-**Last update:** 2026-10-25 (the producers pinned on their heads, the Kartograf 0.8.0 migration, ADR-060, ADR-061; translated to English). Before: 2026-03-25 (session 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 tests).
+**Last update:** 2026-11-14 (audit against the code of 2026-11-14: the imports of the producers in §3, the build and dependency rows of Hydrograf in §5 and §6, the deleted `DEVELOPMENT_STANDARDS.md`, the Nogat standard 1.0 in §10, the admin panel of ADR-086). Before: 2026-10-25 (the producers pinned on their heads, the Kartograf 0.8.0 migration, ADR-060, ADR-061; translated to English); 2026-03-25 (session 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 tests).

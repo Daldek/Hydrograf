@@ -1,5 +1,11 @@
 # ADR-083: The providers' lines in every product: one module, the responses, the hand-off and the exports
 
+> **Amended by ADR-085 (2026-11-13):** `core/attribution.py` also holds GUGiK's line G (with
+> the products and dates of `sources` in `instance.json`) and ISRIC's SG; the responses of the
+> watershed, the network, the hydrograph, the point card, the terrain profile and
+> `GET /api/terms` carry the lines of the data they are made of, and the strip of the map
+> view shows them (GK, SK). The PMAXTP lines are unchanged.
+
 **Date:** 2026-11-13
 **Status:** accepted; amended 2026-11-13 (one strip of the lines on screen, the welcome
 window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below) and

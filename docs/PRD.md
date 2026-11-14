@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## Hydrological Analysis System
 
-**Version:** 1.2
-**Date:** 2026-10-25
+**Version:** 1.3
+**Date:** 2026-11-14
 **Status:** Approved
 **Author:** Project team
 
@@ -11,7 +11,7 @@
 ## 1. Executive Summary
 
 ### 1.1 Product Goal
-Build an internal web tool for fast delineation of watershed boundaries, physiographic parameters and runoff hydrographs. The system is meant as an alternative to commercial software and uses open data of GUGiK and IMGW. Note: hydrograph generation with the SCS-CN method is limited to watersheds ≤ 250 km² (a limit of the method).
+Build a web tool for fast delineation of watershed boundaries, physiographic parameters and runoff hydrographs; since ADR-084 it runs as a public, non-commercial service under its regulamin. The system is meant as an alternative to commercial software and uses open data of GUGiK, ISRIC and IMGW-PIB. Note: hydrograph generation with the SCS-CN method is limited to watersheds ≤ 250 km² (a limit of the method).
 
 ### 1.2 Business Problem
 Professional tools for hydrological analysis are currently:
@@ -80,14 +80,15 @@ Professional tools for hydrological analysis are currently:
 
 **Spatial data:**
 - DEM (digital elevation model, Polish NMT)
-- Land cover: BDOT10k from GUGiK, or CLC
-- Stream centrelines: MPHP (the Hydrographic Division Map of Poland) or own vector data
+- Land cover: BDOT10k from GUGiK (CORINE Land Cover is not used)
+- Soil groups: ISRIC SoilGrids (through Kartograf)
+- Streams: generated from the DEM and matched to the BDOT10k watercourses (ADR-044)
 
 **Precipitation data:**
-- IMGW pmaxpt or historical data
+- IMGW-PIB PMAXTP (through Obserwator)
 - All combinations:
-  - Durations: 15min, 30min, 1h, 2h, 6h, 12h, 24h
-  - Probabilities: 1%, 2%, 5%, 10%, 20%, 50%
+  - Durations: 16, from 5 min to 72 h (5, 10, 15, 30, 45 min, 1, 1.5, 2, 3, 6, 12, 18, 24, 36, 48, 72 h)
+  - Probabilities: 27, from 0.01% to 99.9%
 
 **Assumptions:**
 - Precipitation is uniform over the whole watershed
@@ -138,8 +139,8 @@ Professional tools for hydrological analysis are currently:
 **So that** I can generate a hydrograph for a specific scenario
 
 **Acceptance criteria:**
-- A list of the available durations (7 options)
-- A list of the available probabilities (6 options)
+- A list of the available durations (16 options)
+- A list of the available probabilities (27 options)
 - Showing the precipitation value for the chosen scenario
 - A "Calculate hydrograph" button
 
@@ -217,10 +218,10 @@ Professional tools for hydrological analysis are currently:
 - Database backups: daily
 
 ### NFR-04: Security
-- Access to the system: **internal network only** (MVP)
+- Access to the system: **public over the internet** under the regulamin of the service, with a request limit per client address (ADR-084); the MVP assumed an internal network only
 - HTTPS for all connections
 - Validation of all input data
-- No storage of users' personal data
+- No storage of users' personal data: the logs keep no client address and are deleted after 14 days, and „Zgłoś uwagę” sends only the text and the view's context (ADR-084, ADR-085)
 
 ### NFR-05: Usability
 - An intuitive interface, **no training required** for the basic functions
@@ -341,7 +342,7 @@ START
   │
   ├─> [1] The user opens the application
   │        ↓
-  │   [2] The map loads with an OSM base layer
+  │   [2] The map loads with the base layer OpenFreeMap grey
   │        ↓
   │   [3] The user clicks a point on the map
   │        ↓
@@ -449,7 +450,7 @@ Launch:                                                            🚀
 **Milestones:**
 - ☑ FastAPI + PostgreSQL setup
 - ☑ Endpoint: POST `/api/delineate-watershed`
-- ☑ Endpoint: POST `/api/select-stream` — stream segment selection + upstream traversal
+- ☑ Endpoint: POST `/api/select-stream` — stream segment selection + upstream traversal (MERGED into POST `/api/delineate-watershed` with `threshold_m2` in ADR-050)
 - ☑ Endpoint: POST `/api/terrain-profile` — terrain profile along a polyline
 - ☑ Endpoint: GET `/api/depressions` — terrain depressions with filters
 - ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — MVT tiles of streams
@@ -477,22 +478,22 @@ Launch:                                                            🚀
 - ☑ Rainfall scenario form
 - ☑ API calls with error handling
 - ☑ Chart.js charts (hydrograph, histogram)
-- ☑ CSV/GeoJSON export
-- ☑ Glassmorphism UI with a draggable side panel
-- ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic)
+- ☑ CSV/GeoJSON export (today: the hyetograph as CSV and JSON, its PMAXTP points as GeoJSON and the hand-off file to Hydrolog)
+- ☑ Glassmorphism UI with a draggable side panel (REPLACED by the Nogat visual identity and the Archiwista shell, ADR-065)
+- ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic) (REPLACED: today OpenFreeMap grey, OSM GUGiK grey, „Ortofotomapa GUGiK” and none; ADR-065, ADR-085)
 - ☑ Thematic layers: MVT streams, MVT watersheds, MVT land cover, DEM hillshade, depressions
 - ☑ Terrain profile — longitudinal profile of a stream
-- ☑ 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app
+- ☑ 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app (today 26 modules of `js/` without `draggable`, SCOPE 5.1)
 
 #### **Phase 3b: Admin panel (ADR-034)**
-**Milestones:**
+**Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit 0.7.0 at `/admin/`, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
 - ☑ Frontend `/admin` — glassmorphism, 4 sections (Dashboard, Bootstrap, Resources, Cleanup)
-- ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream)
-- ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY)
+- ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream); `GET /api/admin/dashboard` is gone, replaced by `GET /api/admin/status`, with `GET /api/admin/stats` and the reports `GET /api/admin/feedback` beside it
+- ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY; today also ADMIN_API_KEY_FILE, and without either every admin route answers 401 `admin_key_not_configured`)
 - ☑ Running bootstrap.py from the panel + real-time SSE logs
 - ☑ Resource monitoring: CPU/RAM (psutil), DB pool, CatchmentGraph cache
 - ☑ Data cleanup: tiles, overlays, dem_mosaic, TRUNCATE of tables
-- ☑ 3 admin JS modules: admin-api.js, admin-app.js, admin-bootstrap.js
+- ☑ 3 admin JS modules: admin-api.js, admin-app.js, admin-bootstrap.js (today 5 modules in `frontend/admin/`: admin, resources, processing, cleanup, boundaries)
 
 #### **Phase 4: Testing and Deploy (1 week)**
 **Milestones:**
@@ -551,11 +552,12 @@ Launch:                                                            🚀
 
 ---
 
-**Document version:** 1.2
-**Date of the last update:** 2026-10-25
+**Document version:** 1.3
+**Date of the last update:** 2026-11-14
 **Status:** Approved — the project is in active development (CP4 finished, CP5 MVP in preparation)
 
 **Change history:**
+- 1.3 (2026-11-14): audit against the code of 2026-11-14: a public service (1.1, NFR-04) and no personal data stored; the data sources (BDOT10k without CORINE, SoilGrids, streams from the DEM; PMAXTP with 16 durations and 27 probabilities, also in US-03); the default base layer; notes on the milestones replaced since: `/api/select-stream`, the export, the shell, the base layers, the modules and the admin panel of ADR-086
 - 1.2 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
 - 1.1 (2026-03-01): last content update
 

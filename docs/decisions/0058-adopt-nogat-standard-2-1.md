@@ -77,3 +77,8 @@ Option B gives the offline coverage as 73%. The floor is 80 now: new tests lifte
 offline coverage of `api`, `core`, `models` and `utils` to 85%, so the deviation of
 DEV-7.5 no longer lowers the floor; it records only that `scripts/` and `migrations/`
 are not measured.
+
+**2026-11-14.** Nogat has since renumbered its standard: the drafts 2.0 and 2.1 are the
+standard 1.0 (`STANDARD_VERSION = "1.0"` in `backend/core/_errors.py`, from the error
+registry of Nogat `7786271` copied on 2026-11-12). The standard this ADR adopts is the one
+now called 1.0; the title and the text keep the number of 2026-10-25.

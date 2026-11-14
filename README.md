@@ -88,8 +88,9 @@ the empty directories `frontend/data` and `frontend/tiles`: nginx mounts the ins
 directories there inside its read-only `./frontend`.
 
 The API needs data before it can delineate: a one-off preprocessing of the DEM and its
-derivatives for your area. The easiest way is the admin panel (give a bounding box and
-press Start); the same from the command line, which takes a few hours for a large area:
+derivatives for your area. The easiest way is the admin panel (in „Przetwarzanie NMT” give a
+bounding box or a boundary file and press „Uruchom”); the same from the command line, which
+takes a few hours for a large area:
 
 ```bash
 cd backend
@@ -122,8 +123,8 @@ curl -s -X POST http://localhost:8080/api/delineate-watershed \
 
 The answer holds `mode` (`precomputed` with a threshold, `precise` without), `watershed`
 (`boundary_geojson`, `outlet`, `morphometry`, `land_cover_stats`, `hsg_stats` and the flow
-paths), and `stream` with `upstream_segment_indices` for the selected segment. A hydrograph
-for the same point:
+paths), `stream` (the selected segment) and `upstream_segment_indices` (the segments above
+it). A hydrograph for the same point:
 
 ```bash
 curl -s -X POST http://localhost:8080/api/generate-hydrograph \
@@ -141,7 +142,7 @@ Every variable is listed in
 [`.env.example`](https://github.com/Daldek/Hydrograf/blob/main/.env.example): the database
 (`POSTGRES_*`, `DATABASE_URL`, `DB_STATEMENT_TIMEOUT_MS`), the API (`LOG_LEVEL`,
 `CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
-manifest of the analysis results), the admin key
+manifest of the analysis results and `instance.json`), the admin key
 (`ADMIN_API_KEY` or the file named by `ADMIN_API_KEY_FILE`, read on every request; without
 either, every admin route refuses with `admin_key_not_configured`), the shared Kartograf
 store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
@@ -212,7 +213,7 @@ part of this Compose project and is not covered by these settings.
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.6.0) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 0.7.0) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
   The statement of the service and the link „Regulamin” (in a new tab) are under the map and
   in the guide, and in the menu „Aplikacje”.
@@ -262,7 +263,8 @@ A GET of `/api/admin/status` gives the app, its version, start and uptime, `data
 `catchment_graph` (the graph of the delineation is in memory; `warning` when it is not)
 and `data_dir` (`<data_dir>/hydrograf`, where the statistics are written, is writable).
 A GET of `/api/admin/stats?from=&to=` gives the days of `stats.jsonl` between the two UTC days
-(default the last 30) with the current day as counted so far, and their totals.
+(default the last 30) with the current day as counted so far, and the sums of every total
+but `visitors`.
 
 ## Capabilities
 
@@ -292,7 +294,7 @@ example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 vanilla JS with Leaflet, MapLibre GL and Chart.js, vendored in `frontend/vendor/` (no page
 loads a script, style or font from another site), in the Nogat visual identity
 (`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje”,
-the hand-off and the admin panel). Hydrograf uses
+the hand-off, the strip of sources, the regulamin template and the admin panel). Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its
@@ -341,8 +343,10 @@ and `details` do not change with the language. The five codes you meet most:
 Over the request limit every route answers 429 with `Retry-After` and the problem
 `rate_limited` (`details`: `reason` `request_limit`, `tile_limit` or `feedback_limit`,
 `retry_after_s`, `limit`, `window_s`). Only the gateway errors of nginx (502, 504) are not
-problem documents. The preprocessing scripts exit with 0 on success and 1 on failure,
-and with 2 when the command line is invalid.
+problem documents. The preprocessing scripts exit with 0 on success, 1 on failure and 2
+when the command line is invalid; a refusal of the bootstrap (a set of an Archiwista
+project, the shared store) exits with the code of the registry, listed in the
+[scripts README](https://github.com/Daldek/Hydrograf/blob/main/backend/scripts/README.md).
 
 ## Data and licensing
 
@@ -354,7 +358,7 @@ and with 2 when the command line is invalid.
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
 | OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
 
-The lines of every provider come from `backend/core/attribution.py` (Nogat DEV §20,
+The lines of IMGW-PIB, GUGiK and ISRIC come from `backend/core/attribution.py` (Nogat DEV §20,
 ADR-083, ADR-085) in `attribution` and `terms_notice`; the strip under the map shows
 their short forms. CORINE Land Cover (Copernicus) is not used: the land cover is
 BDOT10k's (ADR-074). Esri's orthophoto is no longer offered (ADR-085). The data are

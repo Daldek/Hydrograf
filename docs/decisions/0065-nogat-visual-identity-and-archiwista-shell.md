@@ -1,5 +1,12 @@
 # ADR-065: Nogat visual identity and Archiwista's shell instead of glassmorphism panels
 
+> **Amended by ADR-085 (2026-11-13):** the orthophoto is GUGiK's („Ortofotomapa GUGiK”,
+> WMTS), not Esri's, and the libraries are served from `frontend/vendor/` under a CSP of
+> `'self'`, not from a CDN.
+
+> **Amended by ADR-086 (2026-11-14):** the admin panel is the page `/admin/` on Nogat's kit
+> (`nogat-admin.css`), without Bootstrap and without the shell `css/chrome.css`.
+
 **Date:** 2026-11-01
 **Status:** accepted
 

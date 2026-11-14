@@ -11,24 +11,24 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 
 | ID | Title | Status | Date |
 |---|---|---|---|
-| [ADR-001](#adr-001-graf-w-bazie-zamiast-rastrow-runtime) | Graph in the database instead of runtime rasters | accepted | 2026-01-14 |
+| [ADR-001](#adr-001-graf-w-bazie-zamiast-rastrow-runtime) | Graph in the database instead of runtime rasters | amended by ADR-021 and ADR-028 | 2026-01-14 |
 | [ADR-002](#adr-002-monolityczna-aplikacja-fastapi) | Monolithic FastAPI application | accepted | 2026-01-14 |
 | [ADR-003](#adr-003-leafletjs-zamiast-google-maps) | Leaflet.js instead of Google Maps | accepted | 2026-01-14 |
 | [ADR-004](#adr-004-hietogram-beta-zamiast-blokowego) | Beta hyetograph instead of block hyetograph | accepted | 2026-01-14 |
 | [ADR-005](#adr-005-docker-compose-dla-deployment) | Docker Compose for deployment | accepted | 2026-01-14 |
-| [ADR-006](#adr-006-copy-zamiast-insert-dla-importu-dem) | COPY instead of INSERT for the DEM import | accepted | 2026-01-20 |
+| [ADR-006](#adr-006-copy-zamiast-insert-dla-importu-dem) | COPY instead of INSERT for the DEM import | superseded by ADR-028 | 2026-01-20 |
 | [ADR-007](#adr-007-reverse-trace-zamiast-iteracji-po-head-cells) | Reverse trace instead of iterating over head cells | accepted | 2026-01-20 |
-| [ADR-008](#adr-008-bezposrednia-zaleznosc-imgwtools) | Direct dependency on IMGWTools | accepted | 2026-01-21 |
+| [ADR-008](#adr-008-bezposrednia-zaleznosc-imgwtools) | Direct dependency on IMGWTools | amended by ADR-060 | 2026-01-21 |
 | [ADR-009](#adr-009-migracja-blackflake8-na-ruff) | Migration from black and flake8 to Ruff | amended by ADR-058 | 2026-02-07 |
 | [ADR-010](#adr-010-kondensacja-progressmd-z-975-do-75-linii) | Condensing PROGRESS.md from 975 to about 75 lines | accepted | 2026-02-07 |
 | [ADR-011](#adr-011-venv-jako-podstawowe-srodowisko-deweloperskie) | .venv as the primary development environment | amended by ADR-058 | 2026-02-07 |
 | [ADR-012](#adr-012-migracja-z-pysheds-na-pyflwdir-deltares) | Migration from pysheds to pyflwdir (Deltares) | accepted | 2026-02-07 |
-| [ADR-013](#adr-013-wypalanie-ciekow-w-dem-stream-burning) | Stream burning in the DEM | accepted | 2026-02-07 |
+| [ADR-013](#adr-013-wypalanie-ciekow-w-dem-stream-burning) | Stream burning in the DEM | amended by ADR-041 | 2026-02-07 |
 | [ADR-014](#adr-014-rozszerzenie-parametrow-morfometrycznych-i-analiz-rastrowych) | Extended morphometric parameters and raster analyses | accepted | 2026-02-07 |
-| [ADR-015](#adr-015-ochrona-przed-resource-exhaustion-oom) | Protection against resource exhaustion (OOM) | accepted | 2026-02-09 |
+| [ADR-015](#adr-015-ochrona-przed-resource-exhaustion-oom) | Protection against resource exhaustion (OOM) | amended by ADR-022 and ADR-028 | 2026-02-09 |
 | [ADR-016](#adr-016-przepisanie-delineate_subcatchments-na-pyflwdirbasins) | Rewriting delineate_subcatchments with pyflwdir.basins() | accepted | 2026-02-12 |
 | [ADR-017](#adr-017-podzial-process_dempy-na-moduly-core-i-optymalizacja-pipeline) | Splitting process_dem.py into core/ modules and optimising the pipeline | accepted | 2026-02-12 |
-| [ADR-018](#adr-018-optymalizacja-postgis-w-workflow--in-memory-flow-graph--pre-gen-tiles) | PostGIS optimisation in the workflow: in-memory flow graph and pre-generated tiles | accepted | 2026-02-12 |
+| [ADR-018](#adr-018-optymalizacja-postgis-w-workflow--in-memory-flow-graph--pre-gen-tiles) | PostGIS optimisation in the workflow: in-memory flow graph and pre-generated tiles | amended by ADR-022 and ADR-028 | 2026-02-12 |
 | [ADR-019](#adr-019-naprawa-deduplikacji-ciekow-multi-threshold) | Fix of the multi-threshold stream deduplication | accepted | 2026-02-12 |
 | [ADR-020](#adr-020-punkty-drenazu-w-zbiornikach-bezodplywowych-bdot10k) | Drain points in endorheic water bodies (BDOT10k) | accepted | 2026-02-12 |
 | [ADR-021](#adr-021-graf-zlewni-czastkowych-zamiast-rastrowych-operacji-runtime) | Sub-catchment graph instead of runtime raster operations | accepted | 2026-02-13 |
@@ -36,44 +36,44 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-023](#adr-023-hierarchiczne-zlewnie--merge-zamiast-redundancyjnej-ekstrakcji) | Hierarchical catchments: merge instead of redundant extraction | superseded by ADR-026 | 2026-02-15 |
 | [ADR-024](#adr-024-precyzyjna-selekcja-cieku--segmentacja-konfluencyjna--fine-threshold-bfs) | Precise stream selection: confluence segmentation and fine-threshold BFS | superseded by ADR-026 | 2026-02-15 |
 | [ADR-025](#adr-025-warunkowy-prog-selekcji-cieku--fine-bfs-tylko-dla-display_threshold100) | Conditional selection threshold: fine BFS only for display_threshold == 100 | superseded by ADR-026 | 2026-02-16 |
-| [ADR-026](#adr-026-selekcja-oparta-o-poligon-zlewni-2026-02-16) | Selection based on the catchment polygon | amended by ADR-027 | 2026-02-16 |
-| [ADR-027](#adr-027-snap-to-stream-zamiast-st_contains-w-selekcji-cieku-2026-02-17) | Snap-to-stream instead of ST_Contains in stream selection | accepted | 2026-02-17 |
+| [ADR-026](#adr-026-selekcja-oparta-o-poligon-zlewni-2026-02-16) | Selection based on the catchment polygon | amended by ADR-027 and ADR-030 | 2026-02-16 |
+| [ADR-027](#adr-027-snap-to-stream-zamiast-st_contains-w-selekcji-cieku-2026-02-17) | Snap-to-stream instead of ST_Contains in stream selection | superseded by ADR-039 | 2026-02-17 |
 | [ADR-028](#adr-028-eliminacja-tabeli-flow_network-2026-02-17) | Removing the flow_network table | accepted | 2026-02-17 |
-| [ADR-029](#adr-029-wyznaczanie-glownego-cieku-w-catchmentgraph-trace_main_channel) | Main stream tracing in CatchmentGraph (trace_main_channel) | accepted | 2026-02-22 |
+| [ADR-029](#adr-029-wyznaczanie-glownego-cieku-w-catchmentgraph-trace_main_channel) | Main stream tracing in CatchmentGraph (trace_main_channel) | amended by ADR-046 | 2026-02-22 |
 | [ADR-030](#adr-030-usuniecie-progu-fa-100-m²-z-systemu) | Removing the 100 m² flow accumulation threshold | accepted | 2026-02-24 |
 | [ADR-031](#adr-031-flaga---waterbody-mode-do-sterowania-obsługa-zbiornikow-wodnych) | The --waterbody-mode flag for handling water bodies | accepted | 2026-02-24 |
 | [ADR-032](#adr-032-wygladzanie-granic-zlewni-chaikin-smoothing) | Smoothing of catchment boundaries (Chaikin) | accepted | 2026-03-01 |
 | [ADR-033](#adr-033-podniesienie-budynkow-w-nmt-building-raising) | Raising buildings in the DEM | accepted | 2026-03-01 |
 | [ADR-034](#adr-034-panel-administracyjno-diagnostyczny) | Administration and diagnostics panel | amended by ADR-086 | 2026-03-01 |
-| [ADR-035](#adr-035-uzupelnienie-konteneryzacji-multi-stage-entrypoint-prod-override) | Completing the containerisation (multi-stage build, entrypoint, production override) | accepted | 2026-03-02 |
-| [ADR-036](#adr-036-hardening-kontenerow-docker) | Docker container hardening | accepted | 2026-03-02 |
-| [ADR-037](#adr-037-separacja-cachedata--kartograf-v050) | Separating cache from data; Kartograf v0.5.0 | accepted | 2026-03-02 |
-| [ADR-038](#adr-038-hsg-poland-wide-cache--cleanup-extension) | Poland-wide HSG cache and the cleanup extension | accepted | 2026-03-02 |
+| [ADR-035](#adr-035-uzupelnienie-konteneryzacji-multi-stage-entrypoint-prod-override) | Completing the containerisation (multi-stage build, entrypoint, production override) | amended by ADR-084 | 2026-03-02 |
+| [ADR-036](#adr-036-hardening-kontenerow-docker) | Docker container hardening | amended by ADR-084 | 2026-03-02 |
+| [ADR-037](#adr-037-separacja-cachedata--kartograf-v050) | Separating cache from data; Kartograf v0.5.0 | amended by ADR-061 | 2026-03-02 |
+| [ADR-038](#adr-038-hsg-poland-wide-cache--cleanup-extension) | Poland-wide HSG cache and the cleanup extension | amended by ADR-061 | 2026-03-02 |
 | [ADR-039](#adr-039-uproszczenie-selekcji-zlewni-do-czystego-st_contains) | Simplifying catchment selection to plain ST_Contains | accepted | 2026-03-05 |
 | [ADR-040](#adr-040-vector-boundary-file-support) | Vector boundary file support | accepted | 2026-03-09 |
 | [ADR-041](#adr-041-monotoniczne-wygładzanie-cieków) | Monotonic stream smoothing | amended by ADR-072 | 2026-03-18 |
 | [ADR-042](#adr-042-optymalizacja-wydajnosci-select-stream-dla-duzych-zlewni) | Performance of select-stream for large catchments | accepted | 2026-03-17 |
 | [ADR-044](#adr-044-bdot10k-stream-matching-w-preprocessingu) | BDOT10k stream matching in the preprocessing | accepted | 2026-03-23 |
-| [ADR-045](#adr-045-wfs-prg-zamiast-grid-sampling-wms-dla-teryt-discovery) | WFS PRG instead of WMS grid sampling for TERYT discovery | accepted | 2026-03-24 |
+| [ADR-045](#adr-045-wfs-prg-zamiast-grid-sampling-wms-dla-teryt-discovery) | WFS PRG instead of WMS grid sampling for TERYT discovery | superseded by ADR-061 | 2026-03-24 |
 | [ADR-046](#adr-046-upstream_area_km2-jako-kryterium-wyboru-galezi-w-trace_main_channel) | upstream_area_km2 as the branch criterion in trace_main_channel | accepted | 2026-03-24 |
 | [ADR-047](#adr-047-wygładzanie-chaikin-cieków-w-preprocessingu) | Chaikin smoothing of streams in the preprocessing | accepted | 2026-03-24 |
 | [ADR-048](#adr-048-droga-spływu-z-działu-wód-jako-osobna-geometria) | Flow path from the divide as a separate geometry | accepted | 2026-03-24 |
 | [ADR-049](#adr-049-dem-auto-discovery-z-lancuchem-fallback) | DEM auto-discovery with a fallback chain | accepted | 2026-03-25 |
-| [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted | 2026-03-25 |
+| [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted, erratum 2026-11-14 | 2026-03-25 |
 | [ADR-051](#adr-051-integracja-kanalizacji-deszczowej-2026-03-27) | Storm-sewer integration | amended by ADR-052 | 2026-03-27 |
 | [ADR-052](#adr-052-jawna-topologia-sieci-kanalizacyjnej-przebudowa) | Explicit storm-sewer topology (rebuild) | accepted | 2026-03-28 |
 | [ADR-053](#adr-053-feedback-testerow-z-opt-in-diagnostyka-po-stronie-klienta) | Tester feedback with opt-in client-side diagnostics | superseded by ADR-084 | 2026-08-02 |
 | [ADR-054](#adr-054-baza-odniesienia-dla-hydraulic_length_km--outlet_flow_dist_m) | Reference base of hydraulic_length_km: outlet_flow_dist_m | accepted | 2026-08-02 |
-| [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | accepted | 2026-09-28 |
-| [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
+| [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | amended by ADR-061 | 2026-09-28 |
+| [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 1.0 (numbered 2.1 when adopted) | accepted | 2026-10-25 |
 | [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | amended by ADR-084 | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
-| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066 and ADR-067 | 2026-10-25 |
+| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066, ADR-067 and ADR-079 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | accepted | 2026-11-01 |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085 and ADR-086 | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
 | [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 | 2026-11-02 |
-| [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | accepted | 2026-11-04 |
+| [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | amended by ADR-069 | 2026-11-04 |
 | [ADR-069](decisions/0069-pmaxtp-watershed-mean-by-thiessen-polygons.md) | The PMAXTP design depth is the watershed mean by Thiessen polygons; an optional areal reduction factor of the user | accepted | 2026-11-05 |
 | [ADR-070](decisions/0070-flow-path-heads-measured-in-preprocessing.md) | Flow path heads, overland segments and channel sources measured in preprocessing | accepted | 2026-11-05 |
 | [ADR-071](decisions/0071-pgw-units-and-boundary-event-routing.md) | PGW ownership with cell-level boundary-event routing, not cycle merging | accepted, amended 2026-11-07 | 2026-11-06 |
@@ -87,9 +87,9 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-079](decisions/0079-soil-groups-from-the-least-permeable-layer.md) | The soil groups are those of the least permeable SoilGrids layer of 0–100 cm | accepted | 2026-11-10 |
 | [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (seven times), noted 2026-11-11 (an option of „Wybierz zlewnię”) | 2026-11-10 |
 | [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted, amended 2026-11-11 | 2026-11-11 |
-| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | amended by ADR-084 | 2026-11-12 |
-| [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted, amended 2026-11-13 (one strip on screen; the terms linked, not restated); extended by ADR-085 | 2026-11-13 |
-| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0); its logs and blocks replaced by ADR-085 | 2026-11-13 |
+| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | amended by ADR-084 and ADR-086 | 2026-11-12 |
+| [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted, amended 2026-11-13 (one strip on screen; the terms linked, not restated); amended by ADR-085 | 2026-11-13 |
+| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0); amended by ADR-085 (logs, blocks) and ADR-086 (admin paths) | 2026-11-13 |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted | 2026-11-13 |
 | [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted | 2026-11-14 |
 
@@ -102,6 +102,10 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 ---
 
 ## ADR-001: Graf w bazie zamiast rastrow runtime
+
+> **Amended by ADR-021 (2026-02-13) and ADR-028 (2026-02-17):** the graph of runtime is the
+> graph of the sub-catchments of `stream_catchments`, which the API holds in memory (ADR-021,
+> ADR-022); the graph of DEM cells in PostGIS (`flow_network`) is gone (ADR-028).
 
 **Data:** 2026-01-14
 **Status:** Przyjeta
@@ -192,6 +196,10 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 
 ## ADR-006: COPY zamiast INSERT dla importu DEM
 
+> **Superseded by ADR-028 (2026-02-17):** the table `flow_network` that this import filled is
+> gone, and the import with it. COPY stays the bulk load of the stream tables
+> (`core/db_bulk.py`).
+
 **Data:** 2026-01-20
 **Status:** Przyjeta
 
@@ -226,6 +234,9 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 ---
 
 ## ADR-008: Bezposrednia zaleznosc IMGWTools
+
+> **Amended by ADR-060 (2026-10-25):** the producer is pinned by commit, not by a branch or a
+> tag; it is now Obserwator (package `obserwator`, `backend/pyproject.toml`).
 
 **Data:** 2026-01-21
 **Status:** Przyjeta
@@ -325,6 +336,9 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 
 ## ADR-013: Wypalanie ciekow w DEM (stream burning)
 
+> **Amended by ADR-041 (2026-03-18):** the streams are burned 2 m deep and then smoothed to
+> descend monotonically (since ADR-072 and ADR-077 in the direction of their watercourse).
+
 **Data:** 2026-02-07
 **Status:** Przyjeta
 
@@ -373,6 +387,10 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 ---
 
 ## ADR-015: Ochrona przed resource exhaustion (OOM)
+
+> **Amended by ADR-022 (2026-02-14) and ADR-028 (2026-02-17):** layers 1 and 2 guarded the
+> traversal of `flow_network`, which the API no longer queries (ADR-022) and the database no
+> longer has (ADR-028); the API traverses the in-memory catchment graph.
 
 **Data:** 2026-02-09
 **Status:** Przyjeta
@@ -453,6 +471,10 @@ Dowody awarii:
 ---
 
 ## ADR-018: Optymalizacja PostGIS w workflow — in-memory flow graph + pre-gen tiles
+
+> **Amended by ADR-022 (2026-02-14) and ADR-028 (2026-02-17):** the in-memory flow graph of
+> decision 1 left the API (ADR-022), and `core/flow_graph.py` was deleted with `flow_network`
+> (ADR-028).
 
 **Data:** 2026-02-12
 **Status:** Przyjeta
@@ -662,6 +684,10 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ## ADR-026: Selekcja oparta o poligon zlewni (2026-02-16)
 
+> **Amended by ADR-027 (2026-02-17) and ADR-030 (2026-02-24):** ADR-027 put snap-to-stream
+> before `ST_Contains` (ADR-039 returned to `ST_Contains` alone); ADR-030 removed the streams
+> of the 100 m² threshold that decision 2 kept in `stream_network`.
+
 **Status:** Przyjeta
 
 **Kontekst:** Snap-to-stream (`ST_ClosestPoint`) powodował błędne przypisanie kliknięcia do sąsiedniej zlewni, gdy jej ciek płynął blisko granicy. Próg 100 m² generował 105k zlewni cząstkowych bez praktycznego zastosowania. Geometria poligonów była pikselowa (schodkowe krawędzie z rastra).
@@ -684,6 +710,9 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 ---
 
 ## ADR-027: Snap-to-stream zamiast ST_Contains w selekcji cieku (2026-02-17)
+
+> **Superseded by ADR-039 (2026-03-05):** the selection is again the single
+> `find_catchment_at_point()` (`ST_Contains`), without snap-to-stream and its fallback chain.
 
 **Status:** Przyjeta (zastepuje mechanizm selekcji z ADR-026)
 
@@ -741,6 +770,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ---
 
 ## ADR-029: Wyznaczanie glownego cieku w CatchmentGraph (trace_main_channel)
+
+> **Amended by ADR-046 (2026-03-24):** at a confluence the branch with the larger
+> `upstream_area_km2` is taken first, then a BDOT10k stream (`is_real_stream`), then the
+> Strahler order, then the local area.
 
 **Data:** 2026-02-22
 **Status:** Przyjeta
@@ -848,6 +881,13 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ## ADR-034: Panel administracyjno-diagnostyczny
 
+> **Amended by ADR-086 (2026-11-14):** the panel is the page `/admin/` on Nogat's kit
+> (`<nogat-admin>`: „Zgłoszenia”, „Statystyki”, „Stan”, then Hydrograf's „Zasoby”,
+> „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”); `/admin` answers 308, and
+> `/admin.html` and the dashboard (`GET /api/admin/dashboard`, replaced by
+> `GET /api/admin/status`) are gone. The key comes from `ADMIN_API_KEY` or
+> `ADMIN_API_KEY_FILE`; without one every admin route refuses.
+
 **Data:** 2026-03-01
 **Status:** Przyjeta
 
@@ -871,6 +911,9 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ## ADR-035: Uzupelnienie konteneryzacji (multi-stage, entrypoint, prod override)
 
+> **Amended by ADR-084 (2026-11-13):** the production overlay runs one uvicorn process (no
+> `--workers`), so the request limit and the daily totals are those of one process.
+
 **Data:** 2026-03-02
 **Status:** Przyjeta
 
@@ -887,6 +930,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ---
 
 ## ADR-036: Hardening kontenerow Docker
+
+> **Amended by ADR-084 (2026-11-13):** nginx has no `limit_req`; the app limits pages and
+> routes per client address (`HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW`, by
+> default 300 in 60 s) and answers 429 with `Retry-After`, the admin panel included (ADR-086).
 
 **Data:** 2026-03-02
 **Status:** Przyjeta
@@ -906,6 +953,11 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ## ADR-037: Separacja cache/data + Kartograf v0.5.0
 
+> **Amended by ADR-061 (2026-10-25):** the downloads go to the Kartograf store
+> `<cache_dir>/kartograf` (since ADR-066 and ADR-067 possibly a store shared with Archiwista,
+> which Hydrograf only reads); `cache/nmt/`, `cache/bdot10k/` and `cache/soil_hsg/` are no
+> longer read.
+
 **Data:** 2026-03-02
 **Status:** Przyjeta
 **Kontekst:** Katalog `/data/` mieszał surowe pobrania (NMT tiles, BDOT10k GPKG, HSG raster) z przetworzonymi danymi. Surowe dane GUGiK (45 min pobierania) ginęły przy czyszczeniu pipeline'u. Kartograf v0.5.0 usunął filtrowanie kategorii BDOT10k — teraz pobiera wszystkie 15 warstw w jednym GPKG.
@@ -924,6 +976,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ---
 
 ## ADR-038: HSG Poland-wide cache + cleanup extension
+
+> **Amended by ADR-061 (2026-10-25):** decision 3 is replaced: the HSG raster of Poland is a
+> version of the Kartograf store (`calculate_hsg`), not `soil_hsg/hsg_poland.tif`; since
+> ADR-079 it is the raster of the least permeable layer of 0–100 cm.
 
 **Data:** 2026-03-02
 **Status:** Przyjeta
@@ -1087,6 +1143,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ## ADR-045: WFS PRG zamiast grid-sampling WMS dla TERYT discovery
 
+> **Superseded by ADR-061 (2026-10-25):** Kartograf finds the counties of an area itself
+> (`discover_teryts_for_bbox`, `download_landcover(bbox=)`); the WFS query, the grid fallback
+> and its contract test are deleted (ADR-057, update of 2026-10-25).
+
 **Data:** 2026-03-24
 **Status:** Przyjeta
 
@@ -1222,9 +1282,18 @@ Dodatkowe zmiany:
 - (-) Tryb precise wolniejszy niz precomputed (~2-5s vs ~0.5-7s) — akceptowalne dla on-demand
 - (-) Wymaga dostepnosci rastrow pipeline (fdir, DEM) na serwerze — graceful error jesli brak
 
+**Erratum 2026-11-14:** decision 1 says the precomputed mode snaps to the stream with
+`ST_ClosestPoint`. It did not: like `select-stream` since ADR-039, the mode takes the
+sub-catchment that contains the point (`CatchmentGraph.find_catchment_at_point`,
+`ST_Contains`), as the code of 2026-03-25 shows. The rest of decision 1 stands.
+
 ---
 
 ### ADR-051: Integracja kanalizacji deszczowej (2026-03-27)
+
+> **Amended by ADR-052 (2026-03-28):** the topology of the sewer network is the user's,
+> explicit (points with `downstream_id`, or points and lines with `from_node`/`to_node`) and
+> strictly validated, instead of the snapping and direction heuristics of this ADR.
 
 **Data:** 2026-03-27
 **Status:** Przyjeta
@@ -1333,6 +1402,9 @@ Dodatkowe zmiany:
 ---
 
 ## ADR-057: Pozyskiwanie danych wylacznie przez Kartograf
+
+> **Amended by ADR-061 (2026-10-25):** exception a) is closed; see the update of 2026-10-25
+> at the end.
 
 **Data:** 2026-09-28
 **Status:** Przyjeta

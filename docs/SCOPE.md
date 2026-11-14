@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.16
-**Date:** 2026-11-11
+**Version:** 1.18
+**Date:** 2026-11-14
 **Status:** Approved
 
 ---
@@ -19,7 +19,7 @@ This document defines precisely:
 ### 1.2 Business Context
 **Problem:** There is no internal tool for fast hydrological analyses of small watersheds.
 
-**Solution:** A web system that uses open data (GIOŚ, GUGiK, ISRIC, IMGW, RZGW) to delineate watersheds and to compute their parameters and hydrographs.
+**Solution:** A web system that uses open data (GUGiK, ISRIC, IMGW-PIB; the flood hazard map of Wody Polskie as an overlay) to delineate watersheds and to compute their parameters and hydrographs.
 
 **Users:** Spatial planning specialists in municipalities (without advanced GIS knowledge).
 
@@ -33,7 +33,7 @@ This document defines precisely:
 
 **✅ In scope:**
 - An interactive web map with base layers: OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer
-- Point selection by clicking on the map (polygon drawing mode + object selection mode)
+- Point selection by clicking on the map in the mode „Wybierz zlewnię” (its option „Jedna zlewnia”; „Sieć zlewni” in 2.1.7)
 - Automatic detection of the nearest stream (snap-to-stream ST_Distance + fallback ST_Contains)
 - Delineation of the watershed boundary with BFS on the in-memory graph (CatchmentGraph)
 - Smoothing of the watershed boundaries: `ST_SimplifyPreserveTopology` + `ST_ChaikinSmoothing` (ADR-032)
@@ -114,7 +114,7 @@ This document defines precisely:
 
 **Land cover analysis:**
 - Integration with the BDOT10k data from GUGiK (import into PostGIS, 8 categories)
-- Distribution of the land cover categories [%] by Corine Land Cover
+- Distribution of the 8 BDOT10k land cover categories [%] (CORINE Land Cover is not used)
 - Computation of the weighted Curve Number (CN) with the HSG (Hydrologic Soil Group) taken into account
 - CN mapping for each category (following USDA NRCS)
 - MVT thematic layer: `/api/tiles/landcover/{z}/{x}/{y}.pbf` coloured by category
@@ -225,14 +225,14 @@ This document defines precisely:
 - The `--config` flag of `bootstrap.py`
 - The `--waterbody-mode` flag (3 modes: auto, none, custom) that controls the handling of water bodies (ADR-031)
 - A selector of the DEM resolution in the admin panel (5 m / 1 m)
-- The `--waterbody-mode` flag is also available from the admin panel
+- The bootstrap route of the admin API (`POST /api/admin/bootstrap/start`) also takes `waterbody_mode`; the form of „Przetwarzanie NMT” does not offer it
 
 ---
 
 #### 2.1.6 Storm-Sewer Integration (ADR-051)
 
 **✅ In scope:**
-- Import of the storm-sewer network from a file (SHP/GPKG/GeoJSON), WFS, a database or a URL
+- Import of the storm-sewer network from a file (SHP/GPKG/GeoJSON); the source types WFS, database and URL are refused
 - Burning the inlets into the DEM (inlet burning) + reconstruction of the flow accumulation
 - FA routing through the sewer network (SewerGraph + scipy sparse)
 - Database tables: `sewer_nodes` (18 columns), `sewer_network` (16 columns), the flag `is_sewer_augmented`
@@ -246,12 +246,12 @@ This document defines precisely:
 #### 2.1.7 Network Delineation at Control Points (ADR-080)
 
 **✅ In scope:**
-- `POST /api/delineate-network`: a closing section A and 1–30 control points above it (tributaries at their mouths, gauges), snapped to the streams of the map's threshold within 100 m
+- `POST /api/delineate-network`: a closing section and 0–30 control points above it (tributaries at their mouths, gauges; the closing section alone is a network), snapped to the streams of the map's threshold within 100 m; „Sieć zlewni” is an option of the mode „Wybierz zlewnię”
 - `POST /api/delineate-network/preview` (ADR-081): the same network composed on the catchment graph after every change of the points, in a fraction of a second: the snapped points, the ids of the elements, their areas and outlines, the reach lengths and the errors of the composition, before „Oblicz charakterystyki” runs the delineation
-- The network of HEC-HMS elements: subcatchments (headwater, tributaries, the przyrzecze of each reach), reaches and junctions, made of the 1 ha sub-catchments, split where a point lies inside one; the areas of the elements sum to A's catchment, checked to the cell
+- The network of HEC-HMS elements: every point a node (J at a confluence, P elsewhere), subcatchments of two kinds for the person (dopływ, the headwater among them, and the przyrzecze of each reach), reaches and junctions, made of the 1 ha sub-catchments, split where a point lies inside one; the areas of the elements sum to the closing section's catchment, checked to the cell
 - Each subcatchment with the parameters of a delineated watershed (area, CN, land cover, soil groups, morphometry, PMAXTP weights); each reach with its length (the difference of the flow distances of its ends), its slope (the NMT at its ends) and a BDOT10k check length
 - The hand-off of the whole network to Hydrolog's „Sieć i trasowanie”: one `nogat-handoff/1` with one `hydrolog-network/1` and the origin of every node (`node_provenance`)
-- Limits: a window of at most 60 million raster cells over A's catchment; one network at a time per API worker
+- Limits: a window of at most 60 million raster cells over the closing section's catchment; one network at a time (a second request waits at most 15 s, then 503)
 
 **❌ Not in scope (Hydrolog's):**
 - Routing the reaches, their cross-sections (Manning's n, width), the rainfall of the network and a hydrograph of the network or of one of its elements: the person sets them in Hydrolog
@@ -335,13 +335,13 @@ This document defines precisely:
 
 - 📊 Export of PDF reports (with a map, charts and parameters)
 - 📈 Multi-scenario analysis (comparing Q1%, Q10%, Q50%)
-- ~~🎨 Configurable maps (choice of the base layer)~~ — **DONE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS)
+- ~~🎨 Configurable maps (choice of the base layer)~~ — **DONE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS; today OpenFreeMap grey, OSM GUGiK grey, „Ortofotomapa GUGiK” and none, 2.1.1)
 - ~~🔗 Public API (REST, OpenAPI documentation)~~ — **PARTLY DONE** (OpenAPI/Swagger documentation is available at `/docs`)
 - ~~🔬 Nash IUH / Snyder UH~~ — **DONE** (CP5: 3 UH models with a selector)
 - ~~🗺️ BDOT stream matching~~ — **DONE** (ADR-044: matching the DEM streams to BDOT10k)
 - ~~📐 Flow paths (longest/divide/centroid)~~ — **DONE** (CP5: flow paths in the parameters)
 - ~~✨ Chaikin smoothing of boundaries~~ — **DONE** (ADR-032: ST_ChaikinSmoothing)
-- ~~🏛️ WFS TERYT~~ — **DONE** (CP5: integration with the TERYT register)
+- ~~🏛️ WFS TERYT~~ — **DONE** (CP5: integration with the TERYT register; since ADR-061 Kartograf finds the counties of an area, and the WFS code is gone)
 - ~~🔍 DEM auto-discovery~~ — **DONE** (CP5: automatic detection of the DEM sheets)
 - 🧪 Calibration module (comparison with measurements)
 - 🎯 Parameter optimization
@@ -355,7 +355,7 @@ This document defines precisely:
 
 #### 3.1.1 Digital Elevation Model (DEM, Polish NMT)
 
-**Source:** GUGiK through Kartograf 0.8.0 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
+**Source:** GUGiK through Kartograf 0.8.0.dev0 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
 **Format:** ARC/INFO ASCII GRID → VRT mosaic
 **Resolution:** 5 m (Kartograf `GugikProvider(resolution="5m")`, vertical datum EVRF2007; `bootstrap --resolution 1m` selects 1 m)
 **Coordinate system:** EPSG:2180 (PL-1992)
@@ -377,7 +377,7 @@ This document defines precisely:
 
 #### 3.1.2 Land Cover
 
-**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.0, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
+**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.0.dev0, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
 **Format:** GeoPackage
 **Coordinate system:** EPSG:2180
 **Extent:** The districts that cover the bbox
@@ -442,7 +442,7 @@ This document defines precisely:
 
 #### 3.1.5 Soil Data (HSG)
 
-**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.0, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
+**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.0.dev0, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
 **Format:** GeoTIFF (the HSG raster of Poland, a version of the Kartograf store) → polygons → PostGIS (table `soil_hsg`)
 **Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
@@ -539,12 +539,14 @@ This document defines precisely:
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
-**Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22
+**Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22; Leaflet.VectorGrid 1.3.0
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
+**Libraries:** served by Hydrograf from `frontend/vendor/` with their licences and `integrity`; the CSP allows scripts, styles and fonts from the site only, no CDN (ADR-085)
 **UI framework:** none (own shell `chrome.css` + `app.css` on the main page; Nogat's kit `nogat-admin.css` and `admin/admin.css` on the admin page), in the tokens
+**Nogat's GUI kit:** 0.7.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the regulamin template and the admin panel
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
-**Modules:** 24 JS modules on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, info, info-texts, advanced, depressions, sewer, results, terms, feedback, welcome, shell, app + 6 admin modules; outside the namespace: `theme-init.js`, `theme-switch.js`
-**Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
+**Modules:** 26 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, sewer, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
+**Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
 **Pages:** `index.html` (main), `admin/index.html` (admin panel at `/admin/`), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure
@@ -641,7 +643,7 @@ This document defines precisely:
 - ✓ Understand hydrological terms (or are willing to learn)
 
 **Environment:**
-- ✓ Internal network (LAN) - no access from the internet (MVP)
+- ✓ Public access over the internet (production behind a Cloudflare Tunnel) under the regulamin of the service, with the request limit and logs without client addresses (ADR-084, ADR-085); the MVP assumed an internal network
 - ✓ Stable network connection (10 Mbps)
 - ✓ The server runs 24/7 (except maintenance)
 
@@ -653,8 +655,9 @@ This document defines precisely:
 ### 7.3 Legal and Licensing Assumptions
 
 **Data:**
-- ✓ GUGiK data: open licence (non-commercial use is fine)
-- ✓ IMGW data: to be verified (API terms of service)
+- ✓ GUGiK data (NMT, BDOT10k): every product made with them carries the line G (the products, the years of their data, the days of download; ADR-085)
+- ✓ IMGW-PIB PMAXTP data: every product made with them carries the lines PS, PP, M and the link to the PMAXTP terms RK (ADR-083)
+- ✓ ISRIC SoilGrids: CC BY 4.0, the line SG on every product made with the soil groups (ADR-085)
 - ✓ OpenStreetMap: ODbL licence (attribution required)
 
 **Code:**
@@ -965,13 +968,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.17
-**Date of the last update:** 2026-11-13
-**Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
+**Document version:** 1.18
+**Date of the last update:** 2026-11-14
+**Current version:** v0.4.0 is the latest release; `develop` carries 0.5.0.dev0 (`backend/pyproject.toml`)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.18 (2026-11-14): audit against the code of 2026-11-14: the header version; the data sources (no GIOŚ/RZGW, no CORINE); the point selection of „Wybierz zlewnię”; the sewer import from a file only; `waterbody_mode` in the admin API, not the panel's form; the network of 0–30 points, nodes J/P and two kinds of subcatchment; the base layers and TERYT notes of 2.3; Kartograf 0.8.0.dev0; the vendored libraries, Nogat's kit 0.7.0 and the 26 + 5 JS modules in 5.1; public access in 7.2; the provider lines G, PS/PP/M/RK and SG in 7.3; the current version
 - 1.17 (2026-11-13): the public service (ADR-084): the page `regulamin.html`, the module `terms` instead of `diagnostics`, nginx without its own limit, the request limit, the logs, the daily totals and the form in 5.1
 - 1.16 (2026-11-11): the network preview is in scope (2.1.7, ADR-081: `POST /api/delineate-network/preview`; the mode computes the characteristics on confirmation)
 - 1.15 (2026-11-10): the network delineation at control points is in scope (2.1.7, ADR-080: `POST /api/delineate-network` and the hand-off of a network to Hydrolog); routing stays out (2.2.1)

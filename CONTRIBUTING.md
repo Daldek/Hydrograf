@@ -47,7 +47,8 @@ it, and [`docs/PROGRESS.md`](docs/PROGRESS.md) the current state and the next st
 - **Front end.** The look follows the Nogat visual identity (ADR-065): colours, fonts,
   radii and shadows only through `frontend/css/tokens.css`, a copy of Nogat's
   `design/tokens.css` that is not edited here, like the copies of Nogat's GUI kit in
-  `frontend/nogat/` (ADR-082); libraries from a CDN always with SRI. After changing a JS or
+  `frontend/nogat/` (ADR-082); third-party libraries are vendored in `frontend/vendor/`
+  with their `integrity`, never loaded from a CDN. After changing a JS or
   CSS file of `frontend/` or adding a `<script>` or `<link>`, run
   `python3 scripts/bump_asset_versions.py`, which writes the `?v=<content hash>` of the own
   files into the HTML pages (and into the imports of `js/nogat.js`); the gate and CI check

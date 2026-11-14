@@ -138,7 +138,7 @@
   <div class="split">
     <img class="app-shot wide-shot" src="../frontend/instrukcja/Hydrograf-v2-zlewnia.png" width="1800" height="1125" alt="Widok aplikacji po wyznaczeniu zlewni Kamiennika: cztery tryby nad mapą, granica zlewni i panel z powierzchnią 37,23 km².">
     <div class="stack">
-      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne) i motyw Auto · Jasny · Ciemny.</p></div>
+      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne), „Aplikacje” (inne aplikacje ekosystemu, gdy ta instalacja je zna) i motyw Auto · Jasny · Ciemny.</p></div>
       <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Logowanie i panel „Warstwy”, po prawej panel „Zlewnia” z wynikami; w trybie sieci po prawej panel „Sieć zlewni”.</p></div>
       <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy i podpowiedź; w trybie „Wybierz zlewnię” u góry mapy także wybór „Jedna zlewnia” · „Sieć zlewni”. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
     </div>
@@ -313,7 +313,7 @@
         <div><dt>Wysokości</dt><dd>Wysokość min., max. i średnia [m n.p.m.] z NMT.</dd></div>
         <div><dt>Spadki</dt><dd>Średni spadek terenu i Spadek cieku głównego [%].</dd></div>
         <div><dt>Ciek i drogi spływu</dt><dd>Długość cieku głównego, Długość cieku wg BDOT10k, Najdłuższa droga spływu z jej spadkiem, Spływ powierzchniowy – długość i spadek, Najdłuższa droga spływu od granicy zlewni [km].</dd></div>
-        <div><dt>CN (krzywa odpływu)</dt><dd>Średnia ważona z klas pokrycia terenu BDOT10k dla AMC II; grupy glebowe HSG jej nie zmieniają.</dd></div>
+        <div><dt>CN (krzywa odpływu)</dt><dd>Średnia ważona CN kompleksów glebowo-roślinnych dla AMC II: klas pokrycia terenu BDOT10k na grupach glebowych HSG, z tablic TR-55.</dd></div>
         <div><dt>Ujście</dt><dd>Szerokość φ, długość λ [°] i wysokość [m n.p.m.].</dd></div>
       </dl>
     </div>
@@ -328,7 +328,7 @@
       </dl>
     </div>
   </div>
-  <p class="hint">Wiersze bez wartości są pomijane. Wydłużona zlewnia daje zwykle niższą i późniejszą falę niż zwarta; w bardzo małych zlewniach wskaźniki bywają niespójne (np. C<sub>z</sub> &lt; 1) — szczegóły w (i).</p>
+  <p class="hint">Wiersze bez wartości są pomijane. Wydłużona zlewnia daje zwykle niższą i późniejszą falę niż zwarta. Wskaźniki zależne od obwodu bywają niespójne (np. C<sub>z</sub> &lt; 1), bo wygładzona granica jest krótsza niż obrys komórek NMT, z których liczy się powierzchnię — szczegóły w (i).</p>
   <div class="footer"><span>WYMIARY · WYSOKOŚCI · SPADKI · KSZTAŁT</span><span>17 / 33</span></div>
 </section>
 <section class="slide" id="rzezba" aria-label="Slajd 18: rzeźba terenu, sieć rzeczna, pokrycie i gleby">
@@ -557,7 +557,7 @@
   <div class="split">
     <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-v2-telefon.png" width="488" height="1055" alt="Widok aplikacji na telefonie: ikona Instrukcja w górnym pasku, cztery tryby, panel zlewni i dolna nawigacja Mapa oraz Logowanie.">
     <div class="stack">
-      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne) i przełącznik motywu.</p></div>
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne), „Aplikacje” (lista rozwija się pod paskiem) i przełącznik motywu.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” (w „Sieci zlewni” — „Sieć”) wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
       <div class="card"><span class="label">Dotyk</span><p>Przy 390 px cztery tryby mieszczą się nad mapą w dwóch wierszach. Podpowiedzi trybu są ukryte. Profil narysujesz, dotykając kolejnych punktów linii; sieć zlewni — wskazując przekrój zamykający i potem punkty powyżej.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
@@ -571,11 +571,11 @@
   <div class="split">
     <div class="steps-list">
       <div class="step"><span class="number">01</span><strong>Otwórz formularz</strong><p>Kliknij „Zgłoś uwagę” na górnym pasku strony z mapą; na telefonie to ikona dymka.</p></div>
-      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>Miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Opis jest wymagany (do 5000&nbsp;znaków), imię lub e-mail — nie.</p></div>
-      <div class="step"><span class="number">03</span><strong>Sprawdź diagnostykę</strong><p>„Dołącz dane diagnostyczne” (ostatnie akcje, błędy, parametry zapytań) jest zaznaczone; „Pokaż co zostanie wysłane” pokazuje treść. Możesz je odznaczyć.</p></div>
+      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>W polu „Wiadomość” podaj miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Wiadomość jest wymagana (do 5000&nbsp;znaków).</p></div>
+      <div class="step"><span class="number">03</span><strong>Bez danych osobowych</strong><p>Nie wpisuj danych osobowych; odpowiedź — przez adres e-mail operatora podany pod polem w serwisie publicznym. Zgłoszenie zawiera tylko widok (tryb mapy), jego parametry i wersję aplikacji: bez kontaktu, bez adresu IP i bez danych przeglądarki.</p></div>
       <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” formularz się blokuje i pojawia się podziękowanie; okno zamknie się samo po 2&nbsp;s, chyba że w nim klikasz lub piszesz. „Anuluj”, × lub <kbd>Esc</kbd> zamykają je bez wysyłania.</p></div>
     </div>
-    <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-feedback.png" width="650" height="580" alt="Formularz Zgłoś uwagę: opis, opcjonalny kontakt, dane diagnostyczne, podgląd danych i przycisk Wyślij.">
+    <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-feedback.png" width="650" height="500" alt="Formularz Zgłoś uwagę: pole Wiadomość z licznikiem znaków, pod nim prośba o niewpisywanie danych osobowych z adresem e-mail operatora, informacja o widoku, parametrach i wersji aplikacji oraz przyciski Anuluj i Wyślij.">
   </div>
   <div class="footer"><span>TWOJA UWAGA POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>33 / 33</span></div>
 </section>

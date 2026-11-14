@@ -1,8 +1,8 @@
 # Kartograf integration
 
-**Version:** 7.6
-**Date:** 2026-11-10
-**Status:** Active (Kartograf 0.8.0.dev0, pinned commit `d0990c8`, the release set candidate-2 of Nogat; production and Hydroni run `9deaa31` until their next image; ADR-061, ADR-066, ADR-067)
+**Version:** 7.7
+**Date:** 2026-11-14
+**Status:** Active (Kartograf 0.8.0.dev0, pinned commit `d0990c8`, the release set candidate-3 of Nogat, unchanged since candidate-2; ADR-061, ADR-066, ADR-067)
 
 ---
 
@@ -11,9 +11,9 @@
 Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
 Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
 is a library dependency used through its public API. It is pinned by the commit `d0990c8` of its
-`develop` branch (0.8.0.dev0, the release set candidate-2 of Nogat), with the range
-`>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull request replaces the commit
-with the tag (REL-5.3, REL-5.6, ADR-060, ADR-061).
+`develop` branch (0.8.0.dev0, the release set candidate-3 of Nogat, `b0ac85b`, unchanged since
+candidate-2), with the range `>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull
+request replaces the commit with the tag (REL-5.3, REL-5.6, ADR-060, ADR-061).
 
 What Hydrograf takes from it:
 
@@ -207,11 +207,13 @@ erratum of 2026-10-25). Data of the 0.6.1 layout (`nmt_1m/`, `nmt_5m/`) was not 
 ### 3.7 A store shared with Archiwista, read through sets (ADR-066, ADR-067)
 
 `HYDROGRAF_KARTOGRAF_ROOT` names a Kartograf store outside the cache directory that Archiwista
-alone writes: since S4 of the store migration the store of the public Archiwista instance,
-`/home/claude-agent/data/archiwista-public/store`. Hydrograf reads it only through a closed set of
+alone writes (from S4 of the store migration, the author's decision in
+`docs/plans/2026-11-02-store-migration.md`: `~/data/archiwista-public/store`, the store of the
+public Archiwista instance). Hydrograf reads it only through a closed set of
 an Archiwista project (`bootstrap --project PATH --set NAME`, §4.5); the metadata cache stays in
-`<cache_dir>` (one per producer). The staging stack mounts the store read-only at `/kartograf` for
-every container; step H2 of the plan mounts the store and the project's directory read-only at
+`<cache_dir>` (one per producer). The staging stack (`docker-compose.staging.yml`) mounts the
+store that `HYDROGRAF_KARTOGRAF_STORE` names read-only at `/kartograf` in the API container, the
+bootstrap included; step H2 of the plan mounts the store and the project's directory read-only at
 their host paths.
 
 - **Writers:** Archiwista only (`claude-agent`, its download jobs). While the variable is set,
@@ -384,8 +386,9 @@ box of the area). Two modules read the set:
 A pipeline for one area (point + buffer): NMT download, VRT mosaic, optional BDOT10k hydro for burning
 (`--with-hydro`), `process_dem`, optional land cover (`--with-landcover`). Its store is
 `<output>/kartograf` with `--output` defaulting to `../data/nmt` (a temporary directory with
-`--no-keep-downloads`), and its metadata cache is `<output>/kartograf_meta.db`. It uses `SheetParser`
-and `BBox` to get the bbox of the sheets. There is no `--landcover-provider` (CORINE by county never
+`--no-keep-downloads`), and its metadata cache is `<output>/kartograf_meta.db`. It uses
+`utils.nmt_coverage.sheets_bbox_2180` (Kartograf's `SheetParser`) and `BBox` to get the bbox of
+the sheets. There is no `--landcover-provider` (CORINE by county never
 worked in 0.7.0).
 
 ### 4.7 `core/cn_calculator.py`
@@ -434,10 +437,12 @@ given; the old directory scan `discover_asc_files()` is gone.
 | `utils/kartograf_store.py` | `MetadataCache`, `KartografError`, `NoCoverageError`, `download_landcover`, `BBox` | the store and the BDOT10k download |
 | `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `MetadataCache`, `find_sheets_for_geometry` | NMT download |
 | `scripts/download_landcover.py` | `MetadataCache`, `download_landcover` | land cover download |
-| `scripts/bootstrap.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | the orchestrator; a run from a set reads through `utils/kartograf_set.py` |
+| `scripts/bootstrap.py` | `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | the orchestrator; the box of the sheets through `utils/nmt_coverage.py`; a run from a set reads through `utils/kartograf_set.py` |
 | `utils/archiwista_project.py` | `store_state`, `KartografError` | the project file and the pins of a set (ADR-067) |
-| `utils/kartograf_set.py` | `find_sheets_for_geometry`, `SheetParser`, `BBox`, `Bdot10kProvider.teryts_for_area`, `read_sidecar`, `transform_bbox`, `KartografError` | the inputs of a bootstrap from a set (ADR-067) |
-| `scripts/prepare_area.py` | `BBox`, `SheetParser` | the area pipeline |
+| `utils/kartograf_set.py` | `find_sheets_for_geometry`, `BBox`, `Bdot10kProvider.teryts_for_area`, `read_sidecar`, `transform_bbox`, `KartografError` | the inputs of a bootstrap from a set (ADR-067); the box of the pinned sheets through `utils/nmt_coverage.py` |
+| `utils/nmt_coverage.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox` | the frames and the box of the sheets (`sheet_frame`, `sheets_bbox_2180`, the one box of the bootstrap, a set and `prepare_area`) and the check that the NMT sheets cover the area (`nmt_coverage`, ADR-076) |
+| `scripts/prepare_area.py` | `BBox` | the area pipeline |
+| `scripts/write_instance_info.py` | `read_sidecar`, `Sidecar`, `InvalidSidecarError` | the `sources` of `instance.json`: when the NMT, BDOT10k and SoilGrids files the run used were created and downloaded, from their sidecars; the API reads them for the provider line G of GUGiK's data (`core/data_sources.py`, `core/attribution.py`, Nogat DEV §20) |
 | `scripts/analyze_watershed.py` | `iter_store`, `list_segments` | the NMT sheets of the store |
 | `core/cn_calculator.py` | `BBox`, `calculate_hsg`, `download_landcover`, `hsg_statistics`, `KartografError` | the CN calculation |
 | `utils/raster_utils.py` | none (works on the `.asc` files) | CRS normalisation and the VRT mosaic |
@@ -816,6 +821,7 @@ dem = raise_buildings_in_dem(
     transform=rasterio_transform,
     building_gpkg="buildings.gpkg",
     building_raise_m=5.0,
+    nodata=-9999.0,
 )
 ```
 
@@ -914,6 +920,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.6
-**Last update:** 2026-11-10: the soil groups are those of the least permeable SoilGrids layer of 0-100 cm, Kartograf's `calculate_hsg(depth_rule="least-permeable")`, by default (`soil.hsg_depth_rule`, ADR-079): step 5 of the private store, the pin of a set (refused with the `kartograf soil hsg` command when the set lacks the raster of the rule) and the CN on demand (§1, §2, §3, §4.1, §4.5, §4.7, §14).
-**History:** 7.5 (2026-11-10): the pin follows the release set candidate-2 of Nogat: the head `d0990c8` of `develop` (0.8.0.dev0; was `9deaa31`, which production and Hydroni still run); bootstrap step 5 makes the soil under the wetlands group D, the land cover takes the KUSK and KUKO complexes (ADR-078), the smoothing follows ADR-077; Kartograf's `--depth-rule least-permeable` (in the pin since `e49eaad0`) is not used yet. 7.4 (2026-11-03): the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change. 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.7
+**Last update:** 2026-11-14: audit against the code of 2026-11-14: the pin `d0990c8` is that of the release set candidate-3 of Nogat; no undated deployment state in the status; the shared store and its staging mount as `docker-compose.staging.yml` and the store migration plan give them (§3.7); the box of the sheets through `utils.nmt_coverage.sheets_bbox_2180` and the modules `utils/nmt_coverage.py` and `scripts/write_instance_info.py` (§4.5, §4.6, §5); `raise_buildings_in_dem` takes `nodata` (§13.2).
+**History:** 7.6 (2026-11-10): the soil groups are those of the least permeable SoilGrids layer of 0-100 cm, Kartograf's `calculate_hsg(depth_rule="least-permeable")`, by default (`soil.hsg_depth_rule`, ADR-079): step 5 of the private store, the pin of a set (refused with the `kartograf soil hsg` command when the set lacks the raster of the rule) and the CN on demand (§1, §2, §3, §4.1, §4.5, §4.7, §14). 7.5 (2026-11-10): the pin follows the release set candidate-2 of Nogat: the head `d0990c8` of `develop` (0.8.0.dev0; was `9deaa31`, which production and Hydroni still run); bootstrap step 5 makes the soil under the wetlands group D, the land cover takes the KUSK and KUKO complexes (ADR-078), the smoothing follows ADR-077; Kartograf's `--depth-rule least-permeable` (in the pin since `e49eaad0`) is not used yet. 7.4 (2026-11-03): the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change. 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
