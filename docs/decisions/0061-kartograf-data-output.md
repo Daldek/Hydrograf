@@ -8,6 +8,10 @@
 > store `<cache_dir>/kartograf` of this ADR stays and the downloads write it. The metadata cache
 > stays in `<cache_dir>` either way, and the cache clean leaves a shared store whole.
 
+> **Amended by ADR-079 (2026-11-10):** the HSG raster of bootstrap step 5 is Kartograf's
+> `calculate_hsg(depth_rule="least-permeable")` of 0–100 cm by default
+> (`soil.hsg_depth_rule`; `topsoil` keeps the 0–5 cm layer of the table below).
+
 **Date:** 2026-10-25
 **Status:** accepted
 

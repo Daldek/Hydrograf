@@ -3,6 +3,10 @@
 > **Amended by ADR-084 (2026-11-13):** when HYDROGRAF_GUI is empty, the table `gui` comes
 > from `[nogat] gui` of the `nogat.toml` named by NOGAT_CONFIG.
 
+> **Amended by ADR-086 (2026-11-14):** `admin.html` is gone; the admin panel at `/admin/` is
+> the kit's `<nogat-admin>` and does not load `js/nogat.js`, which `index.html` and
+> `instrukcja/index.html` load.
+
 **Date:** 2026-11-12
 **Status:** accepted
 

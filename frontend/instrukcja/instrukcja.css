@@ -119,6 +119,16 @@ body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-si
 .compare th, .compare td { padding: var(--space-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
 .compare thead th { color: var(--tool-hydrograf); }
 .compare tbody tr:nth-child(odd) { background: var(--surface-2); }
+/* „Objaśnienia wielkości i metod”: the longer explanations linked by the (i) texts (DEV-15.14) */
+.guide-text math { font-family: math, "STIX Two Math", "Cambria Math", "Latin Modern Math", serif; }
+.guide-text .nowrap { white-space: nowrap; }
+.explain { margin: 0 0 var(--space-6); }
+.explain:target h4 { color: var(--tool-hydrograf); }
+.explain-formula { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); overflow-x: auto; }
+.explain-vars { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px var(--space-3); margin: 0 0 var(--space-3); }
+.explain-vars div { display: contents; }
+.explain-vars dd { margin: 0; color: var(--text-2); }
+.guide-text .explain-src { color: var(--text-3); font-size: var(--text-sm); }
 /* The statement of the service and the link „Regulamin” (DEV-15.7, DEV-15.8), js/terms.js */
 .site-footer {
     padding: var(--space-3) var(--space-6);

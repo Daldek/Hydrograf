@@ -47,7 +47,7 @@ continues when one fails.
 
 | Step | What it does | Skip flag |
 |---|---|---|
-| 1 | infrastructure: `.venv` (`uv sync --locked`), the database container, `alembic upgrade head`, the SRI hashes of the CDN resources | `--skip-infra` |
+| 1 | infrastructure: `.venv` (`uv sync --locked`), the database container, `alembic upgrade head` | `--skip-infra` |
 | 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`); from a set: the pinned sheets, nothing downloaded | - |
 | 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
 | 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover`; from a set: the pinned packages | `--skip-landcover` |
@@ -194,8 +194,9 @@ such a set with its raster of 0–5 cm.
 
 **The description of the instance:** after a run whose steps 1 to 3 passed the bootstrap writes
 `frontend/data/instance.json` (see [`write_instance_info.py`](#write_instance_infopy-the-description-of-the-instance)),
-which the welcome screen and the guide read to name the data area. A failure to write it is a
-warning; the run does not fail.
+which the welcome screen and the guide read to name the data area, and whose `sources` (the dates of
+the NMT, BDOT10k and SoilGrids files the run used) the API reads for the line G of GUGiK's data. A
+failure to write it is a warning; the run does not fail.
 
 **The shared store is read-only:** while `HYDROGRAF_KARTOGRAF_ROOT` is set, `--bbox`, `--sheets` and
 `--boundary-file` are refused (`forbidden`, exit 12), as are `download_dem.py`,
@@ -298,8 +299,9 @@ cd backend
 ### `write_instance_info.py`: the description of the instance
 
 Writes `frontend/data/instance.json`, which the welcome screen (`js/welcome.js`) and the guide
-`/instrukcja/` (`js/instance.js`) read to name the data area of the instance. The bootstrap writes
-it at the end of a run; this script (re)writes it for data that already exist, without a run.
+`/instrukcja/` (`js/instance.js`) read to name the data area of the instance, and whose `sources`
+the API reads to date the line G of GUGiK's data (Nogat DEV §20, `core.data_sources`). The bootstrap
+writes it at the end of a run; this script (re)writes it for data that already exist, without a run.
 Without the file the front end shows a neutral text („Obszar danych: ten, który mapa pokazuje po
 otwarciu”).
 
@@ -313,6 +315,12 @@ docker exec hydro_api python -m scripts.write_instance_info \
 # An instance bootstrapped from a set: the area is the project's (checked by its SHA-256), the
 # soil rule the one bootstrap_set.json records
 docker exec hydroni_api python -m scripts.write_instance_info --area-name "obszar h_07"
+
+# Date the line G from the files the data were made from (the private store)
+.venv/bin/python -m scripts.write_instance_info \
+    --nmt ../cache/kartograf/nmt/pl_1992_5m_evrf2007 --nmt-sheets ../data/boundary/sheets.txt \
+    --bdot10k ../cache/kartograf/landcover/pl_bdot10k_gpkg/teryt \
+    --soilgrids ../cache/kartograf/hsg/global_soilgrids_0-100cm_least-permeable_mean
 ```
 
 | Parameter | Description | Default |
@@ -324,6 +332,13 @@ docker exec hydroni_api python -m scripts.write_instance_info --area-name "obsza
 | `--hsg-depth-rule` | the rule of the soil groups of the data, `soil.hsg_depth_rule` of their run: `least-permeable` or `topsoil` | the rule that `bootstrap_set.json` records, else unknown |
 | `--data-dir` | the bootstrap's output directory (`bootstrap_set.json`, `nmt/`) | `../data/` (`/data` in the container) |
 | `--frontend-data` | the directory nginx serves as `/data/` | `../frontend/data/` (`/frontend/data` in the container) |
+| `--nmt` | NMT sheets, or directories of the store that hold them | none |
+| `--nmt-sheets` | a file of the sheet codes used, one per line: only these sheets of `--nmt` | every sheet of `--nmt` |
+| `--bdot10k` | BDOT10k packages (`.gpkg`), or directories that hold them | none |
+| `--soilgrids` | the SoilGrids (HSG) rasters of the soil groups | none |
+
+`--nmt`, `--bdot10k` and `--soilgrids` name the files the data were made from; a product not given
+keeps its entry of the file written before.
 
 The file (`hydrograf-instance/1`) is public, so it carries no server path:
 
@@ -336,6 +351,9 @@ The file (`hydrograf-instance/1`) is public, so it carries no server path:
  "hsg": {"depth_rule": "least-permeable",
          "segment": "hsg/global_soilgrids_0-100cm_least-permeable_mean"},
  "set": null,
+ "sources": {"NMT": {"created": [2020, 2025], "acquired": ["2026-10-29"]},
+             "BDOT10k": {"created": [2026], "acquired": ["2026-03-24", "2026-10-29"]},
+             "SoilGrids": {"created": [], "acquired": ["2026-11-10"]}},
  "generated_at": "2026-11-09T22:18:39Z"}
 ```
 
@@ -344,7 +362,10 @@ of the Kartograf store and `set` its project, name and `closed_at`; all three ar
 not made from a set. `hsg` is the rule of the soil groups (ADR-079) and the store segment of its
 raster; it is null when nothing names the rule (a run with `--skip-hsg`, data without a record and
 without `--hsg-depth-rule`). `area.name` and `area.area_km2` are null when nothing gives them (a
-run by `--bbox` or `--sheets` without `--area-name`).
+run by `--bbox` or `--sheets` without `--area-name`). `sources` gives per product (`NMT`,
+`BDOT10k`, `SoilGrids`) the years its data were created (`created`: the flight of an NMT sheet, the
+edition of a BDOT10k package; SoilGrids states none) and the days its files were downloaded
+(`acquired`), from the Kartograf metadata of the files; it is null when no product is known.
 
 ---
 
@@ -734,7 +755,10 @@ field is missing, the key is empty or repeated, a geometry is not a valid polygo
 missing or the database has no stream network of the threshold. The output keeps each geometry as
 it was, in EPSG:2180, with the key and the kept fields, then these columns (the table
 `<output layer>_units` of the same GeoPackage gives the unit, the section, the row of the panel and
-the source of each; the layer's metadata the threshold, the raster directory and the version):
+the source of each; the layer's metadata the threshold, the raster directory and the version, and
+the provider lines of Nogat DEV §20, G of GUGiK's NMT and BDOT10k dated by the `sources` of
+`instance.json` and SG of SoilGrids, as the items `attribution` and `terms_notice` (JSON arrays),
+also one line per row in the table `<output layer>_attribution` and in the log):
 
 | Section | Columns |
 |---|---|

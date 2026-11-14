@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
-**Wersja:** 1.3
-**Data:** 2026-11-10 (Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`, which production and Hydroni still run), and imports the package `obserwator`)
+**Wersja:** 1.4
+**Data:** 2026-11-14 (audit against the code of 2026-11-14: the pin `f9f4ee7` is that of the release set candidate-3 of Nogat; the `source` column holds `IMGW_PMAXTP` and only the KS quantiles are stored; `PMaXTPResult`; `ObserwatorValidationError` of `get_precipitation`; `GET /api/scenarios` in `api/endpoints/hydrograph.py`; the scope of the tests). 2026-11-10: Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`), and imports the package `obserwator`
 **Status:** Aktywna
 
 ---
@@ -10,13 +10,13 @@
 
 Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/Obserwator) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
-**Pin i pakiet:** Hydrograf przypina commit `f9f4ee7` Obserwatora (wersja 3.0.0.dev0, zestaw wydania Nogata candidate-2) i importuje pakiet `obserwator` (`fetch_pmaxtp`, wyjątki `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki.
+**Pin i pakiet:** Hydrograf pins the commit `f9f4ee7` of Obserwator (version 3.0.0.dev0; the release set candidate-3 of Nogat, `b0ac85b`, unchanged since candidate-2) and imports the package `obserwator` (`fetch_pmaxtp`, the exceptions `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki.
 
 ### 1.1 Co to jest Obserwator?
 
 Obserwator to biblioteka Python do:
 - **Pobierania danych opadowych** z serwisu IMGW (maksymalne opady prawdopodobne — PMAXTP)
-- **Udostępniania 3 rozkładów** statystycznych opadów: kwantylowy (KS), górna granica (SG), błąd estymacji (RB)
+- **Three series** of the PMAXTP precipitation: the quantiles (KS), their upper confidence bounds (SG) and the estimation errors (RB)
 - **Obsługi 432 scenariuszy** per punkt (16 duracji x 27 prawdopodobieństw)
 
 ### 1.2 Dlaczego integracja?
@@ -24,7 +24,7 @@ Obserwator to biblioteka Python do:
 | Problem | Rozwiązanie |
 |---------|-------------|
 | Ręczne pobieranie danych z IMGW | Automatyczne pobieranie przez `fetch_pmaxtp()` |
-| Brak spójności formatów CSV | Ujednolicony obiekt `PrecipitationResult` |
+| Brak spójności formatów CSV | One object, `PMaXTPResult` (its `data`, a `PMaXTPData`) |
 | Punktowe dane wymagają interpolacji | Grid preprocessing; at runtime the watershed mean by Thiessen polygons (ADR-069) |
 | Manualny import do bazy danych | Pipeline INSERT ON CONFLICT z grid WGS84 |
 
@@ -110,10 +110,10 @@ from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml`.
 | `duration` | VARCHAR | Czas trwania opadu (np. `5min`, `1h`, `24h`) |
 | `probability` | FLOAT | Prawdopodobieństwo [%] |
 | `precipitation_mm` | FLOAT | Wysokość opadu [mm] |
-| `source` | VARCHAR | Źródło danych (rozkład: `ks`, `sg`, `rb`) |
+| `source` | VARCHAR | The source of the data: `IMGW_PMAXTP` (the preprocessing stores only the KS quantiles, `get_precipitation`) |
 | `updated_at` | TIMESTAMP | Data ostatniej aktualizacji |
 
-**Indeksy:** Spatial index na `geom` (GiST) dla szybkiego wyszukiwania sąsiadów (ST_Distance).
+**Indeksy:** a GiST spatial index on `geom` (the grid points near a watershed and the nearest points of the IDW, KNN `<->`), btree indexes on `duration`, `probability` and the pair.
 
 ---
 
@@ -125,7 +125,7 @@ from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml`.
 | `scripts/analyze_watershed.py` | `from obserwator import fetch_pmaxtp` | Skrypt CLI — fetch opadu dla pojedynczego punktu |
 | `core/precipitation.py` | (pośrednio, operuje na tabeli `precipitation_data`) | Validation, the watershed mean by Thiessen polygons, IDW at a point without a boundary |
 | `api/endpoints/hydrograph.py` | (pośrednio, przez `areal_depth()` / `point_depth()`) | Endpoint generowania hydrogramu |
-| `api/endpoints/scenarios.py` | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
+| `api/endpoints/hydrograph.py` (`GET /api/scenarios`) | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
 
 ---
 
@@ -174,7 +174,7 @@ result.data.rb   # Błąd estymacji
 
 **Dostępne duracje:** 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
 
-**Dostępne prawdopodobieństwa:** 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5 i 99.9% (27 wartości). `PMaXTPData.get_precipitation(duration_minutes, probability_percent)` przyjmuje procent jako `float` i tylko jedną z tych wartości; każda inna to `IMGWValidationError` (`validation_error`; w Obserwatorze `ObserwatorValidationError`).
+**Dostępne prawdopodobieństwa:** 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5 i 99.9% (27 wartości). `PMaXTPData.get_precipitation(duration_minutes, probability_percent)` takes the percentage as a `float` and only one of these values; any other raises `ObserwatorValidationError` (`validation_error`).
 
 ---
 
@@ -252,8 +252,8 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 | Plik testowy | Zakres |
 |-------------|--------|
-| `test_precipitation.py` | Walidacja duracji/prawdopodobieństw, interpolacja IDW, obsługa brakujących danych |
-| `test_preprocess_precipitation.py` | Parsowanie bbox, generowanie siatki punktów, logika INSERT |
+| `test_precipitation.py` | The validation of the durations and probabilities, the Thiessen cells, the watershed mean (`areal_depth`), the IDW at a point (`point_depth`), the duration mapping |
+| `test_preprocess_precipitation.py` | The bbox parsing and the grid of points |
 
 ---
 
@@ -265,7 +265,7 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 |-------------|------|
 | Zasięg geograficzny | Tylko Polska (14.0-24.2°E, 49.0-54.9°N) |
 | Typ danych | Dane punktowe — the watershed mean by Thiessen polygons (ADR-069); IDW at a point without a boundary |
-| Rozkład domyślny | KS (kwantylowy) — SG i RB dostępne w bazie, ale nieużywane w API |
+| Rozkład domyślny | Only KS (the quantiles) is stored in `precipitation_data`; SG and RB are neither stored nor used |
 | Aktualizacja | Wymagany manualny re-run preprocessingu przy aktualizacji danych IMGW |
 | Areal reduction | The watershed mean of point depths is reduced only by the user's own `areal_reduction_factor` (none by default; KZGW 2017, p. 105: up to 10 % for 10–100 km²); the author's decision (ADR-069) |
 
@@ -291,12 +291,12 @@ obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee79
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/Obserwator
-- **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-2)
+- **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-3, unchanged since candidate-2)
 - **Wersja:** 3.0.0.dev0 (untagged), commit `f9f4ee7927ba520d3e82d3e289872090ae24e2ec`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with a tag of Obserwator.
 
 ---
 
-**Wersja dokumentu:** 1.3
-**Ostatnia aktualizacja:** 2026-11-10
+**Wersja dokumentu:** 1.4
+**Ostatnia aktualizacja:** 2026-11-14

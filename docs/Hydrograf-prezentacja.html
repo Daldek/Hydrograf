@@ -138,7 +138,7 @@
   <div class="split">
     <img class="app-shot wide-shot" src="../frontend/instrukcja/Hydrograf-v2-zlewnia.png" width="1800" height="1125" alt="Widok aplikacji po wyznaczeniu zlewni Kamiennika: cztery tryby nad mapą, granica zlewni i panel z powierzchnią 37,23 km².">
     <div class="stack">
-      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne) i motyw Auto · Jasny · Ciemny.</p></div>
+      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne), „Aplikacje” (inne aplikacje ekosystemu, gdy ta instalacja je zna) i motyw Auto · Jasny · Ciemny.</p></div>
       <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Logowanie i panel „Warstwy”, po prawej panel „Zlewnia” z wynikami; w trybie sieci po prawej panel „Sieć zlewni”.</p></div>
       <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy i podpowiedź; w trybie „Wybierz zlewnię” u góry mapy także wybór „Jedna zlewnia” · „Sieć zlewni”. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
     </div>
@@ -238,10 +238,10 @@
     <div class="stack">
       <div class="card"><span class="label">Co pokazuje</span><p>Największą głębokość wody w każdym miejscu w symulacji modelem hydraulicznym 2D SFINCS: zlewnia Kamiennika (ok. 37 km²), opad PMAXTP na 24 h przy p = 1%. To warstwa dla jednej zlewni i jednego scenariusza, nie prognoza.</p></div>
       <div class="card"><span class="label">Legenda</span><p>„Maks. głębokość wody [m]”: 0,05–0,2 · 0,2–0,5 · 0,5–1 · 1–2 · &gt;&nbsp;2. Domyślne krycie — 80&nbsp;%.</p></div>
-      <div class="card"><span class="label">(i) przy nazwie</span><p>Założenia i źródła: NMT 5&nbsp;m bez zmian (zapora zbiornika Świerzawa bez upustu dennego), Manning i CN z BDOT10k i HSG, bez kalibracji.</p></div>
+      <div class="card"><span class="label">(i) przy nazwie</span><p>Co pokazuje warstwa, jak ją czytać i z jakich danych powstała; założenia symulacji opisuje instrukcja.</p></div>
     </div>
   </div>
-  <p class="hint warn">WYNIK WSTĘPNY. Ustawienia modelu, w tym próg sucho/mokro 0,05 m i niezmieniony NMT zapory, mogą wpływać na wyświetlane głębokości. Sprawdź opis (i) warstwy; wynik nie nadaje się do projektowania.</p>
+  <p class="hint warn">WYNIK WSTĘPNY, bez kalibracji, nie do projektowania i nie oficjalna mapa zagrożenia powodziowego. Zapora zbiornika Świerzawa nie ma w modelu upustu ani przelewu, więc poziom wody w zbiorniku jest zawyżony.</p>
   <aside class="provider-lines" aria-label="Dane opadowe PMAXTP">
     <p class="provider-title">Dane opadowe PMAXTP</p>
     <p>Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony <a href="https://klimat.imgw.pl/opady-maksymalne">https://klimat.imgw.pl/opady-maksymalne</a></p>
@@ -313,7 +313,7 @@
         <div><dt>Wysokości</dt><dd>Wysokość min., max. i średnia [m n.p.m.] z NMT.</dd></div>
         <div><dt>Spadki</dt><dd>Średni spadek terenu i Spadek cieku głównego [%].</dd></div>
         <div><dt>Ciek i drogi spływu</dt><dd>Długość cieku głównego, Długość cieku wg BDOT10k, Najdłuższa droga spływu z jej spadkiem, Spływ powierzchniowy – długość i spadek, Najdłuższa droga spływu od granicy zlewni [km].</dd></div>
-        <div><dt>CN (krzywa odpływu)</dt><dd>Średnia ważona z klas pokrycia terenu BDOT10k dla AMC II; grupy glebowe HSG jej nie zmieniają.</dd></div>
+        <div><dt>CN (krzywa odpływu)</dt><dd>Średnia ważona CN kompleksów glebowo-roślinnych dla AMC II: klas pokrycia terenu BDOT10k na grupach glebowych HSG, z tablic TR-55.</dd></div>
         <div><dt>Ujście</dt><dd>Szerokość φ, długość λ [°] i wysokość [m n.p.m.].</dd></div>
       </dl>
     </div>
@@ -328,7 +328,7 @@
       </dl>
     </div>
   </div>
-  <p class="hint">Wiersze bez wartości są pomijane. Wydłużona zlewnia daje zwykle niższą i późniejszą falę niż zwarta; w bardzo małych zlewniach wskaźniki bywają niespójne (np. C<sub>z</sub> &lt; 1) — szczegóły w (i).</p>
+  <p class="hint">Wiersze bez wartości są pomijane. Wydłużona zlewnia daje zwykle niższą i późniejszą falę niż zwarta. Wskaźniki zależne od obwodu bywają niespójne (np. C<sub>z</sub> &lt; 1), bo wygładzona granica jest krótsza niż obrys komórek NMT, z których liczy się powierzchnię — szczegóły w (i).</p>
   <div class="footer"><span>WYMIARY · WYSOKOŚCI · SPADKI · KSZTAŁT</span><span>17 / 33</span></div>
 </section>
 <section class="slide" id="rzezba" aria-label="Slajd 18: rzeźba terenu, sieć rzeczna, pokrycie i gleby">
@@ -353,11 +353,11 @@
     <div class="stack">
       <div class="card"><span class="label">Gdzie są</span><p>Przy wierszach parametrów, przy Qmax, tp, V i bilansie opadu, przy polach hietogramu i hydrogramu, przy wynikach analiz w panelu „Warstwy” oraz w „Sieci zlewni” — przy rodzajach zlewni i parametrach odcinka.</p></div>
       <div class="card"><span class="label">Jak otworzyć</span><p>Kliknij (i) albo dojdź do niego klawiszem <kbd>Tab</kbd> i naciśnij <kbd>Enter</kbd> lub spację; na telefonie dotknij (i). Ponowne kliknięcie, kliknięcie obok lub <kbd>Esc</kbd> zamyka objaśnienie. Samo najechanie kursorem go nie otwiera.</p></div>
-      <div class="card"><span class="label">Co zawiera</span><p>Definicję z symbolem, wzór, „gdzie:” ze zmiennymi i jednostkami, „Jednostka:”, blok „Znaczenie dla analizy”, a w razie potrzeby „Zakres stosowalności”, „Uwaga:” i „Źródła:”.</p></div>
+      <div class="card"><span class="label">Co zawiera</span><p>Definicję z symbolem, wzór, „gdzie:” ze zmiennymi i jednostkami, „Jednostka:”, zdanie lub dwa o tym, jak odczytać wartość, i „Źródła:”. „Więcej w instrukcji” otwiera dłuższe objaśnienie z części instrukcji „Objaśnienia wielkości i metod”.</p></div>
     </div>
   </div>
   <p class="hint">Pod polami „Model UH”, „Metoda Tc” i „Estymacja Nash” zawsze widać „Zakres stosowalności” wybranej opcji.</p>
-  <div class="footer"><span>DEFINICJA · WZÓR · ZNACZENIE · ŹRÓDŁA</span><span>19 / 33</span></div>
+  <div class="footer"><span>DEFINICJA · WZÓR · ODCZYT · ŹRÓDŁA</span><span>19 / 33</span></div>
 </section>
 <section class="slide" id="hietogram" aria-label="Slajd 20: hietogram PMAXTP">
   <p class="kicker">05 · Opad i odpływ</p>
@@ -512,11 +512,11 @@
     <div class="step"><span class="number">01</span><strong>Włącz warstwę</strong><p>W „Warstwach” zaznacz „Głębokość wody — SFINCS, opad 24&nbsp;h, p&nbsp;=&nbsp;1%”. W lewym dolnym rogu mapy pojawi się legenda.</p></div>
     <div class="step"><span class="number">02</span><strong>Pokaż cały wynik</strong><p>Wyłącz inne warstwy i kliknij „Przybliż do zasięgu warstw” — mapa pokaże zasięg modelu, czyli zlewnię Kamiennika.</p></div>
     <div class="step"><span class="number">03</span><strong>Odczytaj klasę</strong><p>Kolor porównaj z legendą „Maks. głębokość wody [m]”. Zmniejsz krycie albo wybierz „Ortofotomapa GUGiK”, by zobaczyć teren pod wodą.</p></div>
-    <div class="step"><span class="number">04</span><strong>Przeczytaj (i)</strong><p>Kliknij (i) przy nazwie warstwy: scenariusz, dane, ograniczenie i źródła. Na telefonie dotknij (i).</p></div>
-    <div class="step"><span class="number">05</span><strong>Porównaj z siecią</strong><p>Włącz „Linie spływu” lub „Cieki BDOT10k”. Rozległe płytkie plamy na zboczach i małe głębokości w korytach to skutek ograniczenia z (i).</p></div>
+    <div class="step"><span class="number">04</span><strong>Przeczytaj (i)</strong><p>Kliknij (i) przy nazwie warstwy: co pokazuje, jak ją czytać i z jakich danych powstała. Na telefonie dotknij (i).</p></div>
+    <div class="step"><span class="number">05</span><strong>Porównaj z siecią</strong><p>Włącz „Linie spływu” lub „Cieki BDOT10k”. Rozległe płytkie plamy na zboczach to woda opadu spływająca po całej siatce modelu (slajd 13).</p></div>
     <div class="step"><span class="number">06</span><strong>Wnioskuj ostrożnie</strong><p>Traktuj mapę jako podgląd metody, nie zasięg zalewu. Jeśli coś wygląda nie tak — zgłoś uwagę.</p></div>
   </div>
-  <p class="hint warn">Wynik wstępny: w niektórych miejscach, zwłaszcza w korycie i przy zaporze zbiornika Świerzawa, głębokości mogą być zaniżone. Ta warstwa nie służy do projektowania ani do oceny ryzyka dla konkretnych budynków.</p>
+  <p class="hint warn">Wynik wstępny, bez kalibracji: poziom wody w zbiorniku Świerzawa jest zawyżony, a w korytach zwierciadło leży średnio wyżej niż na MZP. Ta warstwa nie służy do projektowania ani do oceny ryzyka dla konkretnych budynków.</p>
   <div class="footer"><span>WARSTWA · ZASIĘG · LEGENDA · OBJAŚNIENIE</span><span>29 / 33</span></div>
 </section>
 <section class="slide" id="hydrogram-sfincs" aria-label="Slajd 30: hydrogram a mapa SFINCS">
@@ -530,7 +530,7 @@
       <tr><th scope="row">Czas</th><td data-label="Hydrogram">Cały przebieg fali: przepływ w kolejnych minutach.</td><td data-label="SFINCS">Na mapie tylko maksimum z całej symulacji, bez przebiegu w czasie.</td></tr>
       <tr><th scope="row">Zakres</th><td data-label="Hydrogram">Każda wyznaczona zlewnia do 250&nbsp;km², liczony na żądanie.</td><td data-label="SFINCS">Jedna zlewnia (Kamiennik) i jeden scenariusz, policzone raz poza aplikacją.</td></tr>
       <tr><th scope="row">Dane wejściowe</th><td data-label="Hydrogram">Opad PMAXTP uśredniony w zlewni lub własna seria; CN z pokrycia terenu, przeliczany wg AMC.</td><td data-label="SFINCS">Opad PMAXTP 24 h, p = 1%, model SFINCS; NMT, BDOT10k i HSG. Scenariusz modelu jest stały.</td></tr>
-      <tr><th scope="row">Status</th><td data-label="Hydrogram">Wersja rozwojowa — sprawdzaj „Zakres stosowalności”.</td><td data-label="SFINCS">Wynik wstępny; możliwe niedoszacowanie głębokości m.in. w korytach i przy zaporze.</td></tr>
+      <tr><th scope="row">Status</th><td data-label="Hydrogram">Wersja rozwojowa — sprawdzaj „Zakres stosowalności”.</td><td data-label="SFINCS">Wynik wstępny, bez kalibracji; poziom wody w zbiorniku Świerzawa zawyżony.</td></tr>
     </tbody>
   </table>
   <p class="hint">Porównanie scenariuszy dla Kamiennika: zlewnię wyznacz przy ujściu do Kaczawy (ok. 51,0154°N, 15,8899°E; ok. 37 km²). PMAXTP 24 h, p = 1% w Hydrografie jest uśredniany dla zlewni; gotowa warstwa SFINCS przedstawia osobną symulację tego deszczu. Zestawiaj zasięg i czas, ale nie utożsamiaj punktowej głębokości z przepływem w ujściu.</p>
@@ -557,7 +557,7 @@
   <div class="split">
     <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-v2-telefon.png" width="488" height="1055" alt="Widok aplikacji na telefonie: ikona Instrukcja w górnym pasku, cztery tryby, panel zlewni i dolna nawigacja Mapa oraz Logowanie.">
     <div class="stack">
-      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne) i przełącznik motywu.</p></div>
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne), „Aplikacje” (lista rozwija się pod paskiem) i przełącznik motywu.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” (w „Sieci zlewni” — „Sieć”) wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
       <div class="card"><span class="label">Dotyk</span><p>Przy 390 px cztery tryby mieszczą się nad mapą w dwóch wierszach. Podpowiedzi trybu są ukryte. Profil narysujesz, dotykając kolejnych punktów linii; sieć zlewni — wskazując przekrój zamykający i potem punkty powyżej.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
@@ -571,11 +571,11 @@
   <div class="split">
     <div class="steps-list">
       <div class="step"><span class="number">01</span><strong>Otwórz formularz</strong><p>Kliknij „Zgłoś uwagę” na górnym pasku strony z mapą; na telefonie to ikona dymka.</p></div>
-      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>Miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Opis jest wymagany (do 5000&nbsp;znaków), imię lub e-mail — nie.</p></div>
-      <div class="step"><span class="number">03</span><strong>Sprawdź diagnostykę</strong><p>„Dołącz dane diagnostyczne” (ostatnie akcje, błędy, parametry zapytań) jest zaznaczone; „Pokaż co zostanie wysłane” pokazuje treść. Możesz je odznaczyć.</p></div>
+      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>W polu „Wiadomość” podaj miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Wiadomość jest wymagana (do 5000&nbsp;znaków).</p></div>
+      <div class="step"><span class="number">03</span><strong>Bez danych osobowych</strong><p>Nie wpisuj danych osobowych; odpowiedź — przez adres e-mail operatora podany pod polem w serwisie publicznym. Zgłoszenie zawiera tylko widok (tryb mapy), jego parametry i wersję aplikacji: bez kontaktu, bez adresu IP i bez danych przeglądarki.</p></div>
       <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” formularz się blokuje i pojawia się podziękowanie; okno zamknie się samo po 2&nbsp;s, chyba że w nim klikasz lub piszesz. „Anuluj”, × lub <kbd>Esc</kbd> zamykają je bez wysyłania.</p></div>
     </div>
-    <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-feedback.png" width="650" height="580" alt="Formularz Zgłoś uwagę: opis, opcjonalny kontakt, dane diagnostyczne, podgląd danych i przycisk Wyślij.">
+    <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-feedback.png" width="650" height="500" alt="Formularz Zgłoś uwagę: pole Wiadomość z licznikiem znaków, pod nim prośba o niewpisywanie danych osobowych z adresem e-mail operatora, informacja o widoku, parametrach i wersji aplikacji oraz przyciski Anuluj i Wyślij.">
   </div>
   <div class="footer"><span>TWOJA UWAGA POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>33 / 33</span></div>
 </section>

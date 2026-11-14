@@ -1,5 +1,9 @@
 # ADR-068: The hand-off to Hydrolog is built by the API
 
+> **Amended by ADR-069 (2026-11-05):** the PMAXTP depth is the watershed mean by Thiessen
+> polygons, and the rainfall's provenance carries the `interpolation` that made it,
+> `thiessen` or `idw`, not always `idw`.
+
 **Date:** 2026-11-04
 **Status:** accepted
 

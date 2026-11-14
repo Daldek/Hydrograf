@@ -1,5 +1,15 @@
 # ADR-084: Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact
 
+> **Amended by ADR-085 (2026-11-13):** the logs follow Nogat's ECO-066: `core/nogat_logging.py`
+> writes access, app and lifecycle records to `<state_dir>/hydrograf/logs/`, deleted after 14
+> days; nginx keeps no log and passes no `X-Request-ID`; Docker's log driver is `local`;
+> journald, `docker/journald.conf` and structlog are gone. The regulamin drops the blocks
+> `copernicus` and `esri`.
+
+> **Amended by ADR-086 (2026-11-14):** the admin paths are `/admin` (308 to `/admin/`),
+> `/admin/` and `/api/admin/*`; `/admin.html` is gone. The panel's requests are limited but
+> counted in no daily total, and its answers carry `Cache-Control: no-store`.
+
 **Date:** 2026-11-13
 **Status:** accepted; amended 2026-11-13 (kit 0.6.0 without the block `imgw-terms`: Nogat
 ECO-065; below)

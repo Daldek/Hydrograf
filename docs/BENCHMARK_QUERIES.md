@@ -23,7 +23,7 @@ i wyznaczaniu granic zlewni (ADR-039).
 
 ### Q1: ST_Contains — punkt w zlewni
 
-**Źródło:** `catchment_graph.py:272-280`
+**Source:** `CatchmentGraph.find_catchment_at_point` (`core/catchment_graph.py`)
 
 ```sql
 SELECT segment_idx FROM stream_catchments
@@ -52,7 +52,7 @@ Execution Time: 0.195 ms
 
 ### Q2: Lookup segmentu
 
-**Źródło:** `watershed_service.py:59-75`
+**Source:** `get_stream_info_by_segment_idx` (`core/watershed_service.py`)
 
 ```sql
 SELECT segment_idx, strahler_order, ST_Length(geom) as length_m,
@@ -83,7 +83,7 @@ Execution Time: 0.068 ms
 
 ### Q3: Merge granic (10 segmentów)
 
-**Źródło:** `watershed_service.py:155-179`
+**Source:** the query of the benchmark (`test_bench_boundary_merge_10` of `backend/tests/performance/test_query_performance.py`). The merge of today, `_merge_direct` of `merge_catchment_boundaries` (`core/watershed_service.py`), closes the gaps with a 2 m buffer and ends with `ST_Buffer(…, 0)` instead of `ST_MakeValid`; more than 100 sub-catchments are merged in batches (`_merge_batched`).
 
 ```sql
 SELECT ST_AsBinary(ST_Multi(ST_MakeValid(
@@ -126,7 +126,7 @@ Jak Q3, ale z 50 segmentami. Koszt rośnie nieliniowo z powodu ST_UnaryUnion.
 
 ### Q5: Ekstrakcja ujścia
 
-**Źródło:** `watershed_service.py:204-219`
+**Source:** `get_segment_outlet` (`core/watershed_service.py`)
 
 ```sql
 SELECT ST_X(ST_EndPoint(geom)) as x, ST_Y(ST_EndPoint(geom)) as y
@@ -154,7 +154,7 @@ Execution Time: 0.016 ms
 
 ### Q6: GeoJSON cieku głównego
 
-**Źródło:** `watershed_service.py:281-296`
+**Source:** `get_main_stream_geojson` (`core/watershed_service.py`)
 
 ```sql
 SELECT ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson
@@ -248,7 +248,7 @@ Sekwencja: ST_Contains → segment lookup → merge (5 segs) → outlet → GeoJ
 | `idx_stream_geom_t1000` | GiST (partial) | 472 kB |
 | `idx_stream_geom_t10000` | GiST (partial) | 56 kB |
 | `idx_stream_geom_t100000` | GiST (partial) | 8 kB |
-| `idx_stream_geom` | GiST (global) | 512 kB |
+| `idx_stream_network_geom` | GiST (global) | 512 kB |
 | `idx_stream_unique` | B-tree (unique) | 640 kB |
 | `idx_stream_upstream_area` | B-tree | 360 kB |
 
@@ -274,17 +274,19 @@ ST_Contains (Q1) vs ST_DWithin+ORDER BY (Q7):
    3-warstwowy fallback chain i upraszczając kod
 4. Pełny pipeline (Q8) wykonuje się w ~5.7 ms (mean), co jest poniżej budżetu 100 ms
 5. Wąskie gardło: Q4 (merge 50 segmentów) — ST_UnaryUnion rośnie nieliniowo,
-   p95=248 ms. Dla dużych zlewni (>500 segmentów) stosowany jest cascade do grubszych progów
+   p95=248 ms. For large watersheds (more than 300 sub-catchments, `_MAX_MERGE` of `api/endpoints/watershed.py`) the boundary is merged from a coarser threshold (`cascade_escalate`).
 
 ## 5. Instrukcja reprodukcji
 
 ```bash
 # 1. Uruchom bazę danych
 docker compose up -d db
+# The compose files do not publish the port of db: steps 3 and 4 need a PostGIS at DATABASE_URL
+# (default of tests/conftest_db.py: postgresql://hydro_user:hydro_password@localhost:5432/hydro_db)
 
 # 2. Załaduj dane testowe (opcjonalnie — testy robią to automatycznie)
 cd backend
-docker compose exec db psql -U hydro_user -d hydro_db \
+docker compose exec -T db psql -U hydro_user -d hydro_db \
     -f /dev/stdin < tests/fixtures/test_catchments.sql
 
 # 3. Uruchom benchmarki

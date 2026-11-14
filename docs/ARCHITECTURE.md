@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.7
-**Date:** 2026-11-02
+**Version:** 2.20
+**Date:** 2026-11-14
 **Status:** Approved
 
 ---
@@ -70,7 +70,7 @@
 │  └────────────────┘  └───────────────────┘  └────────────────┘  │
 │  ┌────────────────┐  ┌───────────────────┐  ┌────────────────┐  │
 │  │ stream_network │  │precipitation_data │  │  depressions   │  │
-│  │ (Lines)        │  │ (IDW scenarios)   │  │ (Blue spots)   │  │
+│  │ (Lines)        │  │ (PMAXTP grid)     │  │ (Blue spots)   │  │
 │  └────────────────┘  └───────────────────┘  └────────────────┘  │
 │  ┌────────────────┐  ┌───────────────────┐                      │
 │  │ sewer_nodes    │  │  sewer_network    │                      │
@@ -124,10 +124,12 @@ Summary of the key ADRs:
 | ADR-051 | Storm-sewer network integration | Inlet burning + FA routing through the sewer network in preprocessing |
 | ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
 | ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; Bootstrap only in `/admin` |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; no Bootstrap since ADR-086 |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product | PMAXTP's lines of Nogat DEV §20 from one module (`core/attribution.py`) in the responses, the hand-off and every export; the front end shows what a response or the results manifest carries |
-| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service | Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG; the request limit per client address and the daily totals in the API (one process), the pages through the API; logs without addresses in the journal, 14 days; the form with the text and the view's context |
+| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service | Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG; the request limit per client address and the daily totals in the API (one process), the pages through the API; logs without addresses, 14 days (the API's own files since ADR-085); the form with the text and the view's context |
+| [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines, own files and the logs of ECO-066 | G and SG with the dates of `instance.json` on every product of their data, the GUGiK orthophoto, no remote scripts, the logs `nogat-log/1` of `<state_dir>/hydrograf/logs` |
+| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit | `/admin/` is the kit's `<nogat-admin>` with Hydrograf's sections, `GET /api/admin/status` and `stats`, the key of `ADMIN_API_KEY` or `ADMIN_API_KEY_FILE` |
 
 ---
 
@@ -139,6 +141,7 @@ Summary of the key ADRs:
 backend/
 ├── api/
 │   ├── __init__.py
+│   ├── errors.py                  # Problem responses application/problem+json (RFC 9457) of every error, their OpenAPI documentation, operationId (ADR-059)
 │   ├── main.py                    # FastAPI app instance, lifespan (the logs' start and stop), middleware (the access log outermost)
 │   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (CF-Connecting-IP through private hops), the request limit, the 429 page or problem, the daily totals
 │   ├── dependencies/
@@ -151,35 +154,42 @@ backend/
 │       ├── feedback.py            # POST /feedback (the text and the view's context), the admin list GET/PATCH/DELETE /admin/feedback
 │       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
 │       ├── health.py              # GET /health
-│       ├── hydrograph.py          # POST /generate-hydrograph
+│       ├── hydrograph.py          # POST /generate-hydrograph, GET /scenarios
 │       ├── profile.py             # POST /terrain-profile
 │       ├── identify.py            # GET /identify-point (core/point_info.py)
 │       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker; POST /delineate-network/preview (ADR-081): the same network composed on the catchment graph
 │       ├── site.py                # The pages answered with X-Accel-Redirect, /regulamin.html, GET /terms, POST /downloads (ADR-084)
-│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
+│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /tiles/thresholds, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
 ├── core/
 │   ├── __init__.py
+│   ├── _errors.py                 # The error registry of the Nogat standard 1.0, generated from schemas/nogat/error_registry.json by scripts/generate_errors.py (ERR-3)
+│   ├── active_run.py              # The pointer <output_dir>/active_run.json to the published run by PGW units, whose VRT mosaics the raster resolvers of core/config.py return (ADR-071)
 │   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile, the providers' lines of a result (provider_lines, ADR-083)
-│   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083): PMAXTP's PS, PP, M and the terms line RK; ProviderLines, merge, is_terms
+│   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083, ADR-085): PMAXTP's PS, PP, M and the terms line RK, GUGiK's G with the dates of core/data_sources.py, ISRIC's SG; ProviderLines, merge, is_terms, data_lines
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS), reloaded when the network in the database changes
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
 │   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics and state_dir() of the logs (Nogat DEV-18.1, DEV-18.2)
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
+│   ├── data_sources.py            # The products of the instance's data and when they were made and downloaded: `sources` of frontend/data/instance.json (ADR-085)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
+│   ├── divide_flow_path.py        # The longest flow paths of a watershed from its farthest cell and from its boundary, on the saved rasters (ADR-048, ADR-070)
+│   ├── errors.py                  # HydrografError and its subclasses, one code of the registry each (ERR-1, ERR-4)
 │   ├── handoff.py                 # The hand-off nogat-handoff/1 to Hydrolog's GUI: build_handoff (a watershed, ADR-068), build_network_handoff (a network, ADR-080)
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
+│   ├── messages.py                # The message catalogue of the errors, English and Polish (ERR-6)
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── network_delineation.py     # Network at control points on the rasters (ADR-080): snapping, the window of the closing section's catchment, the element raster and its splits, the area check, the measures of the elements, their coverage, the reaches
 │   ├── network_preview.py         # The network composed on the catchment graph (ADR-081): the full run's snapping and tree, areas exact to the cell, reach lengths, outlines from a cover of the sub-catchment polygons
 │   ├── network_tree.py            # Network at control points on the catchment graph (ADR-080): the points drawn to the nodes of the network, parents, trunks, junctions, elements of the units, ids J/P/Z/R from the closing section upward in the order of the hand-off
 │   ├── nogat_logging.py           # Copy of Nogat's reference module (never edited here, schemas/nogat/README.md): ServerLog (the files nogat-log/1 of <state_dir>/hydrograf/logs, deleted after 14 days; lifecycle and reduced errors on stderr) and the middleware AccessLog (Nogat DEV-12.4 to DEV-12.9)
+│   ├── point_info.py              # What Hydrograf knows at one point (GET /api/identify-point)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
 │   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
@@ -189,9 +199,15 @@ backend/
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
 │   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
 │   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf (ADR-084)
+│   ├── unit_flow_paths.py         # Flow-path operations on the disk-backed D8 cells of the PGW units (ADR-071)
+│   ├── unit_hydrology.py          # The fill and D8 of the whole grid once, taken by owner and routed on disk (ADR-071)
+│   ├── unit_ownership.py          # The PGW owners (or the catchments grouped into them) rasterized on the DEM grid (ADR-071)
+│   ├── unit_rasters.py            # Per-owner GeoTIFF tiles and a whole-area VRT for every unit raster (ADR-071)
+│   ├── unit_run_store.py          # The runs and units of the unit bootstrap (processing_runs, processing_units, migration 005): a checkpoint per unit, publish all or nothing
 │   ├── usage.py                   # The daily totals (visitors by a salted HMAC, page views, analyses, downloads) and <data_dir>/hydrograf/stats.jsonl (DEV-15.11, ADR-084)
+│   ├── version.py                 # get_version(): the version of backend/pyproject.toml (REL-1.1)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
-│   ├── zonal_stats.py             # Zonal statistics (bincount, max)
+│   ├── zonal_stats.py             # Zonal statistics: zonal_summary (numba passes, process_dem); bincount, min, max, histogram (generate_depressions)
 │   └── boundary.py               # Vector boundary file handling (GPKG/GeoJSON/SHP), validation, bbox conversion (ADR-040)
 │
 ├── models/
@@ -201,7 +217,8 @@ backend/
 ├── scripts/
 │   ├── __init__.py
 │   ├── bootstrap.py               # Orchestrator: runs the full preprocessing pipeline
-│   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
+│   ├── process_dem.py             # NMT processing of the whole raster into the stream and catchment tables; --units runs process_dem_units.py
+│   ├── process_dem_units.py       # The DEM bootstrap by PGW units on the grid of the input DEM (ADR-071)
 │   ├── prepare_area.py            # Downloads and processes the NMT of one area (point + buffer); its Kartograf store is <output>/kartograf
 │   ├── download_dem.py            # Downloads the NMT (DEM) from GUGiK into the Kartograf store (ADR-061): download_sheets() -> NmtDownloadReport / NmtDownloadError
 │   │                              #   store: <cache_dir>/kartograf/nmt/pl_<system>_<res>_evrf2007/ (a hard-linked standard path, versions/)
@@ -210,7 +227,7 @@ backend/
 │   ├── download_landcover.py      # Downloads land cover (BDOT10k per county, CORINE) into the store; merge_hydro_gpkgs()
 │   ├── import_landcover.py        # Imports land cover into PostGIS
 │   ├── preprocess_precipitation.py # Imports precipitation from IMGW
-│   ├── generate_tiles.py          # Generates MVT tiles (streams, catchments, landcover)
+│   ├── generate_tiles.py          # Pre-generates the MVT tiles of the streams and catchments per threshold (tippecanoe, PMTiles) under frontend/tiles
 │   ├── generate_dem_overlay.py    # DEM overlay (PNG)
 │   ├── generate_dem_tiles.py      # XYZ tile pyramid of the DEM (hillshade)
 │   ├── generate_streams_overlay.py # Streams overlay (PNG)
@@ -219,8 +236,12 @@ backend/
 │   ├── check_stream_directions.py # Diagnostic of the flow direction of the burned BDOT10k lines by the rules of ADR-077 (GeoPackage); does not change the pipeline
 │   ├── diagnose_catchment_exits.py # Where the NMT D8 flow leaves given polygons: exits with destination, area, share (GeoPackage)
 │   ├── export_catchment_parameters.py # The panel's basic parameters, shape indices and land cover for given polygons (GeoPackage)
-│   ├── download_sewer.py          # Downloads the sewer network (file/WFS/DB/URL, CRS validation, SSRF protection). Returns tuple (points_gdf, lines_gdf | None)
-│   ├── write_instance_info.py     # frontend/data/instance.json (hydrograf-instance/1): the area of the instance for the welcome screen and the guide
+│   ├── download_sewer.py          # Loads the sewer network from a file (SHP/GPKG/GeoJSON; the source types wfs, database and url are refused), CRS validation, EPSG:2180. Returns the tuple (points_gdf, lines_gdf), either None when absent
+│   ├── write_instance_info.py     # frontend/data/instance.json (hydrograf-instance/1): the area of the instance for the welcome screen and the guide, `sources` of its data (ADR-085)
+│   ├── backfill_flow_path_heads.py # Fills the flow path heads, overland segments and stream heads of migration 004 from the saved rasters
+│   ├── backfill_outlet_flow_dist.py # Fills stream_catchments.outlet_flow_dist_m (migration 003)
+│   ├── generate_errors.py         # Generates core/_errors.py from the vendored error registry (ERR-3)
+│   ├── README.md                  # The scripts and their options
 │   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
 ├── migrations/
@@ -228,17 +249,21 @@ backend/
 │
 ├── utils/
 │   ├── __init__.py
+│   ├── archiwista_project.py      # The project file of Archiwista (archiwista-project/1), read strictly for a bootstrap from a set (ADR-067)
 │   ├── dem_color.py               # DEM color palette, hillshade blending
 │   ├── geometry.py                # Geometric operations, CRS transforms
 │   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061), the HSG rules of soil.hsg_depth_rule (ADR-079)
-│   ├── raster_utils.py            # Raster tools (resample, polygonize)
+│   ├── kartograf_set.py           # The Kartograf inputs of the bootstrap taken from a set of an Archiwista project (ADR-067)
+│   ├── raster_utils.py            # Raster tools: VRT mosaic, CRS normalisation, alignment to the cell size, resampling
 │   ├── nmt_coverage.py            # NMT sheets that leave the area or a hole of their mosaic uncovered (ADR-076)
 │   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)
 │
 ├── tests/
-│   ├── unit/                      # 45+ unit test files
-│   ├── integration/               # 8+ integration test files
+│   ├── unit/                      # 100+ unit test files (offline)
+│   ├── integration/               # 20+ integration test files (TestClient; marker db: PostGIS)
+│   ├── contract/                  # Contracts: error registry, messages, OpenAPI, problems, README, .env.example, kit, vendor
 │   ├── performance/               # Performance tests (benchmarks)
+│   ├── fixtures/                  # Test data
 │   └── conftest.py
 │
 ├── pyproject.toml           # dependencies (ranges), dev group, tool configuration
@@ -271,15 +296,17 @@ Response: 200 OK
   "archiwista": "http://127.0.0.1:8090/"
 }
 ```
-The table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) that the deployment sets in `HYDROGRAF_GUI` (`docker-compose.yml`, `.env.example`): a registry name in lower case to an http or https URL or a path from `/` on this host; `{}` without it. The settings refuse any other value when they load (`gui_table()` of `core/config.py`), so the API does not start with it. `js/nogat.js` sets the table as the `apps` of the app menu of every page (§4.2.0).
+The table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) of the deployment: `HYDROGRAF_GUI` (`docker-compose.yml`, `.env.example`), else the table `gui` of `[nogat]` in the nogat.toml of NOGAT_CONFIG (`deployment_gui()`): a registry name in lower case to an http or https URL or a path from `/` on this host; `{}` without either. The settings refuse any other value of `HYDROGRAF_GUI` when they load (`gui_table()` of `core/config.py`), so the API does not start with it; a table of the file that the menu cannot use is logged and ignored. `js/nogat.js` sets the table as the `apps` of the app menu of every page (§4.2.0).
 
 #### 2.2.1b The Public Service (ADR-084)
 ```
 GET /api/terms
 Response: 200 OK
 {"url": "/regulamin.html", "operator_email": "kontakt@debever.pl",   // both null without [nogat.operator]
- "attribution": ["Źródłem pochodzenia danych jest …", …],     // PMAXTP's lines (core/attribution.py), always
- "terms_notice": ["Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"]}
+ "attribution": ["Źródłem pochodzenia danych jest …", …],     // PMAXTP's lines, then G and SG of the instance's data (core/attribution.py)
+ "terms_notice": ["Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"],
+ "layers": {"elevation": {"attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT (…); dane przetworzone"], "terms_notice": []},
+            "drainage": {…}, "topography": {…}, "soils": {…}}}   // the lines of each kind of the map's layers
 
 GET /regulamin.html            — the regulamin of the deployment (text/html); 404 without an operator
 POST /api/downloads            — 204: count one file the interface saved (the daily total downloads)
@@ -292,7 +319,7 @@ Over a limit: 429, Retry-After: <s>; a page: a Polish HTML page; a route: the pr
 rate_limited, details {reason: request_limit|tile_limit|feedback_limit, retry_after_s,
 limit, window_s}
 ```
-`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 0.6.2; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
+`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 0.7.0; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
 
 The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin/index.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
 
@@ -301,13 +328,12 @@ The middleware `api/traffic.py` runs inside the access log's (§7.1), which reco
 POST /api/delineate-watershed
 Content-Type: application/json
 
-Precomputed mode (with threshold_m2: snap-to-stream + BFS over the graph):
+Precomputed mode (with threshold_m2: the sub-catchment at the point + BFS over the graph):
 Request:
 {
   "latitude": 52.123456,
   "longitude": 21.123456,
-  "threshold_m2": 10000,
-  "display_threshold_m2": 10000
+  "threshold_m2": 10000
 }
 
 Precise mode (no threshold_m2; raster delineation with pyflwdir on the fly):
@@ -320,11 +346,14 @@ Request:
 Response: 200 OK
 {
   "mode": "precomputed",  // or "precise"
-  "stream": { "segment_idx": 42, "strahler_order": 3, ... },
-  "upstream_segment_indices": [42, 43, 44, ...],
-  "boundary_geojson": { "type": "Feature", ... },
-  "display_threshold_m2": 10000,
-  "watershed": { "outlet": {...}, "morphometry": {...}, ... }
+  "watershed": { "boundary_geojson": { "type": "Feature", ... }, "outlet": {...}, "morphometry": {...}, ... },
+  "stream": { "segment_idx": 42, "strahler_order": 3, ... },   // precomputed mode only
+  "upstream_segment_indices": [42, 43, 44, ...],              // for the MVT highlighting
+  "display_threshold_m2": 10000,                              // the threshold of those indices
+  "info_message": null,                                       // a note when threshold_m2 was raised
+  "handoff": {"schema": "nogat-handoff/1", ...},              // the watershed for Hydrolog's GUI (ADR-068)
+  "attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT, BDOT10k (…); dane przetworzone", …],   // G, and SG with soil groups (ADR-085)
+  "terms_notice": []
 }
 
 Errors (application/problem+json):
@@ -360,7 +389,9 @@ Response: 200 OK
       { "type": "Feature", "geometry": { "type": "MultiPolygon", ... }, "properties": { "depth": 0 } },
       ...
     ]
-  }
+  },
+  "attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT, BDOT10k (…); dane przetworzone"],   // G (ADR-085)
+  "terms_notice": []
 }
 
 Errors (application/problem+json):
@@ -418,7 +449,8 @@ Response: 200 OK
      "move_to": {"latitude": 50.9197045, "longitude": 15.9542906},  // the cell above J1 on P3's branch
      "lag_min": 2}}           // the lag the hand-off writes for a flat reach; null otherwise
   ],
-  "handoff": {"schema": "nogat-handoff/1", ...}   // the network for Hydrolog's „Sieć i trasowanie”
+  "handoff": {"schema": "nogat-handoff/1", ...},   // the network for Hydrolog's „Sieć i trasowanie”
+  "attribution": [...], "terms_notice": []         // G and SG of the network's data (ADR-085), as in its hand-off
 }
 
 Errors (application/problem+json; details.point_id or details.point_ids name the point):
@@ -431,7 +463,7 @@ Errors (application/problem+json; details.point_id or details.point_ids name the
 
 The network of a closing section and the control points above it (plans `docs/plans/2026-11-10-network-delineation.md` and `docs/plans/2026-11-11-network-nodes.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, the closing section included, snaps to the nearest stream cell of `threshold_m2` within 100 m, then moves to the nearest node of the network (a stream cell of `threshold_m2` into which two or more such streams drain) within 50 m of flow distance below or above it (`at_node`). Every point is a node: `points[].node` is `J<n>` at a confluence and `P<n>` elsewhere. The ids of the request are only the client's handles (`details.point_id` and `details.point_ids` name them); the ids of the response and the hand-off are the network's, numbered by a walk from the closing section (`J1` or `P1`) upward, each kind on its own, and the same points in any order give the same ids. `subcatchments[].kind` is `headwater` (a river entering a node with no reach, also one without a point; `point` the handle of the person's point at its node, else null) or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[]` are the nodes, `kind` `confluence` (one the network made, `point` and `name` null), `point` (a person's point, a `J` or a `P`) or `outlet` (the closing section, which flows into `O`), with the `name` of its point. `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) (each only when it has ids) and one `reach_short_or_flat` for every reach shorter than 200 m (`SHORT_REACH_M`) or of the minimum slope (ADR-080 D10a): its length, whether it is flat, the point at its upper end, the junction below, `move_to` (from a point into a confluence: the outlet cell above the confluence on the reach's branch, from where the point is drawn to the node; the map mode's „Przesuń P… do zbiegu”) and `lag_min`, the lag of a flat reach; the front end words them. A reach of the minimum slope is a `lag` reach of `lag_min` = max(1, round(length / 0.5 m/s / 60)) in the hand-off, with `method_reason: "flat"` and its length and slope in `node_provenance`: Hydrolog's Muskingum-Cunge cannot route a flat reach. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
 
-A network reads the saved rasters of the closing section's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. With production's two workers at most two networks run at once. The router registers the problems 404 and 503 of the watershed routes and the route its 422, besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
+A network reads the saved rasters of the closing section's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. The API runs one process (ADR-084), so one network runs at a time. The router registers the problems 404 and 503 of the watershed routes and the route its 422, besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
 
 #### 2.2.2c Network Preview (ADR-081)
 ```
@@ -459,7 +491,8 @@ Response: 200 OK
     {"id": "R1", "from": "J1", "to": "P1", "length_km": 1.2969, "geojson": {"type": "Feature", ...}}
   ],
   "junctions": [...],          // as the full run's
-  "notices": [{"code": "over_scs_cn_limit", "ids": ["Z1"], "reach": null}]   // and the full run's reach_short_or_flat
+  "notices": [{"code": "over_scs_cn_limit", "ids": ["Z1"], "reach": null}],   // and the full run's reach_short_or_flat
+  "attribution": [...], "terms_notice": []    // G of the network's drainage (ADR-085)
 }
 
 Errors: those of POST /api/delineate-network but 422 and network_delineation_busy (no window,
@@ -492,15 +525,16 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
   water_balance.cn_used: float (the CN after the AMC conversion)
   metadata.amc; metadata.hietogram_type = null for your own series
-  attribution: [PS, PP, M], terms_notice: [RK] for PMAXTP and a series derived from it;
-  [] and [] for your own data (ADR-083); the hand-off has the same fields, without them
-  when they are empty
+  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, then G and SG of
+  the watershed's data (delineated, or with morphometry_origin); terms_notice: [RK] with PMAXTP;
+  [] and [] for your own rainfall on your own morphometry (ADR-083, ADR-085); the hand-off has
+  the same fields, without them when they are empty
 Response: 400 validation_error (application/problem+json), e.g. for the rainfall series
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
           delineated catchment and for one given in morphometry alike
 ```
 
-`attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M) and the link to the PMAXTP terms (RK, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”); no summary of the terms (Nogat ECO-065). A product made with the result shows them visibly and carries them on (ADR-083).
+`attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M) and the link to the PMAXTP terms (RK, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”); no summary of the terms (Nogat ECO-065); then G of the GUGiK data of the watershed with the dates of `instance.json` and SG with its soil groups (ADR-085). A product made with the result shows them visibly and carries them on (ADR-083).
 
 `GET /api/scenarios` also returns `amc` (`["I", "II", "III"]`), `custom_precipitation_max_steps` (2000) and `area_limit_km2` (250). The messages of `errors[]` of a 400 follow `Accept-Language` like `detail`: pydantic's English without the header, a Polish text of the error type with its limits for `pl` (e.g. `/body/hietogram_alpha`: „Wartość nie może być większa niż 20.”); pointers and types do not change.
 
@@ -556,7 +590,7 @@ Response: 404 no_data (no_elevation_data) when no sample has DEM data
 
 `dem_gaps` marks the samples where the DEM has no data (off its extent, e.g. past the boundary of the clipped data); `elevations_m` holds 0.0 there, so a client must read the mask, not the value (the frontend draws a gap, B5).
 
-`result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0). `attribution` and `terms_notice` are the lines the manifest gives the results of `water_levels`, each once (ADR-083); empty without them.
+`result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0). `attribution` and `terms_notice` are the lines the manifest gives the results of `water_levels`, then G of the NMT of the elevations (ADR-085), each once.
 
 #### 2.2.5a Identify Point
 ```
@@ -566,19 +600,20 @@ Everything Hydrograf knows at one point, for the mode „Identyfikuj”: `coordi
 
 The query parameters: `latitude` and `longitude` (required, WGS84), `threshold_m2` (optional, > 0) and `result_ids` (repeated, `&result_ids=a&result_ids=b`, up to 20, each 1–100 characters). An invalid parameter is a `validation_error` problem (400) whose `errors[].pointer` names it, e.g. `/query/latitude` or `/query/result_ids/0`. The answer has no side effects and can be cached; the front end keeps it for 5 minutes (`js/api.js`).
 
-`attribution` and `terms_notice` are the lines the manifest gives the results of `water`, each once (ADR-083), as in the terrain profile; empty without them.
+`attribution` and `terms_notice` are the lines the manifest gives the results of `water`, then G and SG of the GUGiK and SoilGrids data of the members the answer gives (ADR-085), each once.
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
-GET /api/depressions?bbox=xmin,ymin,xmax,ymax&min_volume=0&max_volume=1000
+GET /api/depressions?min_volume=0&max_volume=1e9&min_area=100&max_area=1e9&bbox=minlon,minlat,maxlon,maxlat
 
-Response: 200 OK (GeoJSON FeatureCollection)
+Response: 200 OK (GeoJSON FeatureCollection in WGS84, at most 500, the largest volume first;
+          bbox optional, in WGS84)
 ```
 
 #### 2.2.7 MVT Tiles
 ```
-GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
-GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold=100000      (threshold [m²], default 100000)
+GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold=100000
 GET /api/tiles/landcover/{z}/{x}/{y}.pbf
 GET /api/tiles/sewer/{z}/{x}/{y}.pbf
 GET /api/tiles/thresholds
@@ -597,7 +632,7 @@ GET  /api/admin/status             — app, version, started_at, uptime_s, data_
 GET  /api/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
 GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories
 GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
-POST /api/admin/cleanup            — delete cache/tiles
+POST /api/admin/cleanup            — {"targets": ["all" | "cache"]}: the processing data (rasters, overlays, tiles, the tables) or the download cache, through execute_clean() of scripts/clean.py
 GET  /api/admin/bootstrap/status   — status of the bootstrap process
 POST /api/admin/bootstrap/start    — start the bootstrap subprocess
 POST /api/admin/bootstrap/cancel   — cancel bootstrap
@@ -631,11 +666,11 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 1. **Frontend:** The user clicks a point (lat, lon) → POST /api/delineate-watershed (precomputed or precise mode)
 2. **API (FastAPI):** Pydantic validation (are lat/lon in range)
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
-   - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` on `stream_network`
+   - `CatchmentGraph.find_catchment_at_point(x, y, threshold, db)` → the sub-catchment containing the point (`ST_Contains` on `stream_catchments`), the threshold raised to `DEFAULT_THRESHOLD_M2` (ADR-026)
    - `CatchmentGraph.traverse_upstream()` → BFS over the graph of sub-catchments
    - Cascaded merge threshold: above 300 segments (`_MAX_MERGE`) the merge takes the first coarser threshold of the graph whose BFS selects at most 300 (10000 → 100000 → 1000000 → 10000000 m²), else the coarsest
    - `merge_catchment_boundaries()` → ST_UnaryUnion of the pre-computed polygons in PostGIS
-   - `map_boundary_to_display_segments()` → mapping to the threshold displayed for the MVT tiles
+   - `get_segment_indices()` → the `segment_idx` of the BFS at the clicked threshold (`upstream_segment_indices`, `display_threshold_m2`) for the highlighting of the MVT tiles
    - Aggregation of the pre-computed stats from numpy arrays (zero raster operations)
 4. **Database:** PostGIS queries to `stream_network` + `stream_catchments`
 5. **Core Logic:** Conversion to GeoJSON (EPSG:2180 → WGS84)
@@ -650,11 +685,11 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 ```
 1. Delineate the watershed (as above)
 2. Compute the parameters (area, length, slope, CN)
-3. Fetch the precipitation (SQL query of PMAXTP) or take your own series (custom_precipitation)
+3. Take the PMAXTP depth (the mean over the Thiessen polygons of the grid in the watershed, ADR-069; times an areal reduction factor if given) or your own series (custom_precipitation)
 4. Generate the hyetograph (Beta / Block / Euler II; skipped for your own series)
 5. Compute the effective precipitation (SCS CN converted by the AMC)
-6. Compute tc (Kirpich)
-7. Generate the UH (SCS)
+6. Compute tc by the chosen method (NRCS by default; Hydrolog, from each method's own inputs; none for Nash)
+7. Generate the UH (SCS, Nash or Snyder)
 8. Convolution Pe * UH = Q(t)
 9. Return JSON with a chart
 ```
@@ -718,8 +753,8 @@ Details: `core/watershed_service.py`
 
 #### 2.4.6 `core/zonal_stats.py`
 **Responsibilities:**
-- Zonal statistics via `np.bincount` (O(M) instead of O(n*M) per-label masking)
-- Computing min/max/mean per label for elevation and slope
+- `zonal_summary`: the statistics of the sub-catchments of process_dem (count, min/max/mean of the elevation, mean slope, the largest flow distance, the elevation histograms) in two numba passes over the raster, the memory per label only
+- `zonal_bincount`, `zonal_min`, `zonal_max`, `zonal_elevation_histogram` (`np.bincount`, scipy): `generate_depressions.py` and the reference of `zonal_summary` in the tests
 
 #### 2.4.7 Hydrolog library (external)
 **Responsibilities:** (delegated to `hydrolog`, pinned by commit in `backend/pyproject.toml`, ADR-060)
@@ -784,14 +819,14 @@ The steps and their reasons: `docs/COMPUTATION_PIPELINE.md` (Phase 7) and the pl
 
 ### 2.5 New Concepts (CP4+)
 
-#### WFS TERYT discovery (ADR-045)
-Automatic detection of districts (TERYT) from a bbox with the WFS PRG service (Państwowy Rejestr Granic, the National Register of Boundaries). It replaces the earlier WMS grid-sampling method with more accurate results and fewer network queries. Used when downloading BDOT10k and land cover data.
+#### County discovery (ADR-045, ADR-061)
+Kartograf finds the counties (TERYT) of an area itself: `kartograf.download_landcover` takes a bbox, a sheet code or a TERYT code and covers every county the area intersects (`scripts/download_landcover.py`, the bootstrap). Hydrograf's own discovery from the WFS PRG (ADR-045) is gone.
 
 #### DEM auto-discovery (ADR-049)
-A mechanism that finds the DEM file automatically with a fallback chain: VRT mosaic → single GeoTIFF → a directory of ASC files. It is configured by `resolve_dem_path()` in `core/config.py` and removes the need to give the DEM path in environment variables by hand. It also handles `resolve_stream_distance_path()` for the stream distance rasters.
+A mechanism that finds the DEM file automatically with a fallback chain: `DEM_PATH` → the VRT mosaic of the active unit run (`core/active_run.py`) → `dem_mosaic.vrt` → `dem_mosaic_01_dem.tif` → `dem_mosaic.tif` → `dem_mosaic_02_filled.tif` in `DEM_DIR`. It is `resolve_dem_path()` of the settings in `core/config.py`; `resolve_stream_distance_path()`, `resolve_flowdir_path()`, `resolve_slope_path()` and `resolve_subcatchment_labels_path()` find the other rasters of the pipeline the same way (`resolve_pipeline_raster()`).
 
 #### Chaikin stream smoothing (ADR-047)
-Smoothing of the stream geometry with the Chaikin algorithm during preprocessing (in `process_dem.py`). It reduces the noise of the raster vectorization and keeps the topology of the network. Used together with monotonic smoothing (ADR-041).
+Smoothing of the stream geometry with the Chaikin algorithm during preprocessing: `insert_stream_segments` of `core/db_bulk.py` inserts the lines with `ST_ChaikinSmoothing(geom, 3)`, which keeps their end points. It reduces the noise of the raster vectorization and keeps the topology of the network. Used together with monotonic smoothing (ADR-041).
 
 #### BDOT10k stream matching (ADR-044)
 Matching of the streams derived from the DEM to the reference streams of BDOT10k (the topographic objects database). Matched segments are marked `is_real_stream=True` in `stream_network`. The flag is propagated to CatchmentGraph and returned in the main channel FeatureCollection.
@@ -813,7 +848,7 @@ Inclusion of the storm-sewer network in the hydrological model. The network topo
   - **Step 4b — Sewer routing:** routing of the flow accumulation through the sewer network (`route_fa_through_sewer()`)
   - **Step 4c — FA propagation:** propagation of the modified FA down the stream network (`propagate_fa_downstream()`)
 
-Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junctions, storage) and `sewer_network` (pipe segments). They are imported through the admin panel (`/api/admin/sewer/upload`) with CRS validation, format auto-detection and SSRF protection. Modules: `core/sewer_topology.py` (parser + topology validator, 11 validation rules), `core/sewer_service.py` (graph building and FA routing logic), `scripts/download_sewer.py` (data download, returns the tuple `(points_gdf, lines_gdf | None)`).
+Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junctions, storage) and `sewer_network` (pipe segments). A file is uploaded through the admin panel (`/api/admin/sewer/upload`, SHP, GPKG, GeoJSON or ZIP up to 100 MB, format auto-detection) and loaded by the pipeline with CRS validation and reprojection to EPSG:2180. Modules: `core/sewer_topology.py` (parser + topology validator, 11 validation rules), `core/sewer_service.py` (graph building and FA routing logic), `scripts/download_sewer.py` (loads a file, returns the tuple `(points_gdf, lines_gdf)`).
 
 ---
 
@@ -823,11 +858,6 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                          flow_network                            │
-│              -- REMOVED (ADR-028, migration 015)                │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
 │                     precipitation_data                          │
 ├─────────────────────────────────────────────────────────────────┤
 │ id (PK)              SERIAL                                     │
@@ -835,12 +865,14 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ duration             VARCHAR(10)  ('5min'...'72h', 16 values)   │
 │ probability          FLOAT        (0.01...99.9, 27 values)      │
 │ precipitation_mm     FLOAT                                      │
-│ source               VARCHAR(50)  ('IMGW_API')                 │
+│ source               VARCHAR(50)  ('IMGW_PMAXTP')              │
 │ updated_at           TIMESTAMP                                  │
 │                                                                 │
 │ Indexes:                                                        │
-│   - idx_precip_geom (GIST on geom)                               │
-│   - idx_precip_scenario (on duration, probability)               │
+│   - idx_precipitation_geom (GIST on geom)                       │
+│   - idx_precipitation_scenario (on duration, probability)       │
+│   - idx_precipitation_duration, idx_precipitation_probability   │
+│   - UNIQUE (geom, duration, probability)                        │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -853,7 +885,7 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ bdot_class           VARCHAR(20)  (source: layer[:kind])        │
 │                                                                 │
 │ Indexes:                                                        │
-│   - idx_landcover_geom (GIST on geom)                          │
+│   - idx_land_cover_geom (GIST on geom)                         │
 │   - idx_category (on category)                                 │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -868,13 +900,18 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ threshold_m2         INT                                        │
 │ upstream_area_km2    FLOAT                                      │
 │ mean_slope_percent   FLOAT                                      │
-│ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
-│ segment_idx          INTEGER  -- 1-based per threshold (migration 014, ADR-026) │
+│ source               VARCHAR(50)  ('DEM_DERIVED')              │
+│ segment_idx          INTEGER  -- 1-based per threshold (ADR-026) │
 │ is_real_stream       BOOLEAN  -- matched to BDOT10k (ADR-044)│
 │ is_sewer_augmented   BOOLEAN  -- flag: modified by the sewer network (ADR-051) │
 │                                                                 │
 │ Indexes:                                                        │
-│   - idx_stream_geom (GIST on geom)                             │
+│   - idx_stream_network_geom (GIST on geom)                     │
+│   - idx_stream_geom_t<threshold>, idx_stream_geom_dem_derived    │
+│     (partial GIST)                                             │
+│   - idx_stream_threshold (threshold_m2, strahler_order)        │
+│   - idx_stream_threshold_segidx (threshold_m2, segment_idx)    │
+│   - idx_stream_unique (UNIQUE: name, threshold_m2, geohash)    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -898,11 +935,18 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ max_flow_dist_m      FLOAT                                      │
 │ longest_flow_path_geom GEOMETRY(LineString, 2180)               │
 │ divide_flow_path_geom  GEOMETRY(LineString, 2180)               │
+│ outlet_flow_dist_m   FLOAT  -- migration 003                     │
+│ flow_path_head_elev_m, overland_length_m, overland_drop_m,      │
+│ stream_head_elev_m   FLOAT  -- migration 004 (ADR-070)          │
 │                                                                 │
 │ Indexes:                                                        │
-│   - idx_catchment_geom (GIST on geom)                          │
-│   - idx_catchment_threshold (on threshold_m2)                  │
-│   - idx_catchment_segment (on segment_idx, threshold_m2)       │
+│   - idx_catchments_geom (GIST on geom)                         │
+│   - idx_catchment_geom_t<threshold> (partial GIST)             │
+│   - idx_catchments_threshold (threshold_m2, strahler_order)    │
+│   - idx_catchments_threshold_segment (threshold_m2, segment_idx) │
+│   - idx_catchments_downstream (threshold_m2, downstream_segment_idx) │
+│   - idx_catchments_area, idx_catchments_flow_path_geom,        │
+│     idx_catchments_divide_flow_path_geom                       │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -916,7 +960,7 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ mean_depth_m         FLOAT                                      │
 │                                                                 │
 │ Indexes:                                                        │
-│   - idx_depression_geom (GIST on geom)                         │
+│   - idx_depressions_geom (GIST on geom)                        │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -928,7 +972,7 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ area_m2              FLOAT                                      │
 │                                                                 │
 │ Indexes:                                                        │
-│   - gist on geom (auto)                                        │
+│   - idx_soil_hsg_geom (GIST on geom)                           │
 │   - idx_soil_hsg_group (on hsg_group)                          │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -990,7 +1034,7 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ manning_n            FLOAT                                      │
 │ length_m             FLOAT                                      │
 │ slope_percent        FLOAT                                      │
-│ source               VARCHAR(50)                                │
+│ source               VARCHAR(255)                               │
 │ updated_at           TIMESTAMP                                  │
 │                                                                 │
 │ Indexes:                                                        │
@@ -1000,60 +1044,33 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+Besides: `feedback` (migrations 002 and 007: the reports of „Zgłoś uwagę”) and `processing_runs` and `processing_units` (migration 005: the runs of the bootstrap by PGW units, ADR-071); the columns of every table are in `docs/DATA_MODEL.md`.
+
 ---
 
 ### 3.2 Example SQL Queries
 
-#### Find the Nearest Stream (stream_network)
+#### Find the Sub-catchment at a Point (stream_catchments)
 ```sql
-SELECT
-    id, geom, strahler_order, length_m, threshold_m2,
-    ST_Distance(geom, ST_SetSRID(ST_Point($1, $2), 2180)) as distance
-FROM stream_network
-WHERE threshold_m2 = $3
-  AND ST_DWithin(geom, ST_SetSRID(ST_Point($1, $2), 2180), 500)
-ORDER BY distance
+-- CatchmentGraph.find_catchment_at_point
+SELECT segment_idx FROM stream_catchments
+WHERE threshold_m2 = :threshold
+  AND ST_Contains(geom, ST_SetSRID(ST_Point(:x, :y), 2180))
 LIMIT 1;
 ```
 
-#### ~~Find Upstream Cells (Recursive CTE)~~ — DEPRECATED (ADR-022)
-> **Note:** The runtime API uses `CatchmentGraph.traverse_upstream()` (in-memory BFS, ~5-50ms).
-> The CTE below is kept only as documentation — `core/flow_graph.py` REMOVED (ADR-028).
-
-```sql
-WITH RECURSIVE upstream AS (
-    -- Base case: outlet
-    SELECT 
-        id, geom, cell_area, elevation, slope, downstream_id
-    FROM flow_network
-    WHERE id = $1
-    
-    UNION ALL
-    
-    -- Recursive case: all cells flowing to current set
-    SELECT 
-        f.id, f.geom, f.cell_area, f.elevation, f.slope, f.downstream_id
-    FROM flow_network f
-    INNER JOIN upstream u ON f.downstream_id = u.id
-)
-SELECT * FROM upstream;
-```
+The runtime API walks upstream with `CatchmentGraph.traverse_upstream()` (an in-memory BFS, ~5–50 ms); no recursive query runs.
 
 #### Fetch Precipitation (Thiessen polygons)
 ```sql
-WITH nearest AS (
-    SELECT
-        precipitation_mm,
-        ST_Distance(geom, ST_SetSRID(ST_Point($1, $2), 2180)) as dist
-    FROM precipitation_data
-    WHERE duration = $3 AND probability = $4
-    ORDER BY dist
-    LIMIT 4
-)
-SELECT 
-    SUM(precipitation_mm / POWER(dist, 2)) / 
-    SUM(1 / POWER(dist, 2)) as precipitation_interpolated
-FROM nearest;
+-- core/precipitation.py, areal_depth: the depths of a scenario at the grid points whose
+-- Thiessen polygons overlap the watershed (thiessen_cells, shapely); Hydrolog's
+-- thiessen_polygons weighs them by the areas of the polygons inside the watershed
+SELECT ST_X(geom) AS x, ST_Y(geom) AS y, precipitation_mm
+FROM precipitation_data
+WHERE duration = :duration
+  AND probability = :probability
+  AND geom && ST_MakeEnvelope(:x0, :y0, :x1, :y1, 2180);
 ```
 
 #### Compute the CN for a Watershed
@@ -1078,27 +1095,47 @@ GROUP BY lc.category, lc.bdot_class, s.hsg_group;
 
 #### Merge Upstream Catchments (ST_Union)
 ```sql
-SELECT ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01))) AS boundary
+-- core/watershed_service.py, _merge_direct (up to 100 segments; more: batches on a
+-- 10 m grid, then a 50 m grid as the fallback), smoothed by _SMOOTH_SQL
+SELECT ST_AsBinary(
+    ST_Multi(ST_Buffer(
+        ST_ChaikinSmoothing(
+            ST_SimplifyPreserveTopology(
+                ST_Buffer(ST_Buffer(ST_UnaryUnion(ST_Collect(geom)), :gap_close), -:gap_close),
+            5.0),
+        3),
+    0))
+) AS geom
 FROM stream_catchments
-WHERE threshold_m2 = $1
-  AND segment_idx = ANY($2)
-  AND ST_Area(geom) > 50;
+WHERE threshold_m2 = :threshold
+  AND segment_idx = ANY(:idxs);
 ```
 
 #### MVT Tile Query (ST_AsMVT)
 ```sql
-SELECT ST_AsMVT(tile, 'catchments') AS mvt
-FROM (
+-- api/endpoints/tiles.py, the catchments; the tile's box in EPSG:3857 comes from z/x/y
+WITH mvt_data AS (
     SELECT
-        segment_idx,
-        strahler_order,
-        area_km2,
-        ST_AsMVTGeom(geom, ST_TileEnvelope($1, $2, $3), 4096, 64, true) AS geom
-    FROM stream_catchments
-    WHERE threshold_m2 = $4
-      AND ST_Intersects(geom, ST_Transform(ST_TileEnvelope($1, $2, $3), 2180))
-      AND ST_Area(geom) > 50
-) AS tile;
+        ST_AsMVTGeom(
+            ST_Transform(c.geom, 3857),
+            ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+            4096, 64, true
+        ) AS geom,
+        c.strahler_order,
+        c.area_km2,
+        c.mean_elevation_m,
+        c.segment_idx
+    FROM stream_catchments c
+    WHERE c.threshold_m2 = :threshold
+      AND c.geom IS NOT NULL
+      AND ST_Area(c.geom) > :min_geom_area
+      AND ST_Intersects(
+          c.geom,
+          ST_Transform(ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857), 2180)
+      )
+)
+SELECT ST_AsMVT(mvt_data, 'catchments', 4096, 'geom') AS tile
+FROM mvt_data;
 ```
 
 ---
@@ -1127,7 +1164,7 @@ engine = create_engine(
 
 #### Query Optimization
 - **EXPLAIN ANALYZE** for all slow queries
-- **Partial indexes** for is_stream (TRUE only)
+- **Partial indexes**: the GIST indexes of the geometries per threshold (`idx_stream_geom_t<threshold>`, `idx_catchment_geom_t<threshold>`)
 - **Materialized views** for frequently used aggregations (future)
 
 ---
@@ -1196,14 +1233,14 @@ frontend/
     ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
     ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
     ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
-    ├── terms.js              # GET /api/terms: the footer under the map and in the guide (the statement and „Regulamin”), the `terms` of the menu and of the strip, PMAXTP's lines for the welcome window, the operator's e-mail under „Zgłoś uwagę” (ADR-084)
+    ├── terms.js              # GET /api/terms: the footer under the map and in the guide (the statement and „Regulamin”), the `terms` of the menu and of the strip, every line of the service's data (PMAXTP's, G, SG) for the welcome window and the lines of the layers' kinds (`layers`) for the strip, the operator's e-mail under „Zgłoś uwagę” (ADR-084, ADR-085)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>): the text and the view's context, no contact (ADR-084)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the main-page top-bar "Instrukcja" button; the full provider lines and terms (fillSources)
     └── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
 ```
 
-`js/` holds 30 IIFE modules on `window.Hydrograf`, 24 for the main page and 6 in `admin/`, and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 25 IIFE modules on `window.Hydrograf`, all loaded by the main page (`instance.js` and `terms.js` by the guide too), and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. `admin/` holds the 5 IIFE scripts of the admin panel. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -1216,17 +1253,17 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
 - **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), the app menu „Aplikacje” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. The admin page `/admin/` has the kit's own top bar („Hydrograf · Administracja”, „Wróć do aplikacji”, „Wyloguj”; ADR-086).
-- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without `HYDROGRAF_GUI`, or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
-- **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
+- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without a table of GUIs (`HYDROGRAF_GUI`, else `[nogat] gui` of NOGAT_CONFIG), or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
+- **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two paragraphs (a factual summary of what Hydrograf computes; the area of the data and that the results are estimates for preliminary analyses, not a hydrological forecast) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
 - **Navigation rail** — Mapa and Logowanie (`/admin/`, the admin panel on Nogat's kit, ADR-086); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
 - **„Wybierz zlewnię” and its two options** (`app.js`, `setClickMode`; ADR-080, note of 2026-11-11) — while the mode is on, the radio group „Co wyznaczyć” sits at the top of the map (`#select-tools`, placed and styled like the drawing tools of „Profil terenu”, `.map-tools`, also on phones): „Jedna zlewnia” (the default; the click mode `select`) or „Sieć zlewni” (the click mode `network`). The button of the mode is on for both; it returns to the option chosen last in the page (`state.selectTarget`, not kept across reloads). Switching the option keeps both the watershed and the network.
 - **„Wybierz zlewnię” → „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — the first click places the closing section and every later click a point (at most 30), as draggable markers; a marker not yet in a preview shows the first free `P<n>` among the shown ids, which is also its handle in the request, so a problem names it as the map does, and after every preview each marker shows its node's id (`points[].node`: `J<n>` at a confluence, `P<n>` elsewhere). The closing section alone is a network: „Oblicz charakterystyki” needs no other point. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `POST /api/delineate-network/preview` (`api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” calls `POST /api/delineate-network` with the names and draws the closing section's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the option (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the closing section first, then the points by their ids, each with its name field and „w węźle sieci” when it was drawn to a node (`at_node`), the check of B5, the notices and the tree from the closing section upward (a node entered without a reach as „J4 → J1”; in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Jedna zlewnia” leaves the map in the option (`map.setWatershedShown`) and returns, with its sections, after it.
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc once hides the panel, twice clears the result.
-- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 75 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 75 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) follow Nogat DEV-15.14: a definition of one or two sentences, a formula (built as MathML through the DOM, without libraries) with the list „gdzie:” of the variables and their units and the unit of the result, how to read the value (`reading`) and „Źródła:”, at most about 400 characters without the formula and the sources; 67 of them link their longer explanation, a section `o-<key>` of the guide's part „Objaśnienia wielkości i metod” (`/instrukcja/#objasnienia-wielkosci`, static MathML), with „Więcej w instrukcji” in a new tab. The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice (`summary`). The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
-- **The providers' lines** (`attribution.js`, ADR-083 and its amendment, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels, above the footer): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry (for PMAXTP: PS and PP, two rows at 1440 px) and „Źródła i warunki”, a dialog with every line (PS, PP, M), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the results whose layer is on, of the point card's water and of the profile's water. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/terms` under its text (the kit's `fillSources`). The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
+- **The providers' lines** (`attribution.js`, ADR-083 and its amendment, ADR-085, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels, above the footer): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry and the short forms GK and SK of G and SG (for PMAXTP: PS and PP, two rows at 1440 px), and „Źródła i warunki”, a dialog with every line (PS, PP, M, G, SG), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the delineated watershed and of the network, of the layers of Hydrograf's data that are on (the kinds of `layers` of `GET /api/terms`), of the results whose layer is on, of the point card and of the profile. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/terms` under its text (the kit's `fillSources`). The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
 - **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. Some catchments have `length_to_centroid_km = 0`: Snyder fails until the user gives Lc.
 - **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
@@ -1277,113 +1314,110 @@ Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from
 - Attribution: „MZP © Wody Polskie / ISOK (CC BY 4.0)” with links to the Hydroportal and the licence; the CC BY 4.0 licence follows the dataset „Mapa zagrożenia powodziowego (MZP)” on dane.gov.pl (provider: Krajowy Zarząd Gospodarki Wodnej). The ArcGIS REST/WMTS services of these maps return 401; only the WMS is public. Response times vary: usually 0.4–2 s per image, sometimes single images take 10–30 s.
 
 ```javascript
-// map.js (sketch)
-const map = L.map('map').setView([52.0, 21.0], 10);
+// map.js, init (abridged): the base layer is set by layers.js (OpenFreeMap by default,
+// L.maplibreGL with the style https://tiles.openfreemap.org/styles/positron)
+map = L.map('map', {
+    center: [51.9, 19.5],
+    zoom: 7,
+    zoomControl: false,
+    scrollWheelZoom: false,     // replaced by wheelZoomHandler()
+});
+map.addHandler('wheelZoom', wheelZoomHandler());
+map.wheelZoom.enable();
 
-// Vector basemap: OpenFreeMap through MapLibre GL
-L.maplibreGL({
-    style: 'https://tiles.openfreemap.org/styles/positron'
-}).addTo(map);
+map.on('click', function (e) {
+    // Drawing mode: add vertex
+    if (drawMode) {
+        addDrawVertex(e.latlng);
+        return;
+    }
 
-// Click routing depends on the mode bar (browse / select / profile)
-map.on('click', async (e) => {
-    const { lat, lng } = e.latlng;
-    await delineateWatershed(lat, lng);
+    if (onClickCallback) {
+        onClickCallback(e.latlng.lat, e.latlng.lng);
+    }
 });
 ```
 
+`app.js` routes the click by `state.clickMode`: `browse`, `select`, `network`, `profile` or `identify`.
+
 #### 4.2.2 API Client
 ```javascript
-// api.js
-const API_URL = 'http://localhost:8000/api';
-
-async function delineateWatershed(lat, lon) {
-    try {
-        showLoader('Wyznaczam zlewnię...');
-        
-        const response = await fetch(`${API_URL}/delineate-watershed`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latitude: lat, longitude: lon })
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Błąd serwera');
-        }
-        
-        const data = await response.json();
-        displayWatershed(data.watershed);
-        
-        hideLoader();
-        return data;
-        
-    } catch (error) {
-        hideLoader();
-        showError(error.message);
-        throw error;
-    }
+// api.js (abridged): same-origin URLs through nginx; Accept-Language: pl for Polish problems
+function apiFetch(url, options) {
+    var opts = Object.assign({}, options);
+    var headers = new Headers(opts.headers || {});
+    if (!headers.has('Accept-Language')) headers.set('Accept-Language', 'pl');
+    opts.headers = headers;
+    return fetch(url, opts);
 }
 
-async function generateHydrograph(lat, lon, duration, probability) {
-    // Similar structure
+async function delineateWatershed(lat, lng, threshold) {
+    var key = _cacheKey('dw', lat, lng, threshold || 0);
+    var cached = _cacheGet(key);
+    if (cached) return cached;
+
+    var body = {
+        latitude: lat,
+        longitude: lng,
+    };
+    if (threshold) {
+        body.threshold_m2 = threshold;
+    }
+
+    var url = '/api/delineate-watershed?include_hypsometric_curve=true';
+    const response = await apiFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) await handleError(response);
+    var data = await response.json();
+    _cacheSet(key, data);
+    return data;
 }
 ```
 
+`handleError` throws an `Error` with the problem's Polish text (§2.2), its `status` and the `problem` document. `window.Hydrograf.api` holds `getTerrainProfile`, `generateHydrograph`, `getScenarios`, `getLayers`, `delineateWatershed`, `previewWatershed`, `delineateNetwork`, `previewNetwork`, `identifyPoint`, `submitFeedback` and `countDownload`; the profile, the watershed and the point are cached for 5 minutes.
+
 #### 4.2.3 Hydrograph Chart
 
-All charts (`charts.js`) take their colours, font and font size from the tokens (`getComputedStyle`) and repaint in place when the theme changes (`data-theme` or the system scheme). The hietogram is a line chart like the hydrograph; land cover and HSG groups are horizontal stacked bars. The sketch below shows only the layout of Chart.js; its fixed colours are only an example.
+All charts (`charts.js`) take their colours, font and font size from the tokens (`getComputedStyle`) and repaint in place when the theme changes (`data-theme` or the system scheme). The hietogram is a line chart like the hydrograph; land cover and HSG groups are horizontal stacked bars. The hydrograph:
 
 ```javascript
-// chart.js
-let hydrographChart = null;
+// charts.js (abridged)
+function renderHydrographChart(canvasId, times, discharge) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined' || !times.length) return;
 
-function displayHydrograph(hydrographData) {
-    const ctx = document.getElementById('hydrographChart').getContext('2d');
-    
-    if (hydrographChart) {
-        hydrographChart.destroy(); // Cleanup previous chart
+    var chart = charts[canvasId];
+    if (chart) {
+        chart.data.datasets[0].data = toPoints(times, discharge);
+        chart.update();
+        return;
     }
-    
-    hydrographChart = new Chart(ctx, {
+
+    lineLegend(canvas, ['Przepływ Q']);
+    createChart(canvas, {
         type: 'line',
-        data: {
-            labels: hydrographData.time_min,
-            datasets: [{
-                label: 'Przepływ [m³/s]',
-                data: hydrographData.discharge_m3s,
-                borderColor: '#007BFF',
-                backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                tension: 0.4
-            }]
-        },
+        data: { datasets: [
+            seriesDataset('Q [m³/s]', toPoints(times, discharge), 1),
+        ] },
         options: {
             responsive: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: `Hydrogram Odpływu (Qmax = ${hydrographData.peak_discharge_m3s.toFixed(2)} m³/s)`
-                },
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Czas [min]'
-                    }
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: 'Przepływ [m³/s]'
-                    },
-                    beginAtZero: true
-                }
-            }
-        }
+            maintainAspectRatio: false,
+            animation: { duration: 400, easing: 'easeInOutQuart' },
+            interaction: { intersect: false, mode: 'index' },
+            plugins: { legend: { display: false } },
+            scales: timeScales('Q [m³/s]'),
+        },
+        plugins: [peakPlugin(0, function (x, y) {
+            return 'Qmax ' + y.toFixed(2) + ' m³/s · ' + x + ' min';
+        })],
+    }, function (target, c) {
+        var ds = target.data.datasets[0];
+        ds.borderColor = c.info;
+        ds.backgroundColor = alpha(c.info, 0.18);
     });
 }
 ```
@@ -1392,21 +1426,30 @@ function displayHydrograph(hydrographData) {
 
 ### 4.3 State Management
 
-**Simple state in vanilla JS:**
+**The state of the main page in `app.js` (abridged):**
 ```javascript
-// app.js
-const appState = {
+var state = {
     currentWatershed: null,
-    currentHydrograph: null,
-    selectedDuration: '1h',
-    selectedProbability: 10
+    // A selection that found a stream but no watershed (displayStreamInfo)
+    currentStream: null,
+    clickLat: null,
+    clickLng: null,
+    // 'browse', 'profile', 'identify' or one of the two of „Wybierz zlewnię”:
+    // 'select' („Jedna zlewnia”) and 'network' („Sieć zlewni”)
+    clickMode: 'browse',
+    // The option of „Wybierz zlewnię” chosen last in this page ('select' or
+    // 'network'); the mode returns to it
+    selectTarget: 'select',
+    // Number of the latest watershed selection; answers to older ones are dropped
+    selection: 0,
+    // What the panel and the map serve: 'watershed' or 'network' (js/network.js)
+    view: 'watershed',
+    // The parameter sections show the watershed (false after a network element)
+    sectionsShowWatershed: true,
 };
-
-function updateState(key, value) {
-    appState[key] = value;
-    // Trigger UI updates if needed
-}
 ```
+
+Each module keeps its own state in its closure; `js/network.js` that of the network.
 
 ---
 
@@ -1416,20 +1459,24 @@ function updateState(key, value) {
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: hydro_db
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hydro_db}
       POSTGRES_USER: ${POSTGRES_USER:-hydro_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hydro_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env file}
       POSTGIS_GDAL_ENABLED_DRIVERS: ENABLE_ALL
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
+    # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "3"
     restart: unless-stopped
     deploy:
       resources:
@@ -1437,6 +1484,16 @@ services:
           memory: 2G
           cpus: "2.0"
     shm_size: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - FOWNER
+      - DAC_READ_SEARCH
     command: >
       postgres
         -c shared_buffers=512MB
@@ -1456,65 +1513,110 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: hydro_api
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_api
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      # The ecosystem's GUIs for the menu „Aplikacje” (ADR-082); empty, the table
+      # `gui` of nogat.toml, and without it no menu
       HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
-      # The public service (ADR-084): the deployment's nogat.toml, mounted below
+      # The deployment's nogat.toml, mounted below: with `[nogat.operator]` Hydrograf
+      # is a public service with its regulamin (ADR-084)
       NOGAT_CONFIG: /config/nogat.toml
+      # Requests per client address and window [s] (DEV-15.9, ADR-084)
       HYDROGRAF_REQUEST_LIMIT: ${HYDROGRAF_REQUEST_LIMIT:-300}
       HYDROGRAF_REQUEST_WINDOW: ${HYDROGRAF_REQUEST_WINDOW:-60}
-      # The logs: /state/hydrograf/logs, mounted below (Nogat DEV-12.6)
+      # The API's logs are /state/hydrograf/logs, mounted below (Nogat DEV-12.6)
       NOGAT_STATE_DIR: /state
+      NUMBA_CACHE_DIR: /tmp/numba_cache
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-    # What a container prints names no request (Nogat DEV-12.7): a size cap suffices
     logging:
       driver: local
       options:
         max-size: "1m"
         max-file: "3"
+    depends_on:
+      db:
+        condition: service_healthy
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 8G
           cpus: "2.0"
     volumes:
-      - ./backend:/app
-      - ./data:/data
-      - ./frontend/data:/frontend/data
-      - ./frontend/tiles:/frontend/tiles
-      - ./frontend/nogat:/frontend/nogat:ro              # the regulamin template
+      - ${HYDROGRAF_CACHE_PATH:-./cache}:/cache
+      # The daily statistics are <data_dir>/hydrograf/stats.jsonl here (DEV-15.11)
+      - ${HYDROGRAF_DATA_PATH:-./data}:/data
+      - ${HYDROGRAF_FRONTEND_DATA_PATH:-./frontend/data}:/frontend/data
+      - ${HYDROGRAF_FRONTEND_TILES_PATH:-./frontend/tiles}:/frontend/tiles
+      # The kit's regulamin template (core/terms.py) and the deployment's nogat.toml
+      # (NOGAT_CONFIG of .env; none: an empty file, no regulamin)
+      - ./frontend/nogat:/frontend/nogat:ro
       - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
-      - ${NOGAT_STATE_DIR:-./state}/hydrograf:/state/hydrograf  # the logs, writable by UID 999
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --no-access-log --log-level warning
+      # The access, application and lifecycle logs, deleted by the API after 14 days
+      # (Nogat DEV-12.6): <state_dir>/hydrograf of the host, writable by UID 999 like
+      # data/ (the default ./state/hydrograf too)
+      - ${NOGAT_STATE_DIR:-./state}/hydrograf:/state/hydrograf
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=2G  # BDOT10k downloads need ~1-2G temp space during bootstrap
 
   nginx:
     image: nginx:alpine
-    container_name: hydro_nginx
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_nginx
     ports:
       - "127.0.0.1:${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
+      # The same directories as the API's, so an instance with its own data paths serves them.
+      - ${HYDROGRAF_FRONTEND_DATA_PATH:-./frontend/data}:/usr/share/nginx/html/data:ro
+      - ${HYDROGRAF_FRONTEND_TILES_PATH:-./frontend/tiles}:/usr/share/nginx/html/tiles:ro
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
     logging:
       driver: local
       options:
         max-size: "1m"
         max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN           # nginx needs to chown cache dirs
+      - SETUID          # master forks workers as nginx user
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /tmp:size=10M
+      - /var/cache/nginx:size=50M
+      - /var/run:size=1M
 
+# The volume and the default network carry the compose project's name (`-p`), never a fixed
+# one, so every instance has its own.
 volumes:
   postgres_data:
 ```
@@ -1528,7 +1630,7 @@ volumes:
 - **Stage 2 (runtime):** copies the installed packages from the builder; the production image has no gcc/git
 
 **`entrypoint.sh`:**
-- Wait-for-db — `pg_isready` loop with retry (max 30 attempts, 1 s interval)
+- Wait-for-db — `pg_isready` against `${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}` every 2 s until the database answers (no limit)
 - Automatic Alembic migrations (`alembic upgrade head`) when the container starts
 - Exec into the main process (uvicorn)
 
@@ -1561,16 +1663,23 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # No log (Nogat DEV-12.8, ADR-084): the API writes the access log; nginx would name
-    # the client in every error of a request, at every level
+    # No log here (Nogat DEV-12.8, ECO-066; ADR-084): the API writes the access log of
+    # the pages, the API calls and the failed tiles without the client (api/main.py),
+    # and nginx would name the client in every error of a request, at every level,
+    # `crit` included. Static files need no log. Behind the Cloudflare Tunnel the
+    # client's address reaches the API in CF-Connecting-IP, which nginx neither reads
+    # nor logs.
     access_log off;
     error_log /dev/null;
 
+    # Gzip
     gzip on;
-    gzip_types text/plain text/css application/json application/geo+json
-               application/javascript text/xml application/xml application/x-protobuf;
+    gzip_types text/plain text/css application/json application/geo+json application/javascript text/xml application/xml application/x-protobuf;
 
-    # No limit here: the API limits pages and routes per client address (api/traffic.py)
+    # No limit here: the API limits pages and routes per client address and counts them
+    # (api/traffic.py, DEV-15.9, DEV-15.11); nginx's peer is the same for every client
+    # behind the tunnel. X-Real-IP tells the API that peer, so that it believes the
+    # client's address of CF-Connecting-IP only from a private hop.
 
     upstream api_backend {
         server api:8000;
@@ -1580,34 +1689,87 @@ http {
         listen 80;
         server_name localhost;
 
+        # nginx listens on 80 in the container and does not know the port Docker
+        # publishes (8080:80): relative redirects (e.g. /data -> /data/) keep the
+        # client's origin
+        absolute_redirect off;
+
         # Security headers
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; ..." always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        # HSTS only meaningful over HTTPS — see nginx-ssl.conf.template for TLS config
 
-        # Tile proxy (^~ prevents the regex .pbf match of the data files)
+        # Tile proxy (^~ prevents the regex .pbf match of the data files below)
         location ^~ /api/tiles/ {
             proxy_pass http://api_backend/api/tiles/;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
+
             proxy_read_timeout 15s;
         }
 
-        # Own code and styles, referenced as ?v=<content hash>
+        # Admin panel (Nogat DEV-15.13, ADR-086): the page at /admin/, its own files below
+        # it and the admin API under /api/admin/ are the only admin paths, so Cloudflare
+        # Access protects exactly /admin, /admin/* and /api/admin/*. Every answer of the
+        # panel is no-store; the API sets it on its own answers.
+        location = /admin {
+            return 308 /admin/;
+        }
+        # The page passes through the API, which limits it without counting it and names
+        # its file (/_site/admin/ below); without the API there is no panel to fall back to
+        location = /admin/index.html {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
+        }
+        # The page's file under CSP 'self', the area map's tiles of GUGiK's grey
+        # OpenStreetMap excepted (a basemap from its provider, which DEV-15.7 allows); its
+        # Cache-Control: no-store comes with the API's answer. add_header here replaces
+        # the server's, so its other security headers are repeated.
+        location ^~ /_site/admin/ {
+            internal;
+            alias /usr/share/nginx/html/admin/;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        }
+        # The page's own scripts and styles (before the general rule of the static files)
+        location ~ ^/admin/.+\.(css|js)$ {
+            root /usr/share/nginx/html;
+            add_header Cache-Control "no-store" always;
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+
+        # Own code and styles. Pages reference them as `?v=<content hash>`
+        # (scripts/bump_asset_versions.py), so a changed file gets a new URL
+        # and bypasses browser and Cloudflare caches regardless of this TTL.
         location ~* \.(css|js|ico|svg)$ {
             root /usr/share/nginx/html;
             expires 1h;
             add_header Cache-Control "public, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
         }
 
-        # HTML pages pass through the API, which limits and counts them and answers
-        # X-Accel-Redirect to /_site/ (or the regulamin, or 429); with the API down
-        # nginx sends the file itself
+        # HTML pages (/, /instrukcja/ and the SPA fallback reach this via an
+        # internal redirect to *.html) pass through the API, which limits and counts
+        # them (ADR-084): it answers with X-Accel-Redirect to the page's file under
+        # /_site/, with the filled regulamin, or with 429. While the API is down or
+        # starting, nginx sends the page's file itself.
         location ~* \.html$ {
             proxy_pass http://api_backend;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
             error_page 502 504 = @page_file;
         }
+
+        # The page files the API names (X-Accel-Redirect), always revalidated (ETag),
+        # so a deploy's new asset URLs reach the browser on the next load. `expires`
+        # instead of add_header keeps the server-level security headers (CSP) inherited.
         location ^~ /_site/ {
             internal;
             alias /usr/share/nginx/html/;
@@ -1618,24 +1780,37 @@ http {
             expires -1;
         }
 
-        # Admin panel (Nogat DEV-15.13, ADR-086): /admin answers 308; the page passes
-        # through the API, which limits it without counting it; its file has CSP 'self'
-        # (GUGiK's OSM tiles of the area map excepted); its scripts are no-store
-        location = /admin {
-            return 308 /admin/;
-        }
-        location = /admin/index.html {
-            proxy_pass http://api_backend;
-            proxy_set_header X-Real-IP $remote_addr;
-        }
-        location ^~ /_site/admin/ {
-            internal;
-            alias /usr/share/nginx/html/admin/;
-            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
-        }
-        location ~ ^/admin/.+\.(css|js)$ {
+        # Pipeline-generated data (tiles, overlays, geojson) — no browser cache
+        # to avoid stale data after pipeline re-run
+        location ~* \.(pbf|geojson|mbtiles|pmtiles)$ {
             root /usr/share/nginx/html;
-            add_header Cache-Control "no-store" always;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+        location ^~ /data/ {
+            root /usr/share/nginx/html;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+        location ^~ /tiles/ {
+            root /usr/share/nginx/html;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+
+        # Admin API
+        location /api/admin/ {
+            client_max_body_size 50m;
+
+            proxy_pass http://api_backend/api/admin/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_read_timeout 30s;
         }
 
         # Frontend - static files
@@ -1648,6 +1823,7 @@ http {
         # Admin SSE stream (longer timeout for bootstrap)
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
@@ -1657,19 +1833,26 @@ http {
         # API proxy
         location /api/ {
             proxy_pass http://api_backend/api/;
+            proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Timeouts
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 30s;
             proxy_read_timeout 120s;
         }
 
         # Health check endpoint
         location /health {
             proxy_pass http://api_backend/health;
+            proxy_set_header Host $host;
         }
     }
 }
 ```
 
-`X-Real-IP` is nginx's peer, never the client behind the tunnel: the API believes the client's address of `CF-Connecting-IP` only when that peer is a private hop (§2.2.1b). nginx does not read `CF-Connecting-IP` and writes no address in either log (`$remote_addr`, `$remote_user`, `$http_referer` are gone; nginx names the client in the errors of a request, which the `crit` level drops). `docker/nginx-ssl.conf.template` has the same locations and logs.
+`X-Real-IP` is nginx's peer, never the client behind the tunnel: the API believes the client's address of `CF-Connecting-IP` only when that peer is a private hop (§2.2.1b). nginx neither reads `CF-Connecting-IP` nor keeps a log (`access_log off`, `error_log /dev/null`): it would name the client in every error of a request, at every level, `crit` included. `docker/nginx-ssl.conf.template` has the same locations and no log either, with the redirect of port 80 to HTTPS, TLS on port 443 and HSTS.
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
 - `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'`: no other origin. The libraries are vendored in `frontend/vendor/` (§4.1) and keep their `integrity`, which the browser checks for same-origin files too and `tests/contract/test_frontend_vendor.py` checks against the files, with no page referencing a remote script, stylesheet or font.
@@ -1686,33 +1869,9 @@ http {
 
 ### 5.3 Environments
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      DEVELOPMENT                        │
-│  - .venv + docker compose up -d db (PostGIS only)      │
-│  - uvicorn api.main:app --reload                       │
-│  - Debug logs (DEBUG level)                            │
-│  - Sample data in database                             │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│                       STAGING                           │
-│  - docker compose -f ... -f docker-compose.prod.yml up   │
-│  - Production-like data                                │
-│  - INFO logs                                           │
-│  - Manual deployment                                   │
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│                      PRODUCTION                         │
-│  - docker compose -f ... -f docker-compose.prod.yml up -d│
-│  - Full preprocessing data                             │
-│  - WARNING+ logs, one uvicorn process                  │
-│  - HTTPS enabled                                       │
-│  - Backups configured                                  │
-│  - Monitoring (Prometheus + Grafana)                   │
-└─────────────────────────────────────────────────────────┘
-```
+- **Development:** `backend/.venv` (`uv sync --locked`) with `docker compose up -d db` (PostGIS only) and `uv run uvicorn api.main:app --reload`, or the whole stack with `docker compose up -d` (the override: `--reload`, `./backend:/app`); the logs in `<state_dir>/hydrograf/logs` (`~/.local/state/nogat/hydrograf/logs` by default, §7.1); `LOG_LEVEL=DEBUG` only adds SQLAlchemy's echo of the SQL.
+- **Staging:** the green stack of the store migration (plan `docs/plans/2026-11-02-store-migration.md`): `scripts/staging-compose.sh` (project `hydrograf-staging`, `docker-compose.yml` with `docker-compose.staging.yml` and `.env.staging`; only on the branch `feature/store-migration`), the data of `HYDROGRAF_STAGING_ROOT`, the shared Kartograf store read-only, nginx on `127.0.0.1:${HYDROGRAF_STAGING_PORT:-8081}`.
+- **Production:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`: the full preprocessing data, one uvicorn process, `LOG_LEVEL=WARNING`, the admin key and the database password from Docker secrets, nginx on `127.0.0.1:${HYDROGRAF_PORT:-8080}` behind the Cloudflare Tunnel, which serves HTTPS (TLS in nginx itself: `docker/nginx-ssl.conf.template`, commented out in `docker-compose.prod.yml`); backups as in §9.
 
 ---
 
@@ -1723,7 +1882,7 @@ http {
 **Assets:**
 - Database (the NMT graph, precipitation data)
 - API endpoints
-- User data (minimal - only watershed locations)
+- User data (minimal: the reports of „Zgłoś uwagę”, their text and the view's context; no account, no client address; ADR-084)
 
 **Threats:**
 - SQL Injection
@@ -1733,12 +1892,12 @@ http {
 - Unauthorized access
 
 **Mitigations:**
-- ✅ Parameterised SQL queries (SQLAlchemy ORM)
+- ✅ Parameterised SQL queries (SQLAlchemy `text()` with bound parameters)
 - ✅ Input validation (Pydantic)
 - ✅ Request limit per client address in the API (300 in 60 s, tiles 3,000, the form 5 in 5 min; ADR-084)
 - ✅ CORS with restrictive origins (env var `CORS_ORIGINS`), `allow_credentials=False`
 - ✅ GZip middleware (FastAPI)
-- ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+- ✅ Security headers of nginx (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy; HSTS with TLS in nginx)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
 - ✅ Admin API key auth (X-Admin-Key against ADMIN_API_KEY or the file of ADMIN_API_KEY_FILE, read per request; no key, no access: `admin_key_not_configured`; ADR-086)
 - ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin/*` and `/api/admin/*`, the only admin paths (ADR-086)
@@ -1749,25 +1908,27 @@ http {
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    NETWORK LAYER                        │
-│  - Firewall (UFW): only ports 80, 443, 22             │
-│  - Internal network only (no public internet access)    │
+│                      NETWORK LAYER                      │
+│  - nginx on 127.0.0.1 only (HYDROGRAF_PORT, 8080)       │
+│  - Outside access through the Cloudflare Tunnel         │
+│  - Cloudflare Access in front of the admin paths        │
 └─────────────────────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────┐
-│                 APPLICATION LAYER                       │
-│  - Input validation (Pydantic)                         │
-│  - Request limit per client address (FastAPI)          │
-│  - CORS (restrictive origins, no credentials)          │
-│  - GZip compression, the access log without the client │
-│  - Security headers (CSP, HSTS, X-Frame-Options)       │
+│                    APPLICATION LAYER                    │
+│  - Input validation (Pydantic)                          │
+│  - Request limit per client address (api/traffic.py)    │
+│  - CORS (restrictive origins, no credentials)           │
+│  - Admin key (X-Admin-Key) on /api/admin/*              │
+│  - GZip compression, the access log without the client  │
+│  - Security headers of nginx (CSP, X-Frame-Options)     │
 └─────────────────────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────┐
-│                   DATABASE LAYER                        │
-│  - Parameterised queries (SQLAlchemy)                 │
-│  - Read-only user for preprocessing data              │
-│  - Backups encrypted                                   │
+│                      DATABASE LAYER                     │
+│  - Parameterised queries (SQLAlchemy text())            │
+│  - One user (POSTGRES_USER), statement_timeout 120 s    │
+│  - Password from a Docker secret in production          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -1795,29 +1956,9 @@ Records of the format `nogat-log/1` (`schemas/nogat/record-1.schema.json`) go to
 
 ---
 
-### 7.2 Metrics (Optional - Prometheus)
+### 7.2 Metrics
 
-**Metrics to collect:**
-- Request count (by endpoint)
-- Request duration (histogram)
-- Active connections
-- Database query duration
-- Error rate (5xx responses)
-
-**Prometheus client:**
-```python
-from prometheus_client import Counter, Histogram
-
-request_count = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
-request_duration = Histogram('http_request_duration_seconds', 'HTTP request duration')
-
-@app.middleware("http")
-async def prometheus_middleware(request, call_next):
-    with request_duration.time():
-        response = await call_next(request)
-    request_count.labels(method=request.method, endpoint=request.url.path).inc()
-    return response
-```
+No metrics are collected: the access log (§7.1) and the daily totals of `stats.jsonl` (§2.2.1b) are the records of the use, and the admin panel's „Stan” (`GET /api/admin/status`) and „Zasoby” (`GET /api/admin/resources`) show the state of the server (§2.2.8).
 
 ---
 
@@ -1825,28 +1966,33 @@ async def prometheus_middleware(request, call_next):
 
 ```python
 # api/endpoints/health.py
-from fastapi import APIRouter, Depends
-from sqlalchemy import text
+class HealthResponse(BaseModel):
+    """Health check response model."""
 
-from core.version import get_version
+    status: str
+    database: str
+    version: str
 
-router = APIRouter()
 
-@router.get("/health")
-async def health_check(db = Depends(get_db)):
+@router.get("/health", response_model=HealthResponse)
+def health_check(db: Session = Depends(get_db)) -> HealthResponse:
+    # Check database connection
     try:
-        # Check database
-        result = db.execute(text("SELECT 1"))
-        db_status = "connected" if result else "disconnected"
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"
-    
-    return {
-        "status": "healthy" if db_status == "connected" else "unhealthy",
-        "database": db_status,
-        "version": get_version()
-    }
+
+    status = "healthy" if db_status == "connected" else "unhealthy"
+
+    return HealthResponse(
+        status=status,
+        database=db_status,
+        version=get_version(),
+    )
 ```
+
+The healthcheck of the `api` container calls it, and in production that of nginx through nginx (`wget -q --spider http://localhost/health`, `docker-compose.prod.yml`); the request limit and the daily totals leave it out (§2.2.1b).
 
 ---
 
@@ -1897,9 +2043,8 @@ async def health_check(db = Depends(get_db)):
 ```
 
 **Additional components:**
-- Redis for cache and session storage
+- A store shared by the API processes for the request limit, the daily totals (ADR-084) and the lock of the network delineation, which now live in the memory of the one API process (§2.2.1b, §2.2.2b)
 - Message queue (Celery + RabbitMQ) for long tasks
-- CDN for static assets
 
 ---
 
@@ -1928,9 +2073,9 @@ async def health_check(db = Depends(get_db)):
 ### 9.2 Recovery Procedures
 
 **Scenario 1: Database corruption**
-1. Stop the application: `docker compose down`
+1. Stop the API and nginx: `docker compose stop api nginx` (the database container stays up for the restore)
 2. Restore from the backup: `gunzip -c backup.sql.gz | docker exec -i hydro_db psql -U hydro_user hydro_db`
-3. Restart: `docker compose up -d`
+3. Restart: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 4. Verify: Check `/health` endpoint
 
 **Scenario 2: Server failure**
@@ -1938,7 +2083,7 @@ async def health_check(db = Depends(get_db)):
 2. Install Docker
 3. Clone repo: `git clone ...`
 4. Restore the database from the backup
-5. Deploy: `docker compose up -d`
+5. Deploy: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (with `.env` and the secrets `secrets/db_password.txt` and `secrets/admin_api_key.txt`)
 6. Update DNS (if applicable)
 
 **RTO (Recovery Time Objective):** < 4 hours  
@@ -1968,13 +2113,13 @@ async def health_check(db = Depends(get_db)):
 
 **Database:**
 - Connection pooling (10 connections + 5 overflow)
-- Partial indexes (is_stream = TRUE only)
+- Partial GiST indexes of the geometries per threshold (`idx_stream_geom_t<threshold>`, `idx_catchment_geom_t<threshold>`; migrations 001 and 004)
 - Materialized views (future)
 
 **Python:**
 - Use NumPy vectorization instead of Python loops
 - Lazy loading of data (generator expressions)
-- Async I/O for API calls (FastAPI async endpoints)
+- The routes are plain functions (`def`) that FastAPI runs in its thread pool; the request limit's middleware, the admin statistics, the two uploads and the SSE stream of the bootstrap are `async`
 
 **Example - Vectorized calculations:**
 ```python
@@ -2011,130 +2156,40 @@ def effective_rainfall_slow(intensities, cn):
 ### 10.2 Frontend Optimizations
 
 **Map:**
-- Lazy loading tiles
-- Simplify geometries (Douglas-Peucker) for display
-- Use the canvas renderer for a large number of features
-
-**Chart:**
-- Downsampling for > 1000 points (Largest Triangle Three Buckets)
-- Use decimation plugin
+- Tiles load per view: the streams, catchments, land cover and storm sewer as vector tiles (MVT through Leaflet.VectorGrid); the streams and catchments of a threshold from the tiles that `scripts/generate_tiles.py` pre-generated under `/tiles/` (`tiles_metadata.json`), else from `/api/tiles/`
+- The server simplifies what it sends: the boundary by `ST_SimplifyPreserveTopology(5.0)` (ADR-032), the preview's polygons by `ST_Simplify` with √A / 500 m (§2.2.2a), the tiles quantized to 4096 units by `ST_AsMVTGeom`
 
 **Network:**
-- Gzip compression (Nginx)
+- Gzip compression (nginx, and the API's `GZipMiddleware` above 500 bytes)
 - Own JS/CSS with the version `?v=<content hash>` in the URL (see 5.2, „Front-end asset cache”)
-- Minify JS/CSS (production build)
+- No build step: the files are served as written, not minified
 
 ---
 
 ## 11. Testing Strategy
 
-### 11.1 Test Pyramid
+### 11.1 Test Suite
 
-```
-         /\
-        /  \  E2E Tests (10%)
-       /    \  - Selenium/Playwright
-      /------\  - Critical user paths
-     /        \
-    / Integr.  \ Integration Tests (20%)
-   /   Tests    \ - API endpoints + DB
-  /--------------\ - Real database
- /                \
-/   Unit Tests     \ Unit Tests (70%)
-/     (70%)         \ - Pure functions
-/--------------------\ - Mocked dependencies
-```
+`backend/tests/` (pytest, configured in `backend/pyproject.toml`):
+- `unit/` — offline tests of the modules, with fixtures and mocked dependencies
+- `integration/` — the routes through FastAPI's `TestClient`, and the database code against PostGIS (marker `db`)
+- `contract/` — the error registry, the message catalogue, the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies and the vendored files
+- `performance/` — timing tests of the PostGIS queries (marker `benchmark`, with the database)
+- `fixtures/` — test data
 
-**Test strategy:**
-- **Unit tests** — core modules with mocked dependencies (pytest + fixtures)
-- **Integration tests** — API endpoints with a real PostGIS database (test service in CI)
-- **E2E scripts** — `process_dem.py` (the full end-to-end pipeline)
-- **CI:** pytest with coverage (the current number of tests is in the CI results)
+The markers are `live` (real network services), `db` (PostGIS), `slow` and `benchmark`; the default run and `scripts/gate.sh` leave out `live`, `db` and `benchmark`. The gate runs `ruff format --check`, `ruff check`, `mypy`, one pytest call with coverage (`fail_under = 80`), `scripts/bump_asset_versions.py --check` and the commit checks. The preprocessing pipeline (`scripts/`) is run by hand on real data and is not measured by the coverage.
 
 ---
 
 ### 11.2 CI/CD Pipeline
 
-```yaml
-# .github/workflows/ci.yml
-name: CI
+`.github/workflows/ci.yml` (Nogat DEV-7.7) runs on pushes and pull requests to `main` and `develop`, every Monday at 05:00 UTC (the audit only) and by hand:
+- `frontend-assets` — `python3 scripts/bump_asset_versions.py --check`
+- `gate` — `scripts/gate.sh` on `ubuntu-latest` with Python 3.12 (required) and 3.15 (reported, not blocking; it installs `libgdal-dev` first, so that Fiona builds); the commit checks run only on pull requests into `develop` and of `hotfix/*` into `main`
+- `db` — the tests marked `db` (not `benchmark`) against the service `postgis/postgis:16-3.4` after `alembic upgrade head`
+- `audit` — `pip-audit --strict` over the locked PyPI dependencies (`uv export --locked`), the ecosystem's own packages left out
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install ruff mypy
-      - name: Ruff check
-        run: ruff check .
-      - name: Ruff format check
-        run: ruff format --check .
-
-  test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    services:
-      postgres:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_DB: hydro_test
-          POSTGRES_USER: hydro_user
-          POSTGRES_PASSWORD: hydro_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U hydro_user -d hydro_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgresql://hydro_user:hydro_password@localhost:5432/hydro_test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -e ".[dev]"
-      - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
-
-  security:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install pip-audit
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Security audit
-        run: pip-audit
-        continue-on-error: true
-```
+The actions are pinned by commit SHA and updated by Dependabot (`.github/dependabot.yml`); the required checks are `gate` of Python 3.12 and `db`. No job builds or deploys an image.
 
 ---
 
@@ -2155,7 +2210,7 @@ jobs:
                                  │
                     ┌────────────▼────────────┐
                     │                         │
-                    │  GUGIK / IMGW           │
+                    │  GUGiK / IMGW / ISRIC   │
                     │  (Data sources)         │
                     │                         │
                     └─────────────────────────┘
@@ -2183,11 +2238,12 @@ jobs:
 
 ---
 
-**Document version:** 2.19
-**Date of the last update:** 2026-11-13
+**Document version:** 2.20
+**Date of the last update:** 2026-11-14
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.20 (2026-11-14): audit against the code of 2026-11-14: the header 2.20 like this history; §1 the PMAXTP grid, ADR-065 without Bootstrap, ADR-084 without the journal, ADR-085 and ADR-086; §2.1 the module map of the code (`api/errors.py`; `core` `_errors`, `active_run`, `data_sources`, `divide_flow_path`, `errors`, `messages`, `point_info`, `unit_*`, `version`; `utils/archiwista_project.py`, `utils/kartograf_set.py`; the scripts of the units, the backfills and the errors; `download_sewer.py` reads files only, `generate_tiles.py` streams and catchments only, `raster_utils.py` without polygonize; `tests/contract`); §2.2 G and SG in the responses and `layers` of `GET /api/terms`, the watershed request without `display_threshold_m2` and `boundary_geojson` in `watershed`, `GET /api/gui` from NOGAT_CONFIG, `?threshold=` of the tiles, the parameters of `/api/depressions`, the cleanup targets, one API process for the networks; §2.3 `find_catchment_at_point`, the tc and UH of the hydrograph; §2.4.6 `zonal_summary`; §2.5 Kartograf finds the counties, the DEM chain, the streams smoothed in `core/db_bulk.py`, the sewer upload without SSRF; §3 the index names, the columns of migrations 003 and 004, `IMGW_PMAXTP`, `DEM_DERIVED`, `sewer_network.source` VARCHAR(255), no `flow_network`, the examples as the code queries; §4 25 IIFE modules and 5 in `admin/`, `terms.js`, the welcome text, the app menu from NOGAT_CONFIG, the strip's GK and SK, the excerpts of `map.js`, `api.js`, `charts.js` and `app.js`; §5 `docker-compose.yml` and `docker/nginx.conf` as they are, the entrypoint's wait, the environments; §6 no read-only database user; §7 no metrics, `health.py`; §8–§10 one API process, no CDN, the partial indexes, no build step; §11 the test tree and the jobs of `ci.yml`; §12 ISRIC
 - 2.19 (2026-11-13): the providers' terms linked, not restated (Nogat ECO-065; ADR-083 and ADR-084 amended): §2.1 `core/attribution.py` without N, `is_terms`; §2.2.1b and §2.2.3 `terms_notice` [RK] with RK „Regulamin danych PMAXTP: …”, `core/terms.py` without the block `imgw-terms`; §2.2.5, §2.2.5a the manifest's example; §4.1 kit 0.6.0; §4.2.0 the dialog's terms and the manifest's lines
 - 2.18 (2026-11-13): one strip of the providers' lines (ADR-083 amended, plan `2026-11-13-compact-sources`): §2.2.1b `attribution` and `terms_notice` of `GET /api/terms`; §4.1 kit 0.5.1 (`nogat-sources`), `attribution.js`, `terms.js`, `welcome.js`; §4.2.0 the strip, the welcome dialog, the sheets above the foot of the view; the manifest's lines in the strip
 - 2.17 (2026-11-13): the public service (ADR-084, plan `2026-11-13-public-gui`): §1.1 the pages through the API, the request limit and the totals in it; §1.2 ADR-084; §2.1 `api/traffic.py`, `api/endpoints/site.py`, `feedback.py`, `core/terms.py`, `core/request_limit.py`, `core/usage.py`, migration 007; §2.2.1b `GET /api/terms`, `/regulamin.html`, `POST /api/downloads`, `POST /api/feedback`, the 429; §2.2.8 `context` and `legacy` of the admin list; §4.1 kit 0.4.0, `js/terms.js`, without `js/diagnostics.js`; §4.2.0 the footer and the form; §5.1 NOGAT_CONFIG, journald, one process, `--no-access-log`; §5.2 nginx without `limit_req`, its logs without addresses, the pages through the API; §6 the limit in the API; §7.1 the logs and their 14 days

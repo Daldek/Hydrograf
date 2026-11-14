@@ -10,13 +10,11 @@ A list of known technical problems to fix in future iterations.
 
 ### Unit conversion constants — PARTLY DONE
 
-The constants `M_PER_KM` and `M2_PER_KM2` exist in `core/constants.py`, but the `core/` modules do not use them:
+The constants `M_PER_KM` and `M2_PER_KM2` of `core/constants.py` are used by the newer modules (`core/cell_parameters.py`, `core/network_delineation.py`, `core/network_preview.py`, `core/network_tree.py`, `api/endpoints/network.py`), but not by `core/watershed_service.py`:
 
 | Value | Location | Status |
 |-------|----------|--------|
-| `1000.0` (m/km) | `core/watershed_service.py` (`build_morph_dict_from_graph`, `compute_watershed_length`) | Still hardcoded — `M_PER_KM` is not imported |
-
-**Note:** `M2_PER_KM2` is imported in `api/endpoints/watershed.py`, but the core modules do not use the constants — a gap between the intent and the implementation.
+| `1000` (m/km) | `core/watershed_service.py` (`build_morph_dict_from_graph`, `compute_watershed_length`, `_compute_lc_along_channel`) | Still hardcoded — `M_PER_KM` is not imported |
 
 ### Algorithm parameters
 
@@ -26,12 +24,12 @@ The constants `M_PER_KM` and `M2_PER_KM2` exist in `core/constants.py`, but the 
 
 ### CRS identifiers — PARTLY DONE
 
-The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but the string `"EPSG:2180"` still appears directly in 7+ core files:
+The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but no module imports them, and the string `"EPSG:2180"` appears directly in these files:
 
 | Value | Location | Status |
 |-------|----------|--------|
-| `"EPSG:2180"` | `core/cn_calculator.py`, `core/hydrology.py` ×2, `core/precipitation.py`, `core/raster_io.py`, `core/watershed_service.py` | Still hardcoded — `CRS_PL1992` is not imported |
-| `"EPSG:2180"` | `utils/geometry.py`, `models/schemas.py` | Still hardcoded |
+| `"EPSG:2180"` | `core/analysis_results.py` ×2, `core/boundary.py` ×2, `core/cn_calculator.py` ×3, `core/hydrology.py` ×2, `core/raster_io.py`, `core/watershed_service.py` | Still hardcoded — `CRS_PL1992` is not imported |
+| `"EPSG:2180"` | `utils/geometry.py`, `utils/kartograf_set.py`, `utils/nmt_coverage.py`, `utils/raster_utils.py`, `utils/sheet_lookup.py`, `models/schemas.py`, `api/endpoints/profile.py` | Still hardcoded |
 
 ### Other
 
@@ -46,8 +44,9 @@ The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but the
 ## Hardcoded Secrets (S5.3) — DONE
 
 Both items were fixed on 2026-03-02 (`7451ef9`, `ec2039c`): `Settings.postgres_password` defaults to
-an empty string and warns when it is empty, the `password` of `_DEFAULT_CONFIG` is empty, and
-`migrations/env.py` falls back to a local URL without a password with a warning. The text below is the
+an empty string and warns when it is empty, and `migrations/env.py` falls back to a local URL without a
+password with a warning. `_DEFAULT_CONFIG` has held no database settings since 2026-11-14 (the key
+`database` of `config.yaml` and `get_database_url_from_config` were removed). The text below is the
 finding of that time.
 
 ### S5.3a - Default password in config.py — DONE
@@ -86,7 +85,7 @@ database_url = os.getenv(
 
 ---
 
-## Missing tests for scripts/ (T4.8) — PARTLY DONE
+## Missing tests for scripts/ (T4.8) — DONE
 
 **Problem:** Most of the preprocessing scripts (`scripts/*.py`) had low test coverage.
 
@@ -98,11 +97,13 @@ database_url = os.getenv(
 - `scripts/bootstrap.py` — **20 tests** (`test_bootstrap.py`) — NEW
 - `scripts/download_landcover.py` — **17 tests** (`test_download_landcover.py`) — NEW
 - `scripts/preprocess_precipitation.py` — **12 tests** (`test_preprocess_precipitation.py`) — NEW
-- `scripts/generate_dem_overlay.py` — 0% coverage
-- `scripts/generate_tiles.py` — 0% coverage
-- `scripts/prepare_area.py` — 0% coverage
-- `scripts/download_dem.py` — 0% coverage
-- `scripts/analyze_watershed.py` — 0% coverage
+- `scripts/generate_dem_overlay.py` — ~~0% coverage~~ `test_generate_overlays.py`
+- `scripts/generate_tiles.py` — ~~0% coverage~~ `test_generate_tiles_metadata.py`
+- `scripts/prepare_area.py` — ~~0% coverage~~ `test_process_dem_callers.py`
+- `scripts/download_dem.py` — ~~0% coverage~~ `test_download_dem.py`, `test_download_dem_report.py`
+- `scripts/analyze_watershed.py` — ~~0% coverage~~ `test_analyze_watershed_delineate.py`, `test_analyze_watershed_hydrograph.py`, `test_analyze_watershed_nmt_files.py`, `test_process_dem_callers.py`
+
+**Update 2026-11-14:** every script of this list has tests; the coverage per script is not measured here.
 
 **Priority:** LOW (the key core modules are covered, scripts are one-off pipeline tools)
 
@@ -112,7 +113,9 @@ database_url = os.getenv(
 
 ---
 
-## Documentation vs Code (C2.x) — PARTLY OUT OF DATE
+## Documentation vs Code (C2.x) — DONE
+
+Checked 2026-11-14: `docs/ARCHITECTURE.md` describes the response objects (`watershed.outlet`, `morphometry`, `water_balance`), every `/api/admin/*` route with the SSE stream of the bootstrap, and the `/api/tiles/*` routes; `docs/DATA_MODEL.md` §6 follows `models/schemas.py`. The text below is the finding of 2026-03-01.
 
 **Problem:** The API documentation is out of date against the code.
 
@@ -144,7 +147,7 @@ There is no reference to `flow_network` in any file `core/*.py` or `api/endpoint
 
 ## Checklist after DB migrations (preventing regressions)
 
-**Problem:** Migration 014 added `segment_idx` to `stream_network`, but `find_nearest_stream_segment()` in `watershed_service.py` was not updated — the function still fetched `id` (the auto-increment PK) and returned it as `segment_idx`. The bug lasted 6 sessions (24-32).
+**Problem:** Migration 014 added `segment_idx` to `stream_network`, but `find_nearest_stream_segment()` in `watershed_service.py` was not updated — the function still fetched `id` (the auto-increment PK) and returned it as `segment_idx`. The bug lasted 6 sessions (24-32). The function has since been removed: the sub-catchment at a point is found by `CatchmentGraph.find_catchment_at_point` (ADR-039).
 
 **A checklist after every migration:**
 1. `grep -r "TABLE_NAME" backend/` — find ALL the SQL queries to the changed table
@@ -159,17 +162,18 @@ There is no reference to `flow_network` in any file `core/*.py` or `api/endpoint
 
 ## f-strings in logging (L1.x) — NEW
 
-**Problem:** In 30 backend files f-strings are used in `logger.*()` calls instead of lazy formatting with `%s`. About 396 occurrences in total.
+**Problem:** In 33 backend files (tests excluded) f-strings are used in `logger.*()` calls instead of lazy formatting with `%s`. About 416 occurrences in total (counted 2026-11-14).
 
 **Most often in:**
-- `scripts/analyze_watershed.py` (61 occurrences)
-- `scripts/prepare_area.py` (46 occurrences)
-- `scripts/download_dem.py` (31 occurrences)
-- `scripts/download_landcover.py` (32 occurrences)
-- `utils/raster_utils.py` (20 occurrences)
-- `scripts/process_dem.py` (26 occurrences)
-- `scripts/bootstrap.py` (18 occurrences)
-- core modules: `raster_io.py` (11), `cn_calculator.py` (9), `land_cover.py` (7), `hydrology.py` (7)
+- `scripts/analyze_watershed.py` (59 occurrences)
+- `scripts/prepare_area.py` (45 occurrences)
+- `scripts/process_dem.py` (41 occurrences)
+- `scripts/download_dem.py` (29 occurrences)
+- `scripts/bootstrap.py` (22 occurrences)
+- `scripts/generate_tiles.py` (20 occurrences)
+- `scripts/download_landcover.py` (18 occurrences)
+- `utils/raster_utils.py` (18 occurrences)
+- core modules: `cn_calculator.py` (15), `hydrology.py` (14), `raster_io.py` (10), `land_cover.py` (3)
 
 **Standard (DEV-12.3 of the Nogat standard):**
 ```python
@@ -184,7 +188,9 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-## traceback.print_exc() instead of logger.exception() (L2.x) — NEW
+## traceback.print_exc() instead of logger.exception() (L2.x) — DONE
+
+Checked 2026-11-14: no `traceback.print_exc()` is left in `backend/`. The text below is the finding of that time.
 
 **Problem:** In a few files `import traceback; traceback.print_exc()` is used instead of `logger.exception()`.
 
@@ -201,13 +207,13 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ## TODO in the code (T5.x)
 
-**Problem:** One active TODO in the production code (`api`, `core`, `models`, `scripts`, `utils`, `migrations`, `frontend/js` and the tests; checked 2026-10-25):
+**Problem:** One active TODO in the production code (`api`, `core`, `models`, `scripts`, `utils`, `migrations`, `frontend/js` and the tests; checked 2026-11-14):
 
 | File | Line | Content | Priority |
 |------|------|---------|----------|
-| `core/watershed_service.py:958` | `# TODO: compute AL and AP from main channel geometry` | `asymmetry_coefficient` (α = 2·(AL−AP)/A) is always `None`: the watershed is not split along the main channel into the areas of its two banks | LOW |
+| `core/watershed_service.py:1029` | `# TODO: compute AL and AP from main channel geometry` | `asymmetry_coefficient` (α = 2·(AL−AP)/A) is always `None`: the watershed is not split along the main channel into the areas of its two banks | LOW |
 
-**Context:** The field is a placeholder among the relief indices (`MorphometricParameters`, the response, the table of the parameters in the front end, `docs/DATA_MODEL.md`). Nothing computes with it, so the gap shows as an empty value of one parameter.
+**Context:** The field is a placeholder among the relief indices (`MorphometricParameters`, the response, the table of the parameters in the front end). Nothing computes with it, so the gap shows as an empty value of one parameter.
 
 **Priority:** LOW — it affects the display of one parameter only
 
@@ -247,4 +253,4 @@ Still open from this paragraph: `pyflwdir.streams.stream_distance` (0.5.12) is n
 
 ---
 
-*Last update: 2026-11-06*
+*Last update: 2026-11-14*

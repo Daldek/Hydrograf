@@ -1,9 +1,12 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.7
-**Data:** 2026-03-27
+**Wersja:** 1.8
+**Data:** 2026-11-14
 **Status:** Approved
+
+**History:**
+- 1.8 (2026-11-14): audit against the code of 2026-11-14: the ERD and §4–§5 with `feedback`, `processing_runs` and `processing_units` and the partial indexes of migration 004; `stream_network.source` without a default (`DEM_DERIVED` only), `precipitation_data.source` `IMGW_PMAXTP` only, `sewer_network.source` VARCHAR(255); `perimeter_km` and `hydraulic_length_km` of `stream_catchments` written but no longer read; the limit of `feedback.context` in bytes; §6 the models of `models/schemas.py`; §7 without the data classes that do not exist; no maintenance job.
 
 ---
 
@@ -23,6 +26,7 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 - **Klucze obce:** `nazwa_tabeli_id` (np. `downstream_segment_idx`)
 - **Geometrie:** zawsze z SRID (Spatial Reference ID)
 - **Jednostki:** zawsze w metrycznych (m, km, mm, m³/s)
+- **Comments:** the `COMMENT ON` lines of §3 document the columns; the database holds column comments only on `feedback` (migration 007).
 
 ---
 
@@ -125,6 +129,23 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ outfall_type             │       └─────────────────────────┘
 │ updated_at               │
 └─────────────────────────┘
+
+┌─────────────────────────┐   ┌─────────────────────────┐       ┌─────────────────────────┐
+│         feedback        │   │     processing_runs     │       │     processing_units    │
+├─────────────────────────┤   ├─────────────────────────┤       ├─────────────────────────┤
+│ id (PK)                 │   │ id (PK)                 │ ◄──── │ run_id (PK, FK)         │
+│ created_at              │   │ status                  │       │ owner_code (PK)         │
+│ message                 │   │ input_fingerprint       │       │ catchment_keys          │
+│ contact (old form)      │   │ source_raster           │       │ status                  │
+│ page_url (old form)     │   │ pgw_path                │       │ row_start, row_stop     │
+│ user_agent (old form)   │   │ config                  │       │ col_start, col_stop     │
+│ diagnostics (old form)  │   │ created_at              │       │ halo_m                  │
+│ is_read                 │   │ activated_at            │       │ outputs                 │
+│ context                 │   │ superseded_at           │       │ created_at              │
+└─────────────────────────┘   │ failed_at               │       │ routed_at               │
+                              │ error                   │       │ completed_at            │
+                              │ published_counts        │       └─────────────────────────┘
+                              └─────────────────────────┘
 ```
 
 ---
@@ -149,7 +170,7 @@ CREATE TABLE precipitation_data (
     duration VARCHAR(10) NOT NULL,
     probability DOUBLE PRECISION NOT NULL,  -- migracja 020: zmiana z INT na DOUBLE PRECISION
     precipitation_mm DOUBLE PRECISION NOT NULL,
-    source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (wlasna analiza)
+    source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP, the only source scripts/preprocess_precipitation.py writes
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT valid_duration CHECK (duration IN (
@@ -185,7 +206,7 @@ COMMENT ON COLUMN precipitation_data.precipitation_mm IS 'Wysokość opadu [mm]'
 | `duration` | VARCHAR(10) | NO | - | Czas trwania | '5min','10min','15min','30min','45min','1h','1.5h','2h','3h','6h','12h','18h','24h','36h','48h','72h' |
 | `probability` | DOUBLE PRECISION | NO | - | Prawdopodobieństwo [%] | 0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9 |
 | `precipitation_mm` | DOUBLE PRECISION | NO | - | Opad [mm] | ≥ 0 |
-| `source` | VARCHAR(50) | NO | - | Źródło danych | IMGW_PMAXTP (atlas), IMGW_HISTORICAL (własna analiza) |
+| `source` | VARCHAR(50) | NO | - | Źródło danych | `IMGW_PMAXTP` (the only value `scripts/preprocess_precipitation.py` writes) |
 | `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji | timestamp |
 
 **Przykładowe rekordy:**
@@ -284,7 +305,7 @@ CREATE TABLE stream_network (
     name VARCHAR(100),
     length_m DOUBLE PRECISION,
     strahler_order INT,
-    source VARCHAR(50) DEFAULT 'MPHP',
+    source VARCHAR(50),                             -- DEM_DERIVED, the only value the pipeline writes (core/db_bulk.py)
     upstream_area_km2 DOUBLE PRECISION,                        -- migracja 003
     mean_slope_percent DOUBLE PRECISION,                       -- migracja 003
     threshold_m2 INT NOT NULL,                        -- migracja 005/017 (active thresholds since 2026-11-05: 10000, 100000, 1000000, 10000000; PIPELINE_THRESHOLDS_M2)
@@ -318,6 +339,10 @@ CREATE INDEX idx_stream_geom_t10000 ON stream_network USING GIST(geom)
     WHERE threshold_m2 = 10000;
 CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST(geom)
     WHERE threshold_m2 = 100000;
+CREATE INDEX idx_stream_geom_t1000000 ON stream_network USING GIST(geom)
+    WHERE threshold_m2 = 1000000;                -- migration 004
+CREATE INDEX idx_stream_geom_t10000000 ON stream_network USING GIST(geom)
+    WHERE threshold_m2 = 10000000;               -- migration 004
 
 -- Komentarze
 COMMENT ON TABLE stream_network IS 'Sieć rzeczna - osie cieków';
@@ -335,7 +360,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `name` | VARCHAR(100) | YES | NULL | Nazwa cieku |
 | `length_m` | DOUBLE PRECISION | YES | NULL | Dlugosc [m] (obliczana: ST_Length(geom)) |
 | `strahler_order` | INT | YES | NULL | Rzad Strahlera (1=zrodlowy, wyzsze=wieksze) |
-| `source` | VARCHAR(50) | YES | 'MPHP' | Zrodlo danych ('MPHP' lub 'DEM_DERIVED') |
+| `source` | VARCHAR(50) | YES | NULL | Data source: `DEM_DERIVED`, the only value the pipeline writes (`core/db_bulk.py`) |
 | `upstream_area_km2` | DOUBLE PRECISION | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
 | `mean_slope_percent` | DOUBLE PRECISION | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
 | `threshold_m2` | INT | NO | - | Prog akumulacji przeplywu [m2] (migracja 005/017). Active thresholds since 2026-11-05: 10000, 100000, 1000000, 10000000 (`core/constants.py` `PIPELINE_THRESHOLDS_M2`) |
@@ -345,11 +370,11 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 
 **Przykładowe rekordy:**
 ```sql
-INSERT INTO stream_network (geom, name, length_m, strahler_order) VALUES
+INSERT INTO stream_network (geom, name, length_m, strahler_order, source, threshold_m2, segment_idx) VALUES
 (ST_SetSRID(ST_GeomFromText('LINESTRING(500000 600000, 500050 600010, 500100 600005)'), 2180),
- 'Ciek Bezimienni', 111.8, 1),
+ 'Ciek Bezimienni', 111.8, 1, 'DEM_DERIVED', 10000, 1),
 (ST_SetSRID(ST_GeomFromText('LINESTRING(500100 600005, 500200 600020, 500300 600015)'), 2180),
- 'Rzeka Przykładowa', 223.6, 2);
+ 'Rzeka Przykładowa', 223.6, 2, 'DEM_DERIVED', 10000, 2);
 ```
 
 ---
@@ -407,6 +432,14 @@ CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST(geom)
     WHERE threshold_m2 = 10000;
 CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
     WHERE threshold_m2 = 100000;
+CREATE INDEX idx_catchment_geom_t1000000 ON stream_catchments USING GIST(geom)
+    WHERE threshold_m2 = 1000000;                -- migration 004
+CREATE INDEX idx_catchment_geom_t10000000 ON stream_catchments USING GIST(geom)
+    WHERE threshold_m2 = 10000000;               -- migration 004
+CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST(longest_flow_path_geom)
+    WHERE longest_flow_path_geom IS NOT NULL;    -- migration 023
+CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST(divide_flow_path_geom)
+    WHERE divide_flow_path_geom IS NOT NULL;     -- migration 024
 ```
 
 **Nowe kolumny (migracja 012) — szczegóły:**
@@ -416,10 +449,10 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 | `downstream_segment_idx` | INTEGER | YES | Segment do którego spływa (NULL = outlet) |
 | `elevation_min_m` | DOUBLE PRECISION | YES | Minimalna wysokość w zlewni [m n.p.m.] |
 | `elevation_max_m` | DOUBLE PRECISION | YES | Maksymalna wysokość w zlewni [m n.p.m.] |
-| `perimeter_km` | DOUBLE PRECISION | YES | Obwód poligonu zlewni [km] |
+| `perimeter_km` | DOUBLE PRECISION | YES | Perimeter of the sub-catchment polygon [km]; written by the pipeline, read by nothing: the API takes the perimeter of a watershed from its merged boundary |
 | `stream_length_km` | DOUBLE PRECISION | YES | Długość cieku w zlewni [km] |
 | `elev_histogram` | JSONB | YES | Histogram wysokości: `{"base_m": 120, "interval_m": 1, "counts": [45, 82, ...]}` |
-| `hydraulic_length_km` | FLOAT | YES | Maksymalna droga spływu z flow direction grid [km] (`pyflwdir.stream_distance()`). Używana przez NRCS/Kirpich tc (migracja 022) |
+| `hydraulic_length_km` | FLOAT | YES | Largest flow distance of the sub-catchment to the outlet of the whole processed area [km] (`pyflwdir.stream_distance()`, migration 022); written by the pipeline, read by nothing (`CatchmentGraph.load` does not load it): the hydraulic length of a watershed comes from `max_flow_dist_m` and `outlet_flow_dist_m` |
 
 **Nowe kolumny (migracja 023) — ścieżki spływu:**
 
@@ -438,7 +471,7 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 
 | Kolumna | Typ | Nullable | Opis |
 |---------|-----|----------|------|
-| `outlet_flow_dist_m` | DOUBLE PRECISION | YES | Odległość spływu w punkcie ujścia podzlewni [m], próbkowana z `stream_distance.tif` (`pyflwdir.stream_distance()`). Naprawia `hydraulic_length_km`: `(max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000` zamiast bezwzględnej odległości do ujścia całego basenu (feedback testera #11, ADR-054). Backfill istniejących wierszy: `scripts/backfill_outlet_flow_dist.py` |
+| `outlet_flow_dist_m` | DOUBLE PRECISION | YES | Flow distance at the outlet point of the sub-catchment [m], sampled from `stream_distance.tif` (`pyflwdir.stream_distance()`). The baseline of the hydraulic length of a watershed, which `CatchmentGraph.aggregate_stats` computes as `(max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000` instead of the absolute distance to the outlet of the whole basin (tester's feedback #11, ADR-054). Backfill of existing rows: `scripts/backfill_outlet_flow_dist.py` |
 
 **Nowe kolumny (migracja 004, ADR-070) — dane do metod Tc wg ich źródeł i spadek cieku od źródła:**
 
@@ -701,7 +734,7 @@ COMMENT ON COLUMN sewer_network.source IS 'Źródło danych (np. plik, WFS, DB)'
 | `manning_n` | DOUBLE PRECISION | YES | NULL | Współczynnik Manninga (0 < n < 1) |
 | `length_m` | DOUBLE PRECISION | NO | - | Długość odcinka [m] |
 | `slope_percent` | DOUBLE PRECISION | YES | NULL | Spadek odcinka [%] |
-| `source` | VARCHAR(50) | NO | - | Źródło danych |
+| `source` | VARCHAR(255) | NO | - | Źródło danych |
 | `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji |
 
 ---
@@ -740,7 +773,7 @@ CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 | `user_agent` | TEXT | YES | NULL | The User-Agent the server stored with the old form; NULL in every new report |
 | `diagnostics` | JSONB | YES | NULL | The old form's opt-in diagnostics (the last 50 events, the workspace, the environment; ADR-053, superseded); NULL in every new report |
 | `is_read` | BOOLEAN | NO | false | Read in the admin panel |
-| `context` | JSONB | YES | NULL | `{view, station, parameters, app_version}`: the map mode, `null` (Hydrograf has no stations), the view's parameters (map, clicked point, watershed, hydrograph settings, profile line) and the app version the server adds; at most 100,000 characters; NULL in the reports of the old form |
+| `context` | JSONB | YES | NULL | `{view, station, parameters, app_version}`: the map mode, `null` (Hydrograf has no stations), the view's parameters (map, clicked point, watershed, hydrograph settings, profile line) and the app version the server adds; at most 100,000 bytes as JSON (`FEEDBACK_CONTEXT_MAX_BYTES`); NULL in the reports of the old form |
 
 The admin list (`GET /api/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
 
@@ -779,12 +812,15 @@ SHA-256) that a resumed run and the publication check again. The published table
 **sewer_network.node_to_id → sewer_nodes.id**
 - Węzeł końcowy odcinka rury (migracja 025)
 
+**processing_units.run_id → processing_runs.id** (`ON DELETE CASCADE`)
+- The run of the unit (migration 005)
+
 ### 4.2 Unique Constraints
 
 **precipitation_data: unique_precipitation_scenario (geom, duration, probability)**
 - Zapobiega duplikatom dla tej samej lokalizacji i scenariusza
 
-**stream_network: unique (COALESCE(name, ''), threshold_m2, ST_GeoHash(geom, 12))**
+**stream_network: unique (COALESCE(name, ''), threshold_m2, ST_GeoHash(ST_Transform(geom, 4326), 12))**
 - Zapobiega duplikatom tego samego odcinka cieku w ramach danego progu
 - Migracja 010 (ADR-019): dodano `threshold_m2` do indeksu unikalnego
 
@@ -822,6 +858,14 @@ CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'st
 CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0)
 CONSTRAINT chk_length_positive CHECK (length_m > 0)
 CONSTRAINT chk_manning_range CHECK (manning_n IS NULL OR (manning_n > 0 AND manning_n < 1))
+
+-- feedback (migration 002)
+CHECK (length(message) BETWEEN 1 AND 5000)
+CHECK (length(contact) <= 200)
+
+-- processing_runs, processing_units (migration 005): chk_processing_runs_status, _fingerprint,
+-- _config, _published, _superseded, _failed; chk_processing_units_owner, _catchments, _status,
+-- _bounds, _manifest, _halo, _pending, _routed, _complete (each status tied to its columns)
 ```
 
 ---
@@ -843,11 +887,13 @@ CREATE INDEX idx_sewer_nodes_geom ON sewer_nodes USING GIST(geom);
 CREATE INDEX idx_sewer_network_geom ON sewer_network USING GIST(geom);
 
 -- stream_catchments: geometrie ścieżek spływu (migracje 023, 024)
-CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST(longest_flow_path_geom);
-CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST(divide_flow_path_geom);
+CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST(longest_flow_path_geom)
+    WHERE longest_flow_path_geom IS NOT NULL;
+CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST(divide_flow_path_geom)
+    WHERE divide_flow_path_geom IS NOT NULL;
 ```
 
-**Partial GIST indexes (migracja 009, 011, 017):**
+**Partial GIST indexes (migracja 009, 011, 017; 004 of the squashed schema):**
 ```sql
 -- DEM-derived streams (migracja 009)
 CREATE INDEX idx_stream_geom_dem_derived ON stream_network USING GIST(geom)
@@ -860,6 +906,12 @@ CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST(geom) WHERE th
 CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 1000;
 CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 10000;
 CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 100000;
+
+-- Thresholds 1 000 000 and 10 000 000 m² (migration 004)
+CREATE INDEX idx_stream_geom_t1000000 ON stream_network USING GIST(geom) WHERE threshold_m2 = 1000000;
+CREATE INDEX idx_stream_geom_t10000000 ON stream_network USING GIST(geom) WHERE threshold_m2 = 10000000;
+CREATE INDEX idx_catchment_geom_t1000000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 1000000;
+CREATE INDEX idx_catchment_geom_t10000000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 10000000;
 ```
 
 **Dlaczego GIST:**
@@ -912,6 +964,12 @@ CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes(root_outlet_id
 -- sewer_network (migracja 025)
 CREATE INDEX idx_sewer_network_node_from_id ON sewer_network(node_from_id);
 CREATE INDEX idx_sewer_network_node_to_id ON sewer_network(node_to_id);
+
+-- feedback (migration 002)
+CREATE INDEX idx_feedback_created_at ON feedback(created_at DESC);
+
+-- processing_runs (migration 005): at most one active run
+CREATE UNIQUE INDEX idx_processing_runs_one_active ON processing_runs(status) WHERE status = 'active';
 ```
 
 ---
@@ -924,7 +982,7 @@ CREATE INDEX idx_sewer_network_node_to_id ON sewer_network(node_to_id);
 
 **Vacuum i Analyze:**
 ```sql
--- Okresowe utrzymanie (cron job: weekly)
+-- By hand when needed: no job of the repository runs it (PostgreSQL's autovacuum does by default)
 VACUUM ANALYZE precipitation_data;
 VACUUM ANALYZE land_cover;
 VACUUM ANALYZE stream_network;
@@ -934,27 +992,31 @@ VACUUM ANALYZE soil_hsg;
 VACUUM ANALYZE bdot_streams;
 VACUUM ANALYZE sewer_nodes;
 VACUUM ANALYZE sewer_network;
+VACUUM ANALYZE feedback;
+VACUUM ANALYZE processing_runs;
+VACUUM ANALYZE processing_units;
 ```
 
 ---
 
 ## 6. Formaty Danych API
 
+The request and response models are the Pydantic models of `backend/models/schemas.py`; the outlines below name their parts.
+
 ### 6.1 Request: Delineate Watershed
 
 **Endpoint:** `POST /api/delineate-watershed`
 
-Tryb precomputed (z `threshold_m2` — snap-to-stream + BFS po grafie):
+Precomputed mode (with `threshold_m2`: the sub-catchment at the point by `ST_Contains`, BFS on the catchment graph, the merged boundary; above 300 sub-catchments the boundary is merged from a coarser threshold):
 ```json
 {
   "latitude": 52.123456,
   "longitude": 21.123456,
-  "threshold_m2": 10000,
-  "display_threshold_m2": 10000
+  "threshold_m2": 10000
 }
 ```
 
-Tryb precise (bez `threshold_m2` — delimitacja rastrowa pyflwdir on-the-fly):
+Precise mode (without `threshold_m2`: raster delineation with pyflwdir in a window around the point):
 ```json
 {
   "latitude": 52.123456,
@@ -962,15 +1024,12 @@ Tryb precise (bez `threshold_m2` — delimitacja rastrowa pyflwdir on-the-fly):
 }
 ```
 
-**Pydantic Schema:**
+**Pydantic model (`DelineateRequest`):**
 ```python
-from pydantic import BaseModel, Field
-
 class DelineateRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    threshold_m2: int | None = Field(None, description="Flow accumulation threshold [m2]. When provided, uses precomputed mode (BFS)")
-    display_threshold_m2: int | None = Field(None, description="Threshold for MVT stream highlighting")
+    threshold_m2: int | None = Field(None, gt=0)  # with it the precomputed mode
 ```
 
 ---
@@ -981,69 +1040,30 @@ class DelineateRequest(BaseModel):
 {
   "mode": "precomputed",
   "watershed": {
-    "boundary_geojson": {
-      "type": "Feature",
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [21.123, 52.123],
-            [21.125, 52.123],
-            [21.125, 52.125],
-            [21.123, 52.125],
-            [21.123, 52.123]
-          ]
-        ]
-      },
-      "properties": {
-        "area_km2": 45.3
-      }
-    },
-    "outlet": {
-      "latitude": 52.123456,
-      "longitude": 21.123456,
-      "elevation_m": 145.5
-    }
+    "boundary_geojson": { "type": "Feature", "geometry": {...}, "properties": {...} },
+    "outlet": { "latitude": 52.123456, "longitude": 21.123456, "elevation_m": 145.5 },
+    "area_km2": 45.3,
+    "hydrograph_available": true,
+    "morphometry": { "area_km2": 45.3, "perimeter_km": 38.5, "length_km": 14.2, "cn": 72.4, ... },
+    "hypsometric_curve": [...],
+    "land_cover_stats": { "categories": [...], "weighted_cn": 72.4, ... },
+    "hsg_stats": {...},
+    "main_stream_geojson": {...},
+    "longest_flow_path_geojson": {...},
+    "divide_flow_path_geojson": {...},
+    "pmaxtp_grid": [...]
   },
-  "stream": {
-    "segment_idx": 42,
-    "strahler_order": 3,
-    "length_m": 523.4,
-    "upstream_area_km2": 12.8
-  },
+  "stream": { "segment_idx": 42, "strahler_order": 3, "length_m": 523.4, "upstream_area_km2": 12.8 },
   "upstream_segment_indices": [42, 43, 44],
-  "display_threshold_m2": 10000
+  "display_threshold_m2": 10000,
+  "info_message": null,
+  "handoff": {...},
+  "attribution": [...],
+  "terms_notice": [...]
 }
 ```
 
-**Pydantic Schema:**
-```python
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
-
-class OutletInfo(BaseModel):
-    latitude: float
-    longitude: float
-    elevation_m: float
-
-class WatershedResponse(BaseModel):
-    boundary_geojson: Dict  # GeoJSON Feature
-    outlet: OutletInfo
-
-class StreamInfo(BaseModel):
-    segment_idx: int
-    strahler_order: int | None = None
-    length_m: float | None = None
-    upstream_area_km2: float | None = None
-
-class DelineateResponse(BaseModel):
-    mode: str  # "precomputed" | "precise"
-    watershed: WatershedResponse
-    stream: StreamInfo | None = None  # precomputed mode only
-    upstream_segment_indices: list[int] | None = None
-    display_threshold_m2: int | None = None
-    info_message: str | None = None
-```
+**Pydantic models:** `DelineateResponse` (`mode` `"precomputed"` or `"precise"`; `stream`, a `StreamInfo`, in the precomputed mode only; `upstream_segment_indices` and `display_threshold_m2` for the highlighting of the streams of the MVT tiles; `handoff`, the watershed as a hand-off to Hydrolog's GUI, `nogat-handoff/1`, ADR-068; `attribution` and `terms_notice`, ADR-083), `WatershedResponse` (`outlet` an `OutletInfo`, `hydrograph_available` for an area of at most 250 km², `morphometry` a `MorphometricParameters`: area, perimeter, lengths, elevations, slopes, CN and the shape, relief and flow path indices), `StreamInfo`.
 
 ---
 
@@ -1060,19 +1080,32 @@ class DelineateResponse(BaseModel):
 }
 ```
 
-**Pydantic Schema:**
+**Pydantic model (`HydrographRequest`, without the descriptions):**
 ```python
 class HydrographRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    duration: str = Field(..., pattern='^(5min|10min|15min|30min|45min|1h|1\\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$')
-    probability: float = Field(..., ge=0.01, le=99.9)
+    duration: str | None = Field(None, pattern=r"^(5min|10min|15min|30min|45min|1h|1\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$")
+    probability: float | None = None  # [%], one of VALID_PROBABILITIES (core/precipitation.py)
+    timestep_min: float = Field(5.0, ge=1, le=60)
+    tc_method: str = "nrcs"  # kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
+    hietogram_type: str = "beta"  # beta, block, euler_ii
+    hietogram_alpha: float = 2.0
+    hietogram_beta: float = 5.0
+    uh_model: Literal["scs", "snyder", "nash"] = "scs"
+    snyder_ct: float | None = None
+    snyder_cp: float | None = None
+    nash_estimation: Literal["from_lutz", "from_urban_regression"] = "from_lutz"
+    tc_runoff_coeff: float | None = None  # FAA's C, required by "faa"
+    tc_retardance: float | None = None  # Kerby's N, required by "kerby" and "kerby_kirpich"
+    morphometry: MorphometricParameters | None = None
+    amc: Literal["I", "II", "III"] = "II"
+    custom_precipitation: CustomPrecipitation | None = None
+    morphometry_origin: MorphometryOrigin | None = None
+    pmaxtp_grid: list[PmaxtpGridCell] | None = None
+    areal_reduction_factor: float | None = None  # (0, 1]
 
-    @validator('probability')
-    def validate_probability(cls, v):
-        if v not in [0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9]:
-            raise ValueError('Probability must be 1, 2, 5, 10, 20, or 50')
-        return v
+    # model validator: duration and probability, or custom_precipitation
 ```
 
 Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 400 `validation_error` jako `application/problem+json` (ADR-059; opis po angielsku, po polsku z `Accept-Language: pl`).
@@ -1086,59 +1119,52 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
 **Pełna struktura:**
 ```json
 {
-  "watershed": {
-    "boundary_geojson": { "type": "Feature", "geometry": {...}, "properties": {...} },
-    "area_km2": 45.3,
-    "outlet_coords": [21.123, 52.123]
-  },
-  "parameters": {
-    "perimeter_km": 38.5,
-    "length_km": 14.2,
-    "main_stream_length_km": 8.2,
-    "mean_elevation_m": 125.5,
-    "elevation_diff_m": 42.0,
-    "mean_slope_percent": 2.3,
-    "shape_coefficient": 0.67,
-    "compactness_coefficient": 1.28,
-    "lemniscate_ratio": 3.51,
-    "divide_slope": 1.10,
-    "asymmetry_coefficient": null,
-    "relief_ratio": 6.24
-  },
-  "land_cover": {
-    "cn": 72.4,
-    "land_cover_percent": {
-      "las": 35.2,
-      "grunt_orny": 42.1,
-      "łąka": 18.3,
-      "zabudowa": 4.4
-    }
-  },
+  "watershed": { ... },
   "precipitation": {
+    "source": "pmaxtp",
     "total_mm": 38.5,
+    "pmaxtp_depth_mm": 38.5,
+    "areal_reduction_factor": null,
     "duration_min": 60,
     "probability_percent": 10,
-    "hietogram": {
-      "time_min": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
-      "intensity_mm_per_min": [0.2, 0.5, 1.2, 1.8, 2.1, 1.5, 1.0, 0.7, 0.5, 0.3, 0.2, 0.1, 0.0],
-      "cumulative_mm": [1.0, 3.5, 9.5, 18.5, 29.0, 36.5, 38.5, 38.5, 38.5, 38.5, 38.5, 38.5, 38.5]
-    }
+    "timestep_min": 5,
+    "times_min": [0, 5, 10, ..., 55],
+    "intensities_mm": [1.0, 2.5, 6.0, ..., 0.0],
+    "effective_mm": [0.0, 0.0, 0.4, ..., 0.0],
+    "interpolation": "thiessen",
+    "pmaxtp_points": [...]
   },
   "hydrograph": {
-    "time_min": [0, 5, 10, ..., 240],
+    "times_min": [0, 5, 10, ..., 240],
     "discharge_m3s": [0, 2.3, 15.8, ..., 0.5],
     "peak_discharge_m3s": 42.3,
     "time_to_peak_min": 75,
     "total_volume_m3": 156780
   },
+  "water_balance": {
+    "total_precip_mm": 38.5,
+    "total_effective_mm": ...,
+    "runoff_coefficient": ...,
+    "cn_used": 72.4,
+    "retention_mm": ...,
+    "initial_abstraction_mm": ...
+  },
   "metadata": {
     "tc_min": 68.5,
-    "cn": 72.4,
-    "method": "SCS_CN + Beta_hyetograph + SCS_UH",
-    "computed_at": "2026-01-14T10:30:45Z"
-  }
+    "tc_method": "nrcs",
+    "hietogram_type": "beta",
+    "amc": "II",
+    "uh_model": "scs",
+    "nash_estimation": null,
+    ...
+  },
+  "handoff": {...},
+  "attribution": [...],
+  "terms_notice": [...]
 }
 ```
+
+`watershed` is the `WatershedResponse` of 6.2, `null` on the fast path (`morphometry` given). Models: `HydrographResponse`, `PrecipitationInfo`, `HydrographInfo`, `WaterBalance`, `HydrographMetadata` (the `nash_*` fields with the Nash model).
 
 Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`morphometry.cn`, `land_cover_stats.weighted_cn`). W aktualnym schemacie: `water_balance.cn_used` (float, CN po przeliczeniu wg AMC), `metadata.amc`, `precipitation.source` (`"pmaxtp"`/`"custom"`); dla własnej serii `precipitation.probability_percent` i `metadata.hietogram_type` są `null`. Schemat bazy danych bez zmian.
 
@@ -1150,60 +1176,7 @@ The response also has `attribution` and `terms_notice` (ADR-083): the lines the 
 
 ### 7.1 Data Classes
 
-```python
-from dataclasses import dataclass
-from typing import List, Optional
-from shapely.geometry import Point, Polygon
-
-@dataclass
-class Watershed:
-    """Reprezentuje wyznaczoną zlewnię."""
-    boundary: Polygon
-    outlet_coords: tuple  # (lon, lat)
-    area_km2: float
-
-@dataclass
-class PhysicalParameters:
-    """Parametry fizjograficzne zlewni."""
-    area_km2: float
-    perimeter_km: float
-    length_km: float                    # z hydraulic_length_km (droga spływu), nie odległość euklidesowa
-    main_stream_length_km: float
-    mean_elevation_m: float
-    elevation_diff_m: float
-    mean_slope_percent: float
-    shape_coefficient: float
-    compactness_coefficient: float
-    lemniscate_ratio: float | None      # Cl = π·L²/(4·A) — wskaźnik lemniskaty Chorleya
-    divide_slope: float | None          # Rp = ΔH/P [‰] — spadek działu wodnego
-    asymmetry_coefficient: float | None # α = 2·(AL-AP)/A — współczynnik asymetrii (placeholder)
-    relief_ratio: float | None          # R = ΔH/√A [‰] — wskaźnik rzeźby
-
-@dataclass
-class LandCoverAnalysis:
-    """Analiza pokrycia terenu."""
-    cn: float
-    land_cover_percent: dict  # {'las': 35.2, 'pola': 42.1, ...}
-    total_area_m2: float
-
-@dataclass
-class Hyetograph:
-    """Hietogram - rozkład opadu w czasie."""
-    time_min: List[float]
-    intensity_mm_per_min: List[float]
-    cumulative_mm: List[float]
-    total_mm: float
-    duration_min: int
-
-@dataclass
-class Hydrograph:
-    """Hydrogram - przepływ w czasie."""
-    time_min: List[float]
-    discharge_m3s: List[float]
-    peak_discharge_m3s: float
-    time_to_peak_min: float
-    total_volume_m3: float
-```
+No data class of a watershed, its parameters, hyetograph or hydrograph exists: the computation passes dicts (`CatchmentGraph.aggregate_stats`, `build_morph_dict_from_graph` of `core/watershed_service.py`) and the frozen dataclasses of its modules (e.g. `FlowPath` and `WatershedFlowPaths` of `core/divide_flow_path.py`, `Network` of `core/network_delineation.py`, `DesignHydrograph` of `core/handoff.py`), which the API turns into the models of §6. The hyetograph and the hydrograph are computed by Hydrolog (`hydrolog.precipitation`, `hydrolog.runoff`: `HydrographGenerator`, `NashIUH`) from its `hydrolog.morphometry.WatershedParameters`, which `MorphometricParameters` mirrors.
 
 ---
 
@@ -1366,8 +1339,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.7
-**Data ostatniej aktualizacji:** 2026-03-27
+**Wersja dokumentu:** 1.8
+**Data ostatniej aktualizacji:** 2026-11-14
 **Status:** Approved
 
 ---

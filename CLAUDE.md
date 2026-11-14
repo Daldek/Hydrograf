@@ -4,7 +4,7 @@ Hydrograf is a web application for watershed delineation, catchment parameters a
 hydrographs in Poland: a FastAPI service over PostGIS, a static map front end and an admin
 panel, built on Hydrolog (calculations), Kartograf (spatial data) and Obserwator
 (precipitation). Profile `app` (DEV-1.1; `ecosystem.yaml` is authoritative).
-Introduction: [README.md](README.md). The Nogat standard 2.1 is in
+Introduction: [README.md](README.md). The Nogat standard 1.0 is in
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards)
 (DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY).
 
@@ -16,8 +16,6 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   approval in the session never merge, tag, publish or rewrite shared history (DEV-3.3);
   pushing the topic branch is allowed.
 - Run `scripts/gate.sh` before every commit and do not commit while it fails (DEV-7.6).
-  The commit step fails on commits of `develop` that predate the history rewrite: use
-  `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh` until the author has rewritten it.
 - A change of a public interface or across modules starts with a plan in
   `docs/plans/YYYY-MM-DD-slug.md` (DEV-17.4) that the author approves (`Approved:` line);
   decisions with alternatives are ADRs in `docs/DECISIONS.md` (DEV-17.2).
@@ -34,7 +32,7 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   and the commit in `[tool.uv.sources]`; all three commits are on GitHub, so
   `uv sync --locked` resolves them. Obserwator was IMGWTools until its v3.0.0: Hydrograf
   installs the distribution `obserwator` (`from obserwator import fetch_pmaxtp`, the
-  `Obserwator*Error` exceptions) from the repository `IMGWTools`. The three pins follow
+  `Obserwator*Error` exceptions) from the repository `Obserwator`. The three pins follow
   the release set of Nogat. Kartograf writes into the store `cache/kartograf/`
   (ADR-061): every script passes `root=` and `cache=` explicitly. A missing function is a
   GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a
@@ -57,9 +55,11 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
 - Front end: the look is the Nogat visual identity (ADR-065). Colours, fonts, radii and
   shadows come only from the variables of `frontend/css/tokens.css`, a copy of Nogat's
   `design/tokens.css` that is never edited here (change it in Nogat, then copy it again).
-  The app menu „Aplikacje” and the hand-off are Nogat's GUI kit, copied byte for byte with
-  the marks into `frontend/nogat/` and never edited here either (DEV-15.6); `js/nogat.js`
-  hands it to the IIFE scripts, and the menu lists the GUIs of `HYDROGRAF_GUI` (ADR-082).
+  The app menu „Aplikacje”, the hand-off, the strip of sources, the regulamin template and
+  the admin page's shell are Nogat's GUI kit, copied byte for byte with the marks into
+  `frontend/nogat/` and never edited here either (DEV-15.6); `js/nogat.js` hands it to the
+  IIFE scripts, and the menu lists the GUIs of `HYDROGRAF_GUI` or of `[nogat] gui` of the
+  file `NOGAT_CONFIG` names (ADR-082).
   Third-party scripts, styles and fonts are vendored, never loaded from another origin
   (DEV-15.7): `frontend/vendor/<package>-<version>/` holds the published files byte for byte
   (`-text` in `.gitattributes`) with their licence files, referenced with their `integrity`
@@ -102,34 +102,40 @@ the agent user is in the `docker` group; rootless Docker does not start here and
 used, so leave `DOCKER_HOST` unset): `docker compose up -d` serves the full stack on port
 8080. In development `docker-compose.override.yml` is loaded
 automatically (`--reload`, `./backend:/app` mounted, `read_only` off); production uses
-`docker compose -f docker-compose.yml up -d`. Never add `user:` to the override: it clashes
-with `cap_drop: ALL` and breaks file operations. Outside access goes through a Cloudflare
-Tunnel (`cloudflared tunnel --url http://localhost:8080`).
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. Never add `user:`
+to the override: it clashes with `cap_drop: ALL` and breaks file operations. Outside access
+goes through a Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:8080`).
 
 ## Code map
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, traffic.py (the request limit and the daily totals,
-│                        #   ADR-084), endpoints/ (watershed, network, hydrograph, tiles,
+├── api/                 # FastAPI: main.py, errors.py (the problem responses), traffic.py
+│                        #   (the request limit and the daily totals, ADR-084),
+│                        #   endpoints/ (watershed, network, hydrograph, tiles,
 │                        #   profile, identify, depressions, feedback, gui, site: the pages,
 │                        #   /regulamin.html, /api/terms and /api/downloads, health, admin),
 │                        #   dependencies/ (admin key)
-├── core/                # business logic: watershed, catchment_graph, network_* (tree,
+├── core/                # business logic: watershed_service, catchment_graph, network_* (tree,
 │                        #   delineation, preview), handoff, hydrology, morphometry, cn_calculator,
 │                        #   raster_service, sewer_*, config, database, errors, messages, _errors,
 │                        #   terms (the regulamin from NOGAT_CONFIG), request_limit (fixed
-│                        #   windows per address), usage (stats.jsonl)
+│                        #   windows per address), usage (stats.jsonl), attribution and
+│                        #   data_sources (the providers' lines), nogat_logging (Nogat's
+│                        #   module of the logs, a copy)
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
-├── utils/               # geometry, raster and sheet-lookup helpers
+├── utils/               # geometry, raster, sheet-lookup and NMT-coverage helpers, the
+│                        #   Kartograf store, the Archiwista project
 ├── migrations/          # Alembic
 └── tests/               # unit, integration, contract, performance, fixtures
 frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
+                         #   admin/ the sections of the admin page (ADR-086);
+                         #   instrukcja/ the guide;
                          #   nogat/ the copies of Nogat's GUI kit and marks (ADR-082);
                          #   vendor/ the third-party libraries, as published
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
-scripts/                 # gate.sh, check-commits.sh, bump_asset_versions.py
+scripts/                 # gate.sh, check-commits.sh, bump_asset_versions.py, staging-compose.sh
 docs/                    # documentation
 ```
 
@@ -168,7 +174,7 @@ Registry entry:
 Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration time) and
 Obserwator (PMAXTP precipitation; IMGWTools until its v3.0.0) are runtime dependencies used
 as libraries; Hydraulik is a planned compute node. The three producers are pinned to their
-heads, which follow the standard 2.1 (ADR-060, ADR-061).
+heads, which follow the standard 1.0 (ADR-060, ADR-061).
 
 ## Deviations
 
@@ -184,11 +190,11 @@ heads, which follow the standard 2.1 (ADR-060, ADR-061).
 - DEV-7.2: `E501` is off in `migrations/versions/*` (28 single-line DDL strings of
   `001_initial_schema.py`).
 - DEV-7.3: `migrations/` is excluded from mypy. Packages without type information
-  (`affine`, `fiona`, `geopandas`, `pandas`, `psutil`, `pyflwdir`, `rasterio`, `scipy`,
-  `shapely`, `yaml`) are per-module `ignore_missing_imports` overrides; Hydrolog,
+  (`affine`, `fiona`, `geopandas`, `jsonschema`, `pandas`, `psutil`, `pyflwdir`, `rasterio`,
+  `scipy`, `shapely`, `yaml`) are per-module `ignore_missing_imports` overrides; Hydrolog,
   Kartograf and Obserwator ship `py.typed` at the pinned heads, so their calls are checked.
   `tests.*` allows untyped definitions and calls and
-  does not check the bodies of untyped functions (about 1,260 tests); `scripts.*` allows
+  does not check the bodies of untyped functions (about 2,100 of them); `scripts.*` allows
   untyped definitions and calls (46 findings) and its annotated code is checked. To lift an
   override, annotate the module and delete its line in `pyproject.toml`.
 - DEV-7.5: the floor of 80% measures `api`, `core`, `models` and `utils` (the offline
@@ -200,19 +206,20 @@ heads, which follow the standard 2.1 (ADR-060, ADR-061).
 - DEV-10.1: `benchmark` is a marker besides `live`, `db` and `slow` (timing tests of
   `tests/performance`); the default run and the gate leave it out. The `db` tests run in
   the `db` job of CI.
-- DEV-12.3: about two thirds of the 720 log calls use f-strings; new log calls use
+- DEV-12.3: about half of the 780 log calls use f-strings; new log calls use
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
   the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but for
   `js/nogat.js`, which imports Nogat's kit (ADR-082), and the kit's copies in
-  `frontend/nogat/`, which keep Nogat's 2 spaces; about 70 lines exceed 100 columns.
+  `frontend/nogat/`, which keep Nogat's 2 spaces; about 560 lines of its own JavaScript
+  exceed 100 columns.
 - DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in translation
   resources.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
 - DEV-18, DEV-19: profile `tool` only; Hydrograf reads its settings from the environment
   (`.env.example`), and `nogat.toml` only through the file NOGAT_CONFIG names (its
-  `[nogat.operator]` and `[nogat] gui`); it fetches data through Kartograf in the pipeline
-  scripts.
+  `[nogat.operator]`, `[nogat] gui` and the `state_dir` of `[hydrograf]` or `[nogat]`); it
+  fetches data through Kartograf in the pipeline scripts.
 - AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
   `schema` member and no result envelope; the error document alone is
   `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`
