@@ -22,9 +22,8 @@ origin of each node of a network, and the optional `attribution` and `terms_noti
 `docs/plans/2026-11-13-provider-attribution.md`: the lines the providers' terms require, DEV §20,
 ECO-060, with the description and examples of ECO-065: `terms_notice` holds the links to the
 terms only); SHA-256 `c26ce043b292284fa7e8f995589fee09fd5ffa046efb61c4b3736619b8b71d08`. The
-pinned Hydrolog `930915d` reads the copy of `8727f6e`, `node_provenance`, `attribution` and
-`terms_notice` as unknown fields; its step 3, `cead00a` on Hydrolog's `develop` after the pin,
-takes the copy of `8848c26`:
+pinned Hydrolog `9e2cb61` reads the same copy (the same SHA-256), with `node_provenance`,
+`attribution` and `terms_notice`:
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
   `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the

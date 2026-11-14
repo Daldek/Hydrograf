@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
-**Wersja:** 1.4
-**Data:** 2026-11-14 (audit against the code of 2026-11-14: the pin `f9f4ee7` is that of the release set candidate-3 of Nogat; the `source` column holds `IMGW_PMAXTP` and only the KS quantiles are stored; `PMaXTPResult`; `ObserwatorValidationError` of `get_precipitation`; `GET /api/scenarios` in `api/endpoints/hydrograph.py`; the scope of the tests). 2026-11-10: Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`), and imports the package `obserwator`
+**Wersja:** 1.5
+**Data:** 2026-11-14 (the pin `0394af7` of the release set candidate-4 of Nogat, was `f9f4ee7`: Obserwator splits its store into a raw root and a data root, its ADR-017, takes the station details of hydro.imgw.pl, its ADR-021, and adds its GUI and stored analyses; `fetch_pmaxtp`, which reads no store, and the three exceptions Hydrograf catches are unchanged). 2026-11-14 (audit against the code of 2026-11-14: the pin `f9f4ee7` is that of the release set candidate-3 of Nogat; the `source` column holds `IMGW_PMAXTP` and only the KS quantiles are stored; `PMaXTPResult`; `ObserwatorValidationError` of `get_precipitation`; `GET /api/scenarios` in `api/endpoints/hydrograph.py`; the scope of the tests). 2026-11-10: Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`), and imports the package `obserwator`
 **Status:** Aktywna
 
 ---
@@ -10,7 +10,7 @@
 
 Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/Obserwator) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
-**Pin i pakiet:** Hydrograf pins the commit `f9f4ee7` of Obserwator (version 3.0.0.dev0; the release set candidate-3 of Nogat, `b0ac85b`, unchanged since candidate-2) and imports the package `obserwator` (`fetch_pmaxtp`, the exceptions `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki.
+**Pin i pakiet:** Hydrograf pins the commit `0394af7` of Obserwator (version 3.0.0.dev0; the release set candidate-4 of Nogat) and imports the package `obserwator` (`fetch_pmaxtp`, the exceptions `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki. `fetch_pmaxtp` asks IMGW-PIB directly and reads no store, so Obserwator's raw and data roots (its ADR-017, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`) are not set for Hydrograf.
 
 ### 1.1 Co to jest Obserwator?
 
@@ -285,14 +285,14 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 ```
 # In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "obserwator>=3.0.0.dev0,<4"):
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "0394af7c66b60cccb88f14b6118893b78443dc21" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/Obserwator
-- **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-3, unchanged since candidate-2)
-- **Wersja:** 3.0.0.dev0 (untagged), commit `f9f4ee7927ba520d3e82d3e289872090ae24e2ec`
+- **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-4)
+- **Wersja:** 3.0.0.dev0 (untagged), commit `0394af7c66b60cccb88f14b6118893b78443dc21`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with a tag of Obserwator.
 

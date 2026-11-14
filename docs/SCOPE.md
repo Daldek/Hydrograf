@@ -423,7 +423,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `f9f4ee7`, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `0394af7`, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -533,9 +533,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `930915d` of `develop`, the release set candidate-3 of Nogat, with the official inputs of tc; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `d0990c8` of `develop`, the release set candidate-2 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f9f4ee7`, the release set candidate-2 of Nogat, package `obserwator`; design precipitation from IMGW)
+- Hydrolog 1.0.0.dev0 (commit `9e2cb61` of `develop`, the release set candidate-4 of Nogat, with the official inputs of tc; hydrological calculations)
+- Kartograf 0.8.0.dev0 (commit `c9afdd3` of `develop`, the release set candidate-4 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `0394af7`, the release set candidate-4 of Nogat, package `obserwator`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -968,13 +968,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.18
+**Document version:** 1.19
 **Date of the last update:** 2026-11-14
 **Current version:** v0.4.0 is the latest release; `develop` carries 0.5.0.dev0 (`backend/pyproject.toml`)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.19 (2026-11-14): the producers follow the release set candidate-4 of Nogat: Kartograf `c9afdd3`, Obserwator `0394af7`, Hydrolog `9e2cb61`
 - 1.18 (2026-11-14): audit against the code of 2026-11-14: the header version; the data sources (no GIOŚ/RZGW, no CORINE); the point selection of „Wybierz zlewnię”; the sewer import from a file only; `waterbody_mode` in the admin API, not the panel's form; the network of 0–30 points, nodes J/P and two kinds of subcatchment; the base layers and TERYT notes of 2.3; Kartograf 0.8.0.dev0; the vendored libraries, Nogat's kit 0.7.0 and the 26 + 5 JS modules in 5.1; public access in 7.2; the provider lines G, PS/PP/M/RK and SG in 7.3; the current version
 - 1.17 (2026-11-13): the public service (ADR-084): the page `regulamin.html`, the module `terms` instead of `diagnostics`, nginx without its own limit, the request limit, the logs, the daily totals and the form in 5.1
 - 1.16 (2026-11-11): the network preview is in scope (2.1.7, ADR-081: `POST /api/delineate-network/preview`; the mode computes the characteristics on confirmation)
