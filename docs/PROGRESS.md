@@ -29,7 +29,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Dead and duplicated code | done | The author's request of 2026-11-14: functions without callers or only with their own tests, the re-exports of `scripts/process_dem.py`, settings and `config.yaml` keys that nothing read, the staging LAN binding of S7 and front-end functions and exports without callers removed (CHANGELOG, Removed); the rmtree helper, the sheet box and the map colour helpers have one implementation. Kept on purpose: the routes, validators and response fields that vulture flags, the reference functions of the equivalence tests (`zonal_min`, `zonal_elevation_histogram`, `normalize_elevation`), the CRS constants of TECHNICAL_DEBT and the old columns of the feedback (Next 14). `stream_catchments.hydraulic_length_km` is now written and never read: dropping it needs a migration. Merged into `develop` on 2026-11-14 (`f6f689e`). |
 | No footer | done | The author's decision of 2026-11-14 (Nogat DEV-15.7, DEV-15.8; ADR-084 amended): the footer and its statement are gone from the map and the guide; „Regulamin” is the last item of the rail (the bottom bar on phones) and of the guide's table of contents, besides the menu and the welcome window's „Regulamin serwisu”. `scripts/gate.sh` on `feat/no-footer`: 2,379 passed, 170 deselected, coverage 87.2 %. Not merged or deployed. |
 | Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; on `feature/compact-sources` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; on `fix/minimal-provider-texts` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
-| Documentation | in progress | Nogat standard 1.0 in English; the documents still in Polish are listed in Next 7. |
+| Documentation | in progress | Guide and slide screenshots refreshed from the current live UI on 2026-11-14; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
 
@@ -209,8 +209,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     przelewu ani upustu dennego.” (394 characters, now 2,496) and `source` „Leijnse i in. 2021
     (SFINCS); dane: IMGW-PIB (PMAXTP), GUGiK (NMT, BDOT10k), ISRIC SoilGrids (CC BY 4.0)”. The
     assumptions of the run moved to the guide's `#sfincs`. Its `attribution` has PS, PP and M but
-    not G and SG of the NMT, BDOT10k and SoilGrids the run used (Open questions 11). The
-    screenshot `Hydrograf-v2-info.png` shows the old (i).
+    not G and SG of the NMT, BDOT10k and SoilGrids the run used (Open questions 11).
 
 ## Open questions
 
