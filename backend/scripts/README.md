@@ -1017,7 +1017,7 @@ them group D (ADR-078).
 ### `preprocess_precipitation.py`: IMGW precipitation
 
 Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator, the package `obserwator`
-at the pinned commit `f9f4ee7`) for a grid of points inside a
+at the pinned commit `0394af7`) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 
