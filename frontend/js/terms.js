@@ -3,10 +3,11 @@
  *
  * One GET /api/terms: {url, operator_email}, both null on a local run, every line of the
  * service's data, {attribution, terms_notice} (PMAXTP's, GUGiK's and ISRIC's), and the
- * lines of each kind of data of the map's layers, `layers`. With a url the page's footer
- * (#site-footer, the statement and the link „Regulamin”) is shown, every <nogat-app-menu>
- * and <nogat-sources> gets the `terms` attribute (the kit ends the menu's list and the
- * strip's dialog with „Regulamin”) and the hint of „Zgłoś uwagę” (#feedback-hint) names
+ * lines of each kind of data of the map's layers, `layers`. With a url the link
+ * „Regulamin” (#terms-link: at the bottom of the map's rail, under the guide's table of
+ * contents) is shown, every <nogat-app-menu> and <nogat-sources> gets the `terms`
+ * attribute (the kit ends the menu's list and the strip's dialog with „Regulamin”) and
+ * the hint of „Zgłoś uwagę” (#feedback-hint) names
  * the operator's e-mail for a reply. A failed or non-OK answer means no terms and no
  * lines. Loaded by the map and the guide. window.Hydrograf.terms.ready resolves to
  * {url, operator_email, attribution, terms_notice, layers}, never rejects; the welcome
@@ -24,12 +25,11 @@
         return typeof value === 'string' && value !== '' ? value : null;
     }
 
-    function showFooter(url) {
-        var footer = document.getElementById('site-footer');
-        if (!footer) return;
+    function showLink(url) {
         var link = document.getElementById('terms-link');
-        if (link) link.href = url;
-        footer.hidden = false;
+        if (!link) return;
+        link.href = url;
+        link.hidden = false;
     }
 
     function fillFeedbackHint(email) {
@@ -45,7 +45,7 @@
 
     function apply(terms) {
         if (!terms.url) return;
-        showFooter(terms.url);
+        showLink(terms.url);
         document.querySelectorAll('nogat-app-menu, nogat-sources').forEach(function (element) {
             element.setAttribute('terms', terms.url);
         });

@@ -129,18 +129,17 @@ body { margin: 0; background: var(--bg); color: var(--text); font: var(--text-si
 .explain-vars div { display: contents; }
 .explain-vars dd { margin: 0; color: var(--text-2); }
 .guide-text .explain-src { color: var(--text-3); font-size: var(--text-sm); }
-/* The statement of the service and the link „Regulamin” (DEV-15.7, DEV-15.8), js/terms.js */
-.site-footer {
-    padding: var(--space-3) var(--space-6);
-    background: var(--surface); border-top: 1px solid var(--line);
-    font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2);
+/* The regulamin of a public deployment (DEV-15.7), under the table of contents; js/terms.js */
+.toc-terms {
+    display: block; margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-2) 0;
+    border-top: 1px solid var(--line);
+    color: var(--text-3); font-size: var(--text-xs); text-decoration: none;
 }
-.site-footer p { max-width: var(--container-max); margin: 0 auto; }
-.site-footer a { color: var(--accent); }
+.toc-terms[hidden] { display: none; }
+.toc-terms:hover { color: var(--text); text-decoration: underline; }
 @media (max-width: 1050px) {
     .guide { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'head' 'toc' 'text'; padding: var(--space-6) var(--space-4) var(--space-12); }
     .guide-toc { position: static; max-height: none; overflow: visible; margin-bottom: var(--space-6); }
-    .site-footer { padding: var(--space-3) var(--space-4); }
 }
 @media (max-width: 860px) {
     html { scroll-padding-top: 56px; }

@@ -64,6 +64,13 @@
 .rail-item svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .rail-item:hover { background: var(--rail-hover); color: var(--rail-ink-active); }
 .rail-item.active { background: var(--rail-active); color: var(--rail-ink-active); }
+/* The regulamin of a public deployment (DEV-15.7): a small, quiet link at the rail's bottom */
+.rail-terms {
+    margin-top: auto; padding: var(--space-1) 0;
+    color: var(--rail-ink); text-decoration: none;
+    font-size: 10.5px; line-height: 1.15;
+}
+.rail-terms:hover { color: var(--rail-ink-active); text-decoration: underline; }
 
 .main { grid-row: 2; grid-column: 2; min-width: 0; min-height: 0; overflow-y: auto; }
 
@@ -85,5 +92,7 @@
     .rail-item { color: var(--text-2); padding: 6px 0 4px; }
     .rail-item:hover { background: transparent; color: var(--text); }
     .rail-item.active { background: transparent; color: var(--accent); font-weight: var(--weight-bold); }
+    .rail-terms { margin-top: 0; color: var(--text-3); }
+    .rail-terms:hover { color: var(--text); }
     .main { grid-row: 2; grid-column: 1; }
 }

@@ -61,7 +61,7 @@ A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
 `NOGAT_CONFIG=/home/USER/.config/nogat/nogat.toml`, which Compose mounts read-only into the
 API at `/config/nogat.toml`. With the table `[nogat.operator]` in that file Hydrograf is a
 public service with its regulamin at `/regulamin.html` (see [Public service](#public-service));
-without it there is no regulamin, no footer and no menu entry „Regulamin”. On the Docker
+without it there is no regulamin and no link „Regulamin”. On the Docker
 host, name the state directory of the logs in `.env` too,
 `NOGAT_STATE_DIR=/home/USER/.local/state/nogat`, and create the API's directory in it once,
 writable by the container's user (UID 999) as `data/` is:
@@ -215,8 +215,8 @@ Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
   regulamin (`frontend/nogat/nogat-terms.html`, kit 0.7.0) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
-  The statement of the service and the link „Regulamin” (in a new tab) are under the map and
-  in the guide, and in the menu „Aplikacje”.
+  The link „Regulamin” (in a new tab) is at the bottom of the left rail, under the guide's
+  table of contents, in the welcome window and in the menu „Aplikacje”.
 - **Request limit.** Pages and API routes: 300 requests in 60 s per client address
   (`HYDROGRAF_REQUEST_LIMIT`, `HYDROGRAF_REQUEST_WINDOW`). The map's vector tiles
   (`/api/tiles/`) have a tile limit of their own instead: ten times the limit in the same

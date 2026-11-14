@@ -188,16 +188,6 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 /* The view's one strip of provider lines (Nogat DEV-20.5, kit nogat-sources.css: 12 px, muted) */
 #view-sources { padding: var(--space-1) var(--space-3); border-top: 1px solid var(--line); }
 
-/* The statement of the service and the link „Regulamin” (DEV-15.7, DEV-15.8): it wraps and
- * stays whole on every width */
-.site-footer {
-    padding: var(--space-1) var(--space-3);
-    border-top: 1px solid var(--line);
-    font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-2);
-}
-.site-footer p { margin: 0; }
-.site-footer a { color: var(--accent); }
-
 /* ---------- Leaflet, restyled with tokens ---------- */
 .map-wrap .leaflet-container {
     background: var(--surface-2);

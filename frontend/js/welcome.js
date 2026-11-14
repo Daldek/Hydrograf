@@ -4,8 +4,10 @@
  * The data area comes from /data/instance.json (Hydrograf.instance); without it the
  * paragraph keeps the neutral text of index.html.
  * Under it the full provider lines of the service's PMAXTP data and their terms, the
- * content of the dialog of the view's strip (Nogat DEV-20.5): GET /api/terms
- * (Hydrograf.terms) gives them, the kit's fillSources (js/nogat.js) writes them.
+ * content of the dialog of the view's strip (Nogat DEV-20.5), ending on a public
+ * deployment with „Regulamin serwisu” (new tab; the welcome window's link to the
+ * regulamin, DEV-15.7): GET /api/terms (Hydrograf.terms) gives them, the kit's
+ * fillSources (js/nogat.js) writes them.
  */
 (function () {
     'use strict';
@@ -50,10 +52,11 @@
             '. Wyniki są szacunkami do analiz wstępnych, nie prognozą hydrologiczną.';
     }
 
-    /** The full lines and terms in #welcome-sources; without lines it stays hidden. */
+    /** The full lines, terms and regulamin in #welcome-sources; without any it stays hidden. */
     function renderSources(terms) {
         var box = document.getElementById('welcome-sources');
-        if (!box || (!terms.attribution.length && !terms.terms_notice.length)) return;
+        if (!box) return;
+        if (!terms.attribution.length && !terms.terms_notice.length && !terms.url) return;
         Hydrograf.nogat.fillSources(box, {
             attribution: terms.attribution,
             termsNotice: terms.terms_notice,
