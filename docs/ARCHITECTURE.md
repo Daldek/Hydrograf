@@ -106,7 +106,7 @@ Summary of the key ADRs:
 | ADR-029 | trace_main_channel() | Selection of the main channel by Strahler order (for channel_slope) |
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
 | ADR-033 | Building raising | `raise_buildings_in_dem()` +5 m under the BUBD footprints |
-| ADR-034 | Admin panel | `/admin` + 13 `/api/admin/*` endpoints, API key auth, bootstrap SSE |
+| ADR-034 | Admin panel | amended by ADR-086: `/admin/` on Nogat's kit, `/api/admin/*` with the key of ADMIN_API_KEY, bootstrap SSE |
 | ADR-035 | Multi-stage containerization | Multi-stage Dockerfile, entrypoint with wait-for-db, dev/prod override |
 | ADR-036 | Docker container hardening | Security headers, resource limits, non-root user |
 | ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data; the cache of the downloads is the Kartograf store `cache/kartograf/` since ADR-061 |
@@ -146,7 +146,7 @@ backend/
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # 13 /api/admin/* endpoints (dashboard, resources, cleanup, bootstrap, sewer)
+│       ├── admin.py               # /api/admin/*: status, stats (Nogat DEV-15.13), resources, cleanup, bootstrap, sewer (ADR-086)
 │       ├── depressions.py         # GET /depressions
 │       ├── feedback.py            # POST /feedback (the text and the view's context), the admin list GET/PATCH/DELETE /admin/feedback
 │       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
@@ -260,7 +260,7 @@ Response: 200 OK
   "version": "0.5.0.dev0"
 }
 ```
-`version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin dashboard (`GET /api/admin/dashboard`) reports the same.
+`version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin status (`GET /api/admin/status`) reports the same.
 
 #### 2.2.1a The Ecosystem's GUIs (ADR-082)
 ```
@@ -294,7 +294,7 @@ limit, window_s}
 ```
 `core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 0.6.2; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
 
-The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
+The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin/index.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -1215,10 +1215,10 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
-- **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), the app menu „Aplikacje” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. On `/admin` it links straight to the guide. The service status („Usługi działają”) is only in the top bar of `/admin` (`admin-app.js`: `GET /health` when the page opens, then the dashboard refresh).
-- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/`, `/admin` and `/instrukcja/`: a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without `HYDROGRAF_GUI`, or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
+- **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), the app menu „Aplikacje” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. The admin page `/admin/` has the kit's own top bar („Hydrograf · Administracja”, „Wróć do aplikacji”, „Wyloguj”; ADR-086).
+- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without `HYDROGRAF_GUI`, or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
-- **Navigation rail** — Mapa and Logowanie (`/admin`); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
+- **Navigation rail** — Mapa and Logowanie (`/admin/`, the admin panel on Nogat's kit, ADR-086); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
 - **„Wybierz zlewnię” and its two options** (`app.js`, `setClickMode`; ADR-080, note of 2026-11-11) — while the mode is on, the radio group „Co wyznaczyć” sits at the top of the map (`#select-tools`, placed and styled like the drawing tools of „Profil terenu”, `.map-tools`, also on phones): „Jedna zlewnia” (the default; the click mode `select`) or „Sieć zlewni” (the click mode `network`). The button of the mode is on for both; it returns to the option chosen last in the page (`state.selectTarget`, not kept across reloads). Switching the option keeps both the watershed and the network.
@@ -1254,7 +1254,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Panel width** — handles between the panels (left 260–560 px, right 340–720 px), kept in `localStorage`; the panels can be closed.
 - **Phone (≤ 860 px)** — a full-screen map, a bottom bar (Mapa and Logowanie) instead of the rail, with the top-bar guide/feedback/theme icons still accessible, and panels as sheets that slide up from the bottom (a handle at the top hides them too). The map bar has two rows: „Warstwy” and „Zlewnia” („Sieć” in the option „Sieć zlewni”), then the four modes across the full width (labels may wrap), so nothing lies off a 375 px screen; the options of „Wybierz zlewnię” span the top of the map.
 
-`/admin` and `/instrukcja` use the same shell (`chrome.css`) and the switch `theme-switch.js`. The form „Zgłoś uwagę” is a native `<dialog>` with the text only: under it „Nie wpisuj danych osobowych.” and, with an operator, „Jeśli chcesz odpowiedzi, napisz na <e-mail>”; `feedback.js` sends the view's context with the text. With `GET /api/terms` giving an address, `terms.js` shows the footer `#site-footer` under the map (and in the guide) with the statement of Nogat DEV-15.8 and the link „Regulamin”, and gives the app menu its `terms` attribute, which ends its list with „Regulamin” (ADR-084).
+`/instrukcja` uses the same shell (`chrome.css`) and the switch `theme-switch.js`; the admin page `/admin/` is Nogat's `<nogat-admin>` alone, which follows the stored theme through `theme-init.js` (ADR-086). The form „Zgłoś uwagę” is a native `<dialog>` with the text only: under it „Nie wpisuj danych osobowych.” and, with an operator, „Jeśli chcesz odpowiedzi, napisz na <e-mail>”; `feedback.js` sends the view's context with the text. With `GET /api/terms` giving an address, `terms.js` shows the footer `#site-footer` under the map (and in the guide) with the statement of Nogat DEV-15.8 and the link „Regulamin”, and gives the app menu its `terms` attribute, which ends its list with „Regulamin” (ADR-084).
 
 #### 4.2.1 Map (Leaflet.js)
 
@@ -1618,9 +1618,24 @@ http {
             expires -1;
         }
 
-        # Admin panel (Cloudflare Access in front of it, with /api/admin/)
+        # Admin panel (Nogat DEV-15.13, ADR-086): /admin answers 308; the page passes
+        # through the API, which limits it without counting it; its file has CSP 'self'
+        # (GUGiK's OSM tiles of the area map excepted); its scripts are no-store
         location = /admin {
-            rewrite ^ /admin.html last;
+            return 308 /admin/;
+        }
+        location = /admin/index.html {
+            proxy_pass http://api_backend;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+        location ^~ /_site/admin/ {
+            internal;
+            alias /usr/share/nginx/html/admin/;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        }
+        location ~ ^/admin/.+\.(css|js)$ {
+            root /usr/share/nginx/html;
+            add_header Cache-Control "no-store" always;
         }
 
         # Frontend - static files
@@ -1658,12 +1673,12 @@ http {
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
 - `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'`: no other origin. The libraries are vendored in `frontend/vendor/` (§4.1) and keep their `integrity`, which the browser checks for same-origin files too and `tests/contract/test_frontend_vendor.py` checks against the files, with no page referencing a remote script, stylesheet or font.
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto, also the area selection map of `/admin`), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie).
+- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie). The admin page has a CSP of its own (`location ^~ /_site/admin/`): `default-src 'self'` with `img-src 'self' https://mapy.geoportal.gov.pl` for the area map of „Przetwarzanie NMT” (ADR-086).
 - `connect-src`: `https://tiles.openfreemap.org` (style, vector tiles and glyphs of OpenFreeMap, fetched by MapLibre).
 - `worker-src blob:`, `child-src blob:` — the Web Worker of MapLibre GL.
 
 **Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
-- the HTML pages (`/`, `/admin`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`);
+- the HTML pages (`/`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`); the admin page `/admin/` and its scripts with `Cache-Control: no-store` (Nogat DEV-15.13);
 - the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
 - the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The vendored libraries get a `?v=` too; their directory names carry the package version.
 
@@ -1725,8 +1740,8 @@ http {
 - ✅ GZip middleware (FastAPI)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
-- ✅ Admin API key auth (X-Admin-Key header, file-based or env var, ADR-034)
-- ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin.html` and `/api/admin/*`
+- ✅ Admin API key auth (X-Admin-Key against ADMIN_API_KEY or the file of ADMIN_API_KEY_FILE, read per request; no key, no access: `admin_key_not_configured`; ADR-086)
+- ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin/*` and `/api/admin/*`, the only admin paths (ADR-086)
 
 ---
 

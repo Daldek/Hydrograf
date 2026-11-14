@@ -209,12 +209,12 @@ This document defines precisely:
 #### 2.1.4 Admin Panel (ADR-034)
 
 **✅ In scope:**
-- A `/admin` page with API key authentication (header X-Admin-Key)
-- Dashboard: system status, record counts of 6 tables, disk usage
-- Resource monitoring: CPU/RAM (psutil), DB pool, CatchmentGraph cache, database size
-- Running the bootstrap pipeline from the panel + real-time logs (SSE)
-- Data cleanup: tiles, overlays, dem_mosaic, TRUNCATE of tables
-- 8 `/api/admin/*` API endpoints
+- The admin page `/admin/` on Nogat's kit (`/admin` answers 308; ADR-086) with the key of ADMIN_API_KEY or ADMIN_API_KEY_FILE in the header X-Admin-Key; no key, no access
+- „Zgłoszenia”, „Statystyki” (`stats.jsonl`) and „Stan” (status with the checks database, catchment graph, data directory) of the kit
+- „Zasoby”: CPU/RAM (psutil), DB pool and size, rows of the tables, CatchmentGraph, disk usage of the data
+- „Przetwarzanie NMT”: running the bootstrap pipeline from the panel + real-time logs (SSE), the area drawn on a map or a boundary file
+- „Czyszczenie”: tiles, overlays, dem_mosaic, TRUNCATE of tables; „Granice i kanalizacja”: the boundary and sewer uploads
+- The `/api/admin/*` API: the core routes of Nogat DEV-15.13 (feedback, stats, status) and Hydrograf's own
 
 ---
 
@@ -541,11 +541,11 @@ This document defines precisely:
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
 **Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
-**UI framework:** none on the main page (own shell `chrome.css` + `app.css`); Bootstrap 5.3.3 (vendored in `frontend/vendor/`) only in `/admin` (grid, modal dialogs), recoloured with the tokens
+**UI framework:** none (own shell `chrome.css` + `app.css` on the main page; Nogat's kit `nogat-admin.css` and `admin/admin.css` on the admin page), in the tokens
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
 **Modules:** 24 JS modules on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, info, info-texts, advanced, depressions, sewer, results, terms, feedback, welcome, shell, app + 6 admin modules; outside the namespace: `theme-init.js`, `theme-switch.js`
 **Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
-**Pages:** `index.html` (main), `admin.html` (admin panel), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
+**Pages:** `index.html` (main), `admin/index.html` (admin panel at `/admin/`), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure
 **Containerization:** Docker + Docker Compose (3 containers: db, api, nginx)
@@ -553,7 +553,7 @@ This document defines precisely:
 **Public service (ADR-084):** Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG, a request limit per client address in the API (one process), logs without client addresses that the API deletes after 14 days (`<state_dir>/hydrograf/logs`, Nogat DEV-12.4 to DEV-12.9; nginx keeps none), anonymous daily totals in `<data_dir>/hydrograf/stats.jsonl`, „Zgłoś uwagę” with the text and the view's context only
 **Server:** Own
 **CI/CD:** GitHub Actions (or GitLab CI)
-**Monitoring:** The admin panel `/admin` (CPU/RAM, DB pool, uptime) + the health check `/health`
+**Monitoring:** The admin panel `/admin/` („Stan” and „Zasoby”: checks, uptime, CPU/RAM, DB pool) + the health check `/health`
 
 ---
 
@@ -617,7 +617,7 @@ This document defines precisely:
 **Preprocessing:**
 - ⚠️ **One-off DEM preprocessing:** ~45 minutes (the bootstrap pipeline, measured on a bbox of ~400 km²)
 - ⚠️ **Needs a server:** at least 8 GB RAM, 100 GB of disk
-- ⚠️ **Can be started from the admin panel** (`/admin` → Bootstrap) or from the CLI (`bootstrap.py`)
+- ⚠️ **Can be started from the admin panel** (`/admin/` → „Przetwarzanie NMT”) or from the CLI (`bootstrap.py`)
 - ⚠️ **Buildings are not raised yet:** `process_dem` can raise the DEM under the building footprints (ADR-033), but no script passes them, so the flow paths can cross buildings ([BACKLOG.md](BACKLOG.md))
 
 **Hydrological model:**
