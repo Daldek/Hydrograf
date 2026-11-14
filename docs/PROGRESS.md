@@ -198,6 +198,18 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
     sheet selection of `--boundary-file`, SQLAlchemy 2.1, named volumes, the Opolskie data (D6)
     and the ADR on NMT sheet versions.
+16. **The SFINCS layer's (i) by Nogat DEV-15.14** (the author's request of 2026-11-14): the (i) of
+    a result is the manifest's `description` and `source`, outside Git, so production's
+    `frontend/data/results/index.json` gets, for `sfincs-kamiennik-24h-p1`, `description` „Największa
+    głębokość wody w każdym miejscu w symulacji przepływu wody po terenie zlewni Kamiennika do
+    ujścia do Kaczawy (37,22 km²) przy opadzie 24 h o prawdopodobieństwie przewyższenia 1 %
+    (134,5 mm). Wynik jednego scenariusza, bez kalibracji, a nie oficjalna mapa zagrożenia
+    powodziowego; poziom wody w zbiorniku Świerzawa jest zawyżony, bo zapora nie ma w modelu
+    przelewu ani upustu dennego.” (394 characters, now 2,496) and `source` „Leijnse i in. 2021
+    (SFINCS); dane: IMGW-PIB (PMAXTP), GUGiK (NMT, BDOT10k), ISRIC SoilGrids (CC BY 4.0)”. The
+    assumptions of the run moved to the guide's `#sfincs`. Its `attribution` has PS, PP and M but
+    not G and SG of the NMT, BDOT10k and SoilGrids the run used (Open questions 11). The
+    screenshot `Hydrograf-v2-info.png` shows the old (i).
 
 ## Open questions
 

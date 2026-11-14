@@ -455,7 +455,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .info-tip math { font-family: math, "STIX Two Math", "Cambria Math", "Latin Modern Math", serif; font-size: var(--text-base); color: var(--text); }
 .info-tip-head { margin: 0 0 var(--space-1); color: var(--text); font-size: var(--text-base); font-weight: var(--weight-bold); }
 .info-tip-head math { font-weight: var(--weight-regular); }
-.info-tip-def { margin-bottom: var(--space-2); }
+.info-tip-def, .info-tip-read { margin-bottom: var(--space-2); }
 .info-tip-formula {
     display: grid; gap: var(--space-2); margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm); background: var(--surface-2); overflow-x: auto;
@@ -468,15 +468,9 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .info-tip-vars dd { margin: 0; }
 .info-tip-u { color: var(--text-3); white-space: nowrap; }
 .info-tip-unit { margin-bottom: var(--space-2); }
-.info-tip-sec { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
-.info-tip-sec .info-tip-k { margin-bottom: 2px; }
-.info-tip-meaning { background: var(--accent-soft); color: var(--text); }
-/* "\n" separates the hydrological significance from the use in Hydrograf */
-.info-tip-meaning p { white-space: pre-line; }
-.info-tip-meaning .info-tip-k { color: var(--accent); }
-.info-tip-range { background: var(--surface-2); }
-.info-tip-note, .info-tip-src { margin-top: var(--space-2); color: var(--text-3); font-size: var(--text-xs); }
-.info-tip-note .info-tip-k, .info-tip-src .info-tip-k { color: var(--text-2); }
+.info-tip-src, .info-tip-more { margin-top: var(--space-2); color: var(--text-3); font-size: var(--text-xs); }
+.info-tip-src .info-tip-k { color: var(--text-2); }
+.info-tip-more a { color: var(--accent); }
 .info-tip-option { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .info-tip-option > .info-tip-k { margin-bottom: 2px; }
 .info-note { margin: 0; font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-3); }

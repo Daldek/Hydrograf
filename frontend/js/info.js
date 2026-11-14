@@ -2,11 +2,12 @@
  * Hydrograf explanation markers.
  *
  * A small round (i) button after a label opens one shared panel with the
- * structured text from Hydrograf.infoTexts: title and symbol, definition,
- * formulas, the "gdzie:" list of variables, unit, "Znaczenie dla analizy",
- * applicability, note and the literature line "Źródła:". Formulas are
- * typeset as MathML built with DOM calls from the notation described in
- * info-texts.js (never from HTML).
+ * structured text from Hydrograf.infoTexts, in the order of Nogat DEV-15.14:
+ * title and symbol, definition, formulas with the "gdzie:" list of variables
+ * and the unit, how to read the value, the literature line "Źródła:" and the
+ * link to the longer explanation in the guide. Formulas are typeset as MathML
+ * built with DOM calls from the notation described in info-texts.js (never
+ * from HTML).
  *
  * The panel opens only on a click or tap of the (i), or Enter or Space on it
  * (never on hover or focus); the same (i) again, Esc, a click or tap outside
@@ -26,6 +27,7 @@
     var GAP = 6;            // px between the button and the panel
     var EDGE = 8;           // px kept free at the panel edges
     var MAX_WIDTH = 360;    // px
+    var GUIDE_URL = '/instrukcja/';
 
     /** Form controls whose static <label for> gets an (i). */
     var FORM_FIELDS = [
@@ -325,23 +327,14 @@
         return node;
     }
 
-    function section(parent, className, title, text) {
-        if (!text) return;
-        var box = element('div', 'info-tip-sec ' + className, parent);
-        caption(title, box);
-        richText(element('p', null, box), text);
-    }
-
-    /** Two-column list: [symbol or term, description, unit?] rows. */
-    function termList(parent, title, rows, symbols) {
+    /** The "gdzie:" list: [symbol, meaning, unit?] rows. */
+    function variableList(parent, rows) {
         var box = element('div', 'info-tip-where', parent);
-        caption(title, box);
+        caption('gdzie:', box);
         var dl = element('dl', 'info-tip-vars', box);
         rows.forEach(function (row) {
-            var dt = element('dt', null, dl);
-            if (symbols) dt.appendChild(formula(row[0], false));
-            else dt.textContent = row[0];
-            var dd = richText(element('dd', null, dl), (symbols ? '– ' : '') + row[1]);
+            element('dt', null, dl).appendChild(formula(row[0], false));
+            var dd = richText(element('dd', null, dl), '– ' + row[1]);
             if (row[2]) element('span', 'info-tip-u', dd).textContent = '\u00a0[' + row[2] + ']';
         });
     }
@@ -363,26 +356,26 @@
                 element('div', 'info-tip-eq', box).appendChild(formula(src, true));
             });
         }
-        if (entry.variables && entry.variables.length) termList(parent, 'gdzie:', entry.variables, true);
+        if (entry.variables && entry.variables.length) variableList(parent, entry.variables);
         if (entry.unit) {
             var unit = element('p', 'info-tip-unit', parent);
             caption('Jednostka:', unit, true);
             unit.appendChild(document.createTextNode(' ' + (entry.unit === '–' ? '– (wielkość bezwymiarowa)' : entry.unit)));
         }
-        if (entry.list) termList(parent, entry.list.title, entry.list.items, false);
-
-        section(parent, 'info-tip-meaning', 'Znaczenie dla analizy', entry.meaning);
-        section(parent, 'info-tip-range', 'Zakres stosowalności', entry.range);
-        if (entry.note) {
-            var note = element('p', 'info-tip-note', parent);
-            caption('Uwaga:', note, true);
-            richText(note, ' ' + entry.note);
-        }
+        if (entry.reading) richText(element('p', 'info-tip-read', parent), entry.reading);
         if (entry.sources) {
             // A reference such as "USDA-NRCS 2007 (NEH 630-16)" does not break at its hyphens
             var sources = element('p', 'info-tip-src', parent);
             caption('Źródła:', sources, true);
             richText(sources, ' ' + entry.sources.replace(/(\w)-(?=\w)/g, '$1-\u2060'));
+        }
+        if (entry.guide) {
+            // A new tab: leaving the map would lose the user's watershed and settings
+            var link = element('a', null, element('p', 'info-tip-more', parent));
+            link.href = GUIDE_URL + '#' + entry.guide;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'Więcej w instrukcji';
         }
     }
 
