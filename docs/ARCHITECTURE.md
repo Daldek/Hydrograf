@@ -1692,8 +1692,15 @@ http {
     # behind the tunnel. X-Real-IP tells the API that peer, so that it believes the
     # client's address of CF-Connecting-IP only from a private hop.
 
+    # Docker's DNS, asked again every 10 s: a rebuilt api container gets a new
+    # address, which `resolve` follows without a reload (open-source nginx >= 1.27.3;
+    # `nginx:alpine` is not pinned below it). Without it nginx keeps the address of
+    # its start and answers 502 after `docker compose up -d api`.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
     upstream api_backend {
-        server api:8000;
+        zone api_backend 64k;
+        server api:8000 resolve;
     }
 
     server {

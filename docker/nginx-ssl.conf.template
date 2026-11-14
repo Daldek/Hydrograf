@@ -19,8 +19,13 @@ http {
     # No limit here: the API limits pages and routes per client address, which nginx
     # tells it in X-Real-IP (api/traffic.py, DEV-15.9).
 
+    # Docker's DNS, asked again every 10 s, so that a rebuilt api container is
+    # followed without a reload: see nginx.conf.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
     upstream api_backend {
-        server api:8000;
+        zone api_backend 64k;
+        server api:8000 resolve;
     }
 
     # HTTP -> HTTPS redirect
