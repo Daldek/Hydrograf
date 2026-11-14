@@ -285,7 +285,6 @@ def catchment_graph(run: PipelineRun, *thresholds_m2: int) -> CatchmentGraph:
     cg._elev_mean = column("mean_elevation_m")
     cg._slope_mean = column("mean_slope_percent")
     cg._stream_length_km = column("stream_length_km")
-    cg._hydraulic_length_km = column("hydraulic_length_km")
     cg._strahler = np.array([c["strahler_order"] or 0 for c in catchments], np.int8)
     cg._max_flow_dist_m = np.nan_to_num(column("max_flow_dist_m", np.float64))
     cg._outlet_flow_dist_m = column("outlet_flow_dist_m", np.float64)

@@ -12,7 +12,7 @@ nearest grid points by inverse distance weighting (:func:`point_depth`).
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import shapely
@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 # Margin around the watershed searched for grid points whose Thiessen polygons can
 # reach it. Every place lies at most half a cell diagonal (s/sqrt(2)) from its nearest
 # point of a regular grid of spacing s, so a margin of s is enough; 5 km holds for
-# grids up to 7 km (the default spacing is 2 km, IMGW_GRID_SPACING_KM).
+# grids up to 7 km (the default spacing is 2 km, `--spacing` of
+# scripts.preprocess_precipitation).
 THIESSEN_SEARCH_M = 5000.0
 
 # A grid point given back to areal_depth matches a point of the table within this
@@ -476,56 +477,3 @@ def point_depth(
             for station in stations
         ),
     )
-
-
-def check_data_coverage(
-    bbox: tuple[Any, ...],
-    db: Session,
-) -> dict[str, Any]:
-    """
-    Check precipitation data coverage for a bounding box.
-
-    Parameters
-    ----------
-    bbox : tuple
-        (min_x, min_y, max_x, max_y) in EPSG:2180
-    db : Session
-        SQLAlchemy database session
-
-    Returns
-    -------
-    dict
-        Coverage statistics
-    """
-    min_x, min_y, max_x, max_y = bbox
-
-    query = text("""
-        SELECT
-            COUNT(DISTINCT geom) as point_count,
-            COUNT(*) as total_records,
-            COUNT(*) / NULLIF(COUNT(DISTINCT geom), 0) as scenarios_per_point
-        FROM precipitation_data
-        WHERE ST_Within(
-            geom,
-            ST_MakeEnvelope(:min_x, :min_y, :max_x, :max_y, 2180)
-        )
-    """)
-
-    result = db.execute(
-        query,
-        {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y},
-    ).fetchone()
-
-    if result is None:  # an aggregate query always returns one row
-        raise RuntimeError("Precipitation coverage query returned no row")
-
-    return {
-        "point_count": result.point_count or 0,
-        "total_records": result.total_records or 0,
-        "scenarios_per_point": result.scenarios_per_point or 0,
-        "expected_scenarios": len(VALID_DURATIONS_MIN) * len(VALID_PROBABILITIES),
-        "coverage_complete": (
-            (result.scenarios_per_point or 0)
-            == len(VALID_DURATIONS_MIN) * len(VALID_PROBABILITIES)
-        ),
-    }

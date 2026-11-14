@@ -291,7 +291,6 @@ def interpolate_enclosed_nodata(
 def raise_buildings_in_dem(
     dem: np.ndarray,
     transform: Affine,
-    crs_epsg: int,
     building_gpkg: str | None,
     building_raise_m: float = 5.0,
     *,

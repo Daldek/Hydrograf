@@ -19,13 +19,10 @@ from rasterio.transform import from_origin
 from utils import raster_utils
 from utils.raster_utils import (
     align_to_cellsize,
-    convert_asc_to_geotiff,
     create_vrt_mosaic,
     get_mosaic_info,
     normalize_crs,
-    read_vrt_as_array,
     resample_raster,
-    validate_tiles_compatibility,
 )
 
 WEST, NORTH = 500000.0, 600030.0
@@ -398,29 +395,7 @@ class TestCreateVrtMosaic:
             assert np.array_equal(merged.read(1), expected)
 
 
-class TestReadAndDescribeMosaic:
-    def test_array_comes_with_the_grid_description_of_an_ascii_grid(self, tmp_path):
-        data = np.arange(12.0).reshape(3, 4)
-        tif = write_geotiff(tmp_path / "m.tif", data, cell=5.0)
-
-        array, meta = read_vrt_as_array(tif)
-
-        assert np.array_equal(array, data)
-        assert meta["xllcorner"] == WEST
-        assert meta["yllcorner"] == NORTH - 3 * 5.0
-        assert meta["cellsize"] == 5.0
-        assert (meta["ncols"], meta["nrows"]) == (4, 3)
-        assert meta["nodata_value"] == NODATA
-        assert meta["crs"] == rasterio.crs.CRS.from_epsg(2180)
-
-    def test_a_raster_without_nodata_gets_the_conventional_value(self, tmp_path):
-        tif = write_geotiff(tmp_path / "m.tif", np.ones((2, 2)), nodata=None)
-
-        _, meta = read_vrt_as_array(tif)
-
-        assert meta["nodata"] is None
-        assert meta["nodata_value"] == -9999.0
-
+class TestDescribeMosaic:
     def test_info_describes_the_mosaic_without_reading_it(self, tmp_path):
         tif = write_geotiff(tmp_path / "m.tif", np.zeros((512, 1024)), cell=2.0)
 
@@ -433,70 +408,6 @@ class TestReadAndDescribeMosaic:
         assert info["nodata"] == NODATA
         assert info["dtype"] == "float32"
         assert info["estimated_memory_mb"] == pytest.approx(2.0)  # 524,288 cells x 4 B
-
-
-class TestValidateTilesCompatibility:
-    def test_tiles_of_one_crs_and_cell_size_are_compatible(self, tmp_path):
-        tiles = [
-            write_geotiff(tmp_path / f"{i}.tif", np.ones((2, 2)), west=WEST + 20 * i)
-            for i in range(3)
-        ]
-
-        result = validate_tiles_compatibility(tiles)
-
-        assert result["valid"] is True
-        assert result["issues"] == []
-        assert result["summary"] == {
-            "reference_crs": "EPSG:2180",
-            "reference_cell_size": 10.0,
-            "total_files": 3,
-        }
-
-    def test_no_files_are_not_valid(self):
-        result = validate_tiles_compatibility([])
-
-        assert result["valid"] is False
-        assert result["issues"] == ["No input files provided"]
-
-    def test_a_tile_in_another_crs_is_named(self, tmp_path):
-        ok = write_geotiff(tmp_path / "ok.tif", np.ones((2, 2)))
-        other = write_geotiff(tmp_path / "other.tif", np.ones((2, 2)), crs="EPSG:2177")
-
-        result = validate_tiles_compatibility([ok, other])
-
-        assert result["valid"] is False
-        assert result["issues"] == [
-            "CRS mismatch: other.tif has EPSG:2177, expected EPSG:2180"
-        ]
-
-    def test_a_tile_with_another_cell_size_is_named(self, tmp_path):
-        ok = write_geotiff(tmp_path / "ok.tif", np.ones((2, 2)), cell=5.0)
-        coarse = write_geotiff(tmp_path / "coarse.tif", np.ones((2, 2)), cell=10.0)
-
-        result = validate_tiles_compatibility([ok, coarse])
-
-        assert result["valid"] is False
-        assert result["issues"] == [
-            "Cell size mismatch: coarse.tif has 10.0, expected 5.0"
-        ]
-
-    def test_missing_and_unreadable_files_are_reported(self, tmp_path):
-        ok = write_geotiff(tmp_path / "ok.tif", np.ones((2, 2)))
-        broken = tmp_path / "broken.tif"
-        broken.write_text("this is not a raster")
-        gone = tmp_path / "gone.tif"
-
-        result = validate_tiles_compatibility([ok, broken, gone])
-
-        assert any(i.startswith(f"File not found: {gone}") for i in result["issues"])
-        assert any(i.startswith(f"Cannot read {broken}") for i in result["issues"])
-        assert result["summary"]["total_files"] == 1
-
-    def test_when_no_file_can_be_read_the_set_is_not_valid(self, tmp_path):
-        result = validate_tiles_compatibility([tmp_path / "gone.tif"])
-
-        assert result["valid"] is False
-        assert result["issues"][-1] == "No readable files found"
 
 
 class TestResampleRaster:
@@ -543,36 +454,6 @@ class TestResampleRaster:
 
         with rasterio.open(guessed) as x, rasterio.open(bilinear) as y:
             assert np.array_equal(x.read(1), y.read(1))
-
-
-class TestConvertAscToGeotiff:
-    def test_output_defaults_to_a_tif_beside_the_input(self, tmp_path, gdal):
-        asc = write_asc(tmp_path / "dem.asc", 500000.0)
-
-        result = convert_asc_to_geotiff(asc)
-
-        assert result == tmp_path / "dem.tif"
-        assert result.exists()
-        (cmd,) = gdal.calls
-        assert cmd[0] == "gdal_translate"
-        assert option(cmd, "-of") == "GTiff"
-        assert cmd[-2:] == [str(asc), str(result)]
-
-    def test_compression_is_selectable_and_tiling_is_on(self, tmp_path, gdal):
-        asc = write_asc(tmp_path / "dem.asc", 500000.0)
-
-        convert_asc_to_geotiff(asc, tmp_path / "out.tif", compress="DEFLATE")
-
-        cmd = gdal.calls[0]
-        assert "COMPRESS=DEFLATE" in cmd
-        assert "TILED=YES" in cmd
-
-    def test_a_failing_conversion_carries_the_tool_message(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(stderr="no driver"))
-        asc = write_asc(tmp_path / "dem.asc", 500000.0)
-
-        with pytest.raises(RuntimeError, match="gdal_translate failed: no driver"):
-            convert_asc_to_geotiff(asc)
 
 
 class TestAlignToCellsize:

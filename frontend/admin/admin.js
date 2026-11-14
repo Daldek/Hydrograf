@@ -44,7 +44,7 @@
             throw failure('Brak połączenia z serwerem.', 0);
         }
         if (response.ok) return response;
-        var problem = null;
+        var problem;
         try {
             problem = await response.json();
         } catch (error) {

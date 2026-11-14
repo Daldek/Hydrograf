@@ -137,7 +137,7 @@
         field.setAttribute('readonly', '');
         document.body.appendChild(field);
         field.select();
-        var ok = false;
+        var ok;
         try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
         field.remove();
         return ok;

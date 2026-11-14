@@ -17,7 +17,6 @@
     var streamsLayer = null;
     var currentThreshold = null;
     var streamTooltip = null;
-    var watershedLayer = null;
     var outletMarker = null;
 
     // Drawing state
@@ -694,17 +693,6 @@
         return { radius: 6, color: c.tool, weight: 3, opacity: 1, fillColor: c.surface, fillOpacity: 1 };
     }
 
-    function showWatershed(geojsonFeature) {
-        clearWatershed();
-        watershedLayer = L.geoJSON(geojsonFeature, {
-            style: watershedStyle(),
-        }).addTo(map);
-        updateWatershedLegend();
-        map.fitBounds(watershedLayer.getBounds(), { padding: [20, 20] });
-    }
-
-    function getWatershedLayer() { return watershedLayer; }
-
     function showOutlet(lat, lng, elevation) {
         if (outletMarker) map.removeLayer(outletMarker);
         outletMarker = L.circleMarker([lat, lng], outletStyle()).addTo(map);
@@ -716,7 +704,6 @@
     }
 
     function clearWatershed() {
-        if (watershedLayer) { map.removeLayer(watershedLayer); watershedLayer = null; }
         if (outletMarker) { map.removeLayer(outletMarker); outletMarker = null; }
         clearLongestFlowPath();
         clearDivideFlowPath();
@@ -865,7 +852,7 @@
 
     function watershedLegendRows() {
         var rows = [];
-        if (selectionBoundaryLayer || watershedLayer) {
+        if (selectionBoundaryLayer) {
             rows.push([pathSwatch(watershedStyle(), 'area'), 'Granica zlewni']);
         }
         if (outletMarker) rows.push([pathSwatch(outletStyle(), 'point'), 'Ujście']);
@@ -919,7 +906,7 @@
     function setWatershedShown(shown) {
         if (!map) return;
         watershedHidden = !shown;
-        [selectionBoundaryLayer, watershedLayer, outletMarker, mainChannelLayer,
+        [selectionBoundaryLayer, outletMarker, mainChannelLayer,
          longestFlowPathLayer, divideFlowPathLayer].forEach(function (layer) {
             if (!layer) return;
             if (shown && !map.hasLayer(layer)) layer.addTo(map);
@@ -960,9 +947,7 @@
     }
 
     function pointsLabel(n) {
-        var lastDigit = n % 10, lastTwo = n % 100;
-        var few = lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14);
-        return n + (few ? ' punkty' : ' punktów');
+        return n + ' ' + Hydrograf.app.plural(n, 'punkt', 'punkty', 'punktów');
     }
 
     function updateDrawCount() {
@@ -1066,13 +1051,6 @@
     function isDrawing() { return drawMode; }
 
     // ===== Profile line display =====
-
-    function showProfileLine(coords) {
-        clearProfileLine();
-        // coords: [[lng, lat], ...] (GeoJSON order)
-        var latlngs = coords.map(function (c) { return [c[1], c[0]]; });
-        profileLine = L.polyline(latlngs, profileLineStyle()).addTo(map);
-    }
 
     function clearProfileLine() {
         if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
@@ -1325,10 +1303,6 @@
         if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
     }
 
-    function invalidateSize() {
-        if (map) setTimeout(function () { map.invalidateSize(); }, 50);
-    }
-
     // ===== Theme change: restyle every live overlay =====
 
     onThemeChange(function () {
@@ -1336,7 +1310,6 @@
         var c = colors();
         if (selectionBoundaryLayer) selectionBoundaryLayer.setStyle(watershedStyle());
         if (preview) preview.levels.setStyle(previewStyle);
-        if (watershedLayer) watershedLayer.setStyle(watershedStyle());
         if (outletMarker) outletMarker.setStyle(outletStyle());
         if (mainChannelLayer) mainChannelLayer.setStyle(mainChannelStyle);
         if (longestFlowPathLayer) longestFlowPathLayer.setStyle(longestFlowPathStyle());
@@ -1368,8 +1341,9 @@
     window.Hydrograf.map = {
         init: init,
         _getMap: function () { return map; },
-        // Theme: token colours for overlays drawn by other modules
+        // Theme: token colours for overlays and charts drawn by other modules
         token: token,
+        rgb: rgb,
         mix: mix,
         onThemeChange: onThemeChange,
         // Legend swatch in the style of a Leaflet path (the network's legend, js/network.js)
@@ -1387,22 +1361,16 @@
         clearSelectionBoundary: clearSelectionBoundary,
         showDelineatePreview: showDelineatePreview,
         clearDelineatePreview: clearDelineatePreview,
-        showWatershed: showWatershed,
-        getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
         showMainChannel: showMainChannel,
-        clearMainChannel: clearMainChannel,
         setWatershedShown: setWatershedShown,
         setLoadingCursor: setLoadingCursor,
-        invalidateSize: invalidateSize,
         // Drawing
         startDrawing: startDrawing,
         cancelDrawing: cancelDrawing,
-        undoLastVertex: undoLastVertex,
         isDrawing: isDrawing,
         // Profile
-        showProfileLine: showProfileLine,
         clearProfileLine: clearProfileLine,
         showProfileHoverMarker: showProfileHoverMarker,
         clearProfileHoverMarker: clearProfileHoverMarker,
@@ -1423,10 +1391,8 @@
         setLandCoverOpacity: setLandCoverOpacity,
         // Longest flow path (from divide)
         showLongestFlowPath: showLongestFlowPath,
-        clearLongestFlowPath: clearLongestFlowPath,
         // Divide flow path (from watershed boundary)
         showDivideFlowPath: showDivideFlowPath,
-        clearDivideFlowPath: clearDivideFlowPath,
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,

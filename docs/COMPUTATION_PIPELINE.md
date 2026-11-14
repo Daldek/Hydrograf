@@ -87,12 +87,12 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.4 Nachylenie i ekspozycja
 
-**Nachylenie:** `compute_slope()` (linie 1084-1122)
+**Slope:** `compute_slope_from_gradients()` of the Sobel gradients of `gradient_strips()` (`core/morphometry_raster.py`)
 - Algorytm: operator Sobla (`scipy.ndimage.sobel`)
 - Wzór: `slope_percent = sqrt(dx² + dy²) × 100`
 - Gradient: `dy = sobel(dem, axis=0) / (8 × cellsize)`
 
-**Ekspozycja:** `compute_aspect()` (linie 1125-1183)
+**Aspect:** `compute_aspect_from_gradients()` of the same gradients
 - Wzór: `aspect_deg = arctan2(-dx, dy)` (0°=N, zgodnie z zegarem)
 - Tereny płaskie: `aspect = -1.0`
 

@@ -98,17 +98,15 @@ def contiguous_real_length_km(
     _COL_DS_SEG_IDX,
     _COL_ELEV_MIN,
     _COL_ELEV_MAX,
-    _COL_PERIMETER,
     _COL_STREAM_LEN,
     _COL_HISTOGRAM,
-    _COL_HYDRAULIC_LEN,
     _COL_FLOW_DIST,
     _COL_OUTLET_DIST,
     _COL_HEAD_ELEV,
     _COL_OVERLAND_LEN,
     _COL_OVERLAND_DROP,
     _COL_STREAM_HEAD_ELEV,
-) = range(19)
+) = range(17)
 
 
 class CatchmentGraph:
@@ -136,12 +134,6 @@ class CatchmentGraph:
         self._elev_mean: np.ndarray = _EMPTY
         self._slope_mean: np.ndarray = _EMPTY
         self._stream_length_km: np.ndarray = _EMPTY
-        # Legacy per-subcatchment absolute distance (== max_flow_dist_m/1000).
-        # Loaded for DB compatibility; NOT used by aggregate_stats — hydraulic
-        # length is computed from max_flow_dist_m and outlet_flow_dist_m (see
-        # aggregate_stats). Do not reintroduce as a fallback: absolute values
-        # caused the feedback-#11 bug.
-        self._hydraulic_length_km: np.ndarray = _EMPTY
         self._strahler: np.ndarray = _EMPTY
         self._max_flow_dist_m: np.ndarray = _EMPTY
         self._outlet_flow_dist_m: np.ndarray | None = None
@@ -211,7 +203,6 @@ class CatchmentGraph:
         self._elev_mean = np.full(n, np.nan, dtype=np.float32)
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
-        self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
         self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
         self._outlet_flow_dist_m = np.full(n, np.nan, dtype=np.float64)
@@ -234,8 +225,7 @@ class CatchmentGraph:
                 "SELECT segment_idx, threshold_m2, area_km2, "
                 "mean_elevation_m, mean_slope_percent, strahler_order, "
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
-                "perimeter_km, stream_length_km, elev_histogram, "
-                "hydraulic_length_km, "
+                "stream_length_km, elev_histogram, "
                 "COALESCE(max_flow_dist_m, 0), "
                 "outlet_flow_dist_m, "
                 "flow_path_head_elev_m, overland_length_m, overland_drop_m, "
@@ -273,10 +263,6 @@ class CatchmentGraph:
 
                     # Histogram (JSONB → dict)
                     self._histograms[i] = r[_COL_HISTOGRAM]
-
-                    # Hydraulic length (flow path distance to outlet)
-                    if r[_COL_HYDRAULIC_LEN] is not None:
-                        self._hydraulic_length_km[i] = r[_COL_HYDRAULIC_LEN]
 
                     # max_flow_dist_m (COALESCE ensures 0 for NULL)
                     self._max_flow_dist_m[i] = r[_COL_FLOW_DIST]
@@ -390,7 +376,6 @@ class CatchmentGraph:
                 self._elev_mean,
                 self._slope_mean,
                 self._stream_length_km,
-                self._hydraulic_length_km,
                 self._strahler,
                 self._max_flow_dist_m,
                 self._outlet_flow_dist_m,
@@ -860,7 +845,6 @@ class CatchmentGraph:
             - elevation_max_m: max
             - elevation_mean_m: area-weighted mean
             - mean_slope_percent: area-weighted mean
-            - perimeter_km: sum (individual sub-catchment perimeters)
             - stream_length_km: sum
             - drainage_density_km_per_km2: total_stream_length / total_area
             - max_strahler_order: max

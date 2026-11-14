@@ -13,9 +13,6 @@ class TestSewerConfigDefaults:
     def test_sewer_default_burn_depth(self):
         assert _DEFAULT_CONFIG["sewer"]["inlet_burn_depth_m"] == 0.5
 
-    def test_sewer_default_snap_tolerance(self):
-        assert _DEFAULT_CONFIG["sewer"]["snap_tolerance_m"] == 2.0
-
     def test_sewer_source_defaults(self):
         source = _DEFAULT_CONFIG["sewer"]["source"]
         assert source["type"] == "file"
@@ -23,12 +20,6 @@ class TestSewerConfigDefaults:
         assert source["lines_layer"] is None
         assert source["points_layer"] is None
         assert source["assumed_crs"] is None
-
-    def test_sewer_attribute_mapping_defaults(self):
-        mapping = _DEFAULT_CONFIG["sewer"]["attribute_mapping"]
-        assert mapping["diameter"] is None
-        assert mapping["depth"] is None
-        assert mapping["flow_direction"] is None
 
 
 class TestSewerConfigMerge:
@@ -39,7 +30,7 @@ class TestSewerConfigMerge:
         assert cfg["sewer"]["enabled"] is True
         assert cfg["sewer"]["inlet_burn_depth_m"] == 0.8
         # Non-overridden defaults preserved
-        assert cfg["sewer"]["snap_tolerance_m"] == 2.0
+        assert cfg["sewer"]["source"]["type"] == "file"
 
 
 class TestSewerFieldMappingDefaults:
@@ -122,11 +113,3 @@ class TestSewerSourceFormat:
         from core.config import _DEFAULT_CONFIG
 
         assert _DEFAULT_CONFIG["sewer"]["source"]["format"] == "auto"
-
-
-class TestSewerBackwardCompat:
-    def test_attribute_mapping_still_present(self):
-        """attribute_mapping kept for backward compat with old config.yaml files."""
-        from core.config import _DEFAULT_CONFIG
-
-        assert "attribute_mapping" in _DEFAULT_CONFIG["sewer"]

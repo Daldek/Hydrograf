@@ -32,11 +32,10 @@ services:
 
   nginx:
     container_name: hydro_staging_nginx
-    # Localhost (the port S7 moves to 8080) and, until S7, the home network for testers
-    # (the LAN binding is removed after S7); production (hydro_nginx) stays on 127.0.0.1.
+    # Localhost only, as production (hydro_nginx); the LAN binding for the testers
+    # ended with S7
     ports: !override
       - "127.0.0.1:${HYDROGRAF_STAGING_PORT:-8081}:80"
-      - "192.168.88.9:8081:80"
     volumes:
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/usr/share/nginx/html/data:ro
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/usr/share/nginx/html/tiles:ro

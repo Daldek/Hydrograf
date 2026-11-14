@@ -2,12 +2,12 @@
  * Hydrograf Charts module.
  *
  * Chart.js wrappers for the hypsometric curve, land cover and HSG share bars,
- * hietogram, hydrograph, terrain profile and elevation histogram.
+ * hietogram, hydrograph and terrain profile.
  *
  * Every colour, the font and its size come from tokens.css (read with
- * getComputedStyle). Each chart registers a styler that re-applies those
- * colours, so a theme change (data-theme attribute or the OS scheme) restyles
- * all live charts in place.
+ * getComputedStyle through the theme helpers of map.js). Each chart registers
+ * a styler that re-applies those colours, so a theme change (data-theme
+ * attribute or the OS scheme) restyles all live charts in place.
  */
 (function () {
     'use strict';
@@ -45,46 +45,15 @@
 
     // ── Theme ──────────────────────────────────────────────────────────
 
-    var _colorCtx = null;
+    // Token colours and their mixes: the theme helpers of map.js
+    function token(name) { return Hydrograf.map.token(name); }
 
-    function token(name) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    }
-
-    /**
-     * Parse any CSS colour the canvas understands into [r, g, b, a].
-     */
-    function parseColor(color) {
-        if (!_colorCtx) _colorCtx = document.createElement('canvas').getContext('2d');
-        _colorCtx.fillStyle = '#000000';
-        _colorCtx.fillStyle = color;
-        var s = _colorCtx.fillStyle;
-        if (s.charAt(0) === '#') {
-            return [
-                parseInt(s.slice(1, 3), 16),
-                parseInt(s.slice(3, 5), 16),
-                parseInt(s.slice(5, 7), 16),
-                1,
-            ];
-        }
-        var parts = s.replace(/^rgba?\(|\)$/g, '').split(',').map(parseFloat);
-        return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1];
-    }
+    function mix(a, b, weight) { return Hydrograf.map.mix(a, b, weight); }
 
     /** Colour with the given opacity. */
     function alpha(color, a) {
-        var c = parseColor(color);
+        var c = Hydrograf.map.rgb(color);
         return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')';
-    }
-
-    /** `weight` of colour a mixed with colour b (like color-mix in srgb). */
-    function mix(a, b, weight) {
-        var ca = parseColor(a);
-        var cb = parseColor(b);
-        var out = [0, 1, 2].map(function (i) {
-            return Math.round(ca[i] * weight + cb[i] * (1 - weight));
-        });
-        return 'rgb(' + out.join(', ') + ')';
     }
 
     /** Resolve a palette entry: [token] or [token, token, weight]. */
@@ -731,123 +700,6 @@
         });
     }
 
-    /**
-     * Render elevation histogram from hypsometric curve data.
-     *
-     * Divides elevation range into bands and computes % area per band
-     * by differencing the cumulative hypsometric curve.
-     *
-     * @param {string} canvasId - Canvas element ID
-     * @param {Array} curveData - Array of { relative_height, relative_area }
-     * @param {number} elevMin - Minimum elevation [m a.s.l.]
-     * @param {number} elevMax - Maximum elevation [m a.s.l.]
-     */
-    function renderElevationHistogram(canvasId, curveData, elevMin, elevMax) {
-        destroyChart(canvasId);
-
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return;
-        if (!curveData || curveData.length < 2) return;
-
-        var elevRange = elevMax - elevMin;
-        if (elevRange <= 0) return;
-
-        // Sort curve by relative_height ascending
-        var sorted = curveData.slice().sort(function (a, b) {
-            return a.relative_height - b.relative_height;
-        });
-
-        // Determine number of bands (10-25, ~5m per band)
-        var nBands = Math.max(10, Math.min(25, Math.round(elevRange / 5)));
-        var bandSize = elevRange / nBands;
-
-        var labels = [];
-        var data = [];
-
-        for (var i = 0; i < nBands; i++) {
-            var hLow = elevMin + i * bandSize;
-            var hHigh = elevMin + (i + 1) * bandSize;
-
-            // Relative heights for band boundaries
-            var rLow = (hLow - elevMin) / elevRange;
-            var rHigh = (hHigh - elevMin) / elevRange;
-
-            // Interpolate relative_area at rLow and rHigh from the curve
-            // The curve gives "fraction of area ABOVE relative_height"
-            var areaAboveLow = interpolateCurve(sorted, rLow);
-            var areaAboveHigh = interpolateCurve(sorted, rHigh);
-
-            // Area in band = area above lower boundary - area above upper boundary
-            var pct = (areaAboveLow - areaAboveHigh) * 100;
-            if (pct < 0) pct = 0;
-
-            labels.push(Math.round(hLow));
-            data.push(Math.round(pct * 10) / 10);
-        }
-
-        createChart(canvas, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Powierzchnia [%]',
-                    data: data,
-                    borderWidth: 1,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function (ctx) { return ctx.parsed.y.toFixed(1) + '% powierzchni'; },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        title: { display: true, text: 'Wysoko\u015b\u0107 [m n.p.m.]' },
-                        ticks: { maxRotation: 90, minRotation: 45 },
-                        grid: { display: false },
-                    },
-                    y: {
-                        title: { display: true, text: 'Powierzchnia [%]' },
-                        border: { display: false },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        }, function (target, c) {
-            var ds = target.data.datasets[0];
-            ds.borderColor = c.green;
-            ds.backgroundColor = alpha(c.green, 0.6);
-        });
-    }
-
-    /**
-     * Interpolate the hypsometric curve (relative_area as function of relative_height).
-     * Returns area_above for a given relative height.
-     */
-    function interpolateCurve(sorted, relHeight) {
-        if (relHeight <= 0) return 1.0;
-        if (relHeight >= 1) return 0.0;
-
-        // Find surrounding points
-        for (var i = 0; i < sorted.length - 1; i++) {
-            var p1 = sorted[i];
-            var p2 = sorted[i + 1];
-            if (relHeight >= p1.relative_height && relHeight <= p2.relative_height) {
-                var t = (relHeight - p1.relative_height) / (p2.relative_height - p1.relative_height);
-                return p1.relative_area + t * (p2.relative_area - p1.relative_area);
-            }
-        }
-
-        // Fallback: return nearest endpoint
-        return sorted[sorted.length - 1].relative_area;
-    }
-
     // ── Rainfall-runoff charts ─────────────────────────────────────────
 
     /**
@@ -1009,12 +861,8 @@
 
     // ── Global listeners ───────────────────────────────────────────────
 
-    // Theme buttons set data-theme; "auto" follows the OS scheme
-    new MutationObserver(refreshTheme).observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme'],
-    });
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
+    // A theme change (map.js: the data-theme attribute or the OS scheme) restyles the charts
+    Hydrograf.map.onThemeChange(refreshTheme);
 
     // Panels resized by the shell, or a section opened: re-measure the charts
     window.addEventListener('hydrograf:layout', resizeAll);
@@ -1029,7 +877,6 @@
         renderLandCoverChart: renderLandCoverChart,
         renderHsgChart: renderHsgChart,
         renderHypsometricChart: renderHypsometricChart,
-        renderElevationHistogram: renderElevationHistogram,
         renderProfileChart: renderProfileChart,
         renderHietogramChart: renderHietogramChart,
         renderHydrographChart: renderHydrographChart,

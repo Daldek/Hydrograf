@@ -194,9 +194,6 @@
     }
 
     window.Hydrograf.coords = {
-        pl1992: pl1992,
-        pl2000: pl2000,
-        pl2000Zone: pl2000Zone,
         addReadout: addReadout,
     };
 })();

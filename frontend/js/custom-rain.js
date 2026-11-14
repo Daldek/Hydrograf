@@ -53,13 +53,8 @@
         return String(Number(value.toFixed(3)));
     }
 
-    /** Polish plural: 1 krok, 2–4 kroki, 5+ kroków. */
-    function plural(n, one, few, many) {
-        if (n === 1) return one;
-        var mod10 = n % 10;
-        var mod100 = n % 100;
-        return (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) ? few : many;
-    }
+    /** Polish plural (app.js): 1 krok, 2–4 kroki, 5+ kroków. */
+    function plural(n, one, few, many) { return Hydrograf.app.plural(n, one, few, many); }
 
     function steps(n) {
         return n + ' ' + plural(n, 'krok', 'kroki', 'kroków');

@@ -290,7 +290,6 @@
     window.Hydrograf.shell = {
         open: open,
         close: close,
-        toggle: toggle,
         isOpen: isOpen,
         isPhone: function () { return phone.matches; },
     };

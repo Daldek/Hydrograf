@@ -32,7 +32,6 @@ class SewerGraph:
         self.nodes: list[dict[str, Any]] = []
         self.edges: list[dict[str, Any]] = []
         self.adj: sparse.csr_matrix = sparse.csr_matrix((0, 0), dtype=np.int8)
-        self.warnings: list[str] = []
         self.n_components: int = 0
         self._node_lookup: dict[str, int] = {}  # node_id -> index
 

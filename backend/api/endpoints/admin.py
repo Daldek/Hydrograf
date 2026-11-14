@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
@@ -45,7 +45,7 @@ from core.errors import (
 )
 from core.usage import TOTALS, utc_today
 from core.version import get_version
-from scripts.clean import DB_TABLES, execute_clean
+from scripts.clean import DB_TABLES, dir_size, execute_clean, force_rmtree
 from utils.kartograf_store import refuse_shared_store
 
 logger = logging.getLogger(__name__)
@@ -89,11 +89,7 @@ def _dir_size_mb(path: Path) -> float:
     if cached and now - cached[0] < _DIR_SIZE_TTL:
         return cached[1]
 
-    if not path.exists():
-        _dir_size_cache[key] = (now, 0.0)
-        return 0.0
-    total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-    result = round(total / (1024 * 1024), 2)
+    result = round(dir_size(path) / (1024 * 1024), 2)
     _dir_size_cache[key] = (now, result)
     return result
 
@@ -1168,14 +1164,7 @@ def sewer_delete(db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     db.commit()
 
-    import stat as _stat
-
     if DATA_SEWER.exists():
-
-        def _on_error(_func: Callable[..., Any], _path: str, _exc_info: Any) -> None:
-            os.chmod(_path, _stat.S_IRWXU)
-            _func(_path)
-
-        shutil.rmtree(DATA_SEWER, onerror=_on_error)
+        force_rmtree(DATA_SEWER)
 
     return {"message": "Sewer data deleted", "pipeline_dirty": True}

@@ -45,7 +45,7 @@ class TestRaiseBuildingsInDem:
         from core.hydrology import raise_buildings_in_dem
 
         result = raise_buildings_in_dem(
-            flat_dem.copy(), dem_transform, 2180, None, nodata=-9999.0
+            flat_dem.copy(), dem_transform, None, nodata=-9999.0
         )
         np.testing.assert_array_equal(result, flat_dem)
 
@@ -60,7 +60,6 @@ class TestRaiseBuildingsInDem:
             result = raise_buildings_in_dem(
                 flat_dem.copy(),
                 dem_transform,
-                2180,
                 path,
                 building_raise_m=5.0,
                 nodata=-9999.0,
@@ -81,7 +80,6 @@ class TestRaiseBuildingsInDem:
             result = raise_buildings_in_dem(
                 flat_dem.copy(),
                 dem_transform,
-                2180,
                 path,
                 building_raise_m=10.0,
                 nodata=-9999.0,
@@ -96,7 +94,7 @@ class TestRaiseBuildingsInDem:
         path = self._make_gpkg([])
         try:
             result = raise_buildings_in_dem(
-                flat_dem.copy(), dem_transform, 2180, path, nodata=-9999.0
+                flat_dem.copy(), dem_transform, path, nodata=-9999.0
             )
             np.testing.assert_array_equal(result, flat_dem)
         finally:
@@ -116,7 +114,7 @@ class TestRaiseBuildingsInDem:
         path = self._make_gpkg([(building, {"typ": "budynek"})])
         try:
             result = raise_buildings_in_dem(
-                dem, dem_transform, 2180, path, building_raise_m=5.0, nodata=-9999.0
+                dem, dem_transform, path, building_raise_m=5.0, nodata=-9999.0
             )
         finally:
             os.unlink(path)

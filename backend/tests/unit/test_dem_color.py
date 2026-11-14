@@ -135,10 +135,10 @@ class TestComputeHillshade:
         # Should have more than one unique value
         assert len(np.unique(hs)) > 1
 
-    def test_custom_azimuth_altitude(self):
-        """Custom azimuth and altitude produce valid output."""
+    def test_custom_altitude(self):
+        """A custom altitude produces valid output."""
         dem = np.random.default_rng(99).uniform(100, 200, (30, 30))
-        hs = compute_hillshade(dem, cellsize=5.0, azimuth=180.0, altitude=30.0)
+        hs = compute_hillshade(dem, cellsize=5.0, altitude=30.0)
         assert hs.shape == dem.shape
         assert hs.min() >= 0.0
         assert hs.max() <= 1.0

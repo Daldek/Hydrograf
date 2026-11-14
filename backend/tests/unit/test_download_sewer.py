@@ -55,7 +55,6 @@ def sewer_config_file(tmp_path, sewer_lines_gpkg):
                 "points_layer": None,
                 "assumed_crs": None,
             },
-            "attribute_mapping": {"diameter": "srednica_mm"},
         }
     }
 
@@ -129,7 +128,6 @@ class TestLoadSewerData:
                     "points_layer": None,
                     "assumed_crs": None,
                 },
-                "attribute_mapping": {},
             }
         }
         points, lines = load_sewer_data(cfg)

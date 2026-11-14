@@ -108,13 +108,8 @@
         return value === null || value === undefined ? '—' : value.toFixed(decimals);
     }
 
-    /** Polish plural: 1 zlewnia, 2–4 zlewnie, 5+ zlewni. */
-    function plural(n, one, few, many) {
-        if (n === 1) return one;
-        var mod10 = n % 10;
-        var mod100 = n % 100;
-        return (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) ? few : many;
-    }
+    /** Polish plural (app.js): 1 zlewnia, 2–4 zlewnie, 5+ zlewni. */
+    function plural(n, one, few, many) { return Hydrograf.app.plural(n, one, few, many); }
 
     /** The threshold of the streams on the map, the network the points snap to (D1). */
     function threshold() {

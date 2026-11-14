@@ -11,26 +11,26 @@ import pytest
 import rasterio
 from scipy.ndimage import binary_erosion, generic_filter
 
-from core.hydrology import D8_DIRECTIONS, D8_VALID, _internal_sinks
-from core.morphometry_raster import (
-    _compute_gradients,
-    compute_aspect_from_gradients,
-    gradient_strips,
-)
-from core.raster_io import save_raster_geotiff
-from scripts.process_dem import (
+from core.hydrology import (
+    D8_DIRECTIONS,
+    D8_VALID,
     VALID_D8_SET,
-    _slope_aspect_twi,
+    _internal_sinks,
     burn_streams_into_dem,
-    compute_aspect,
-    compute_strahler_from_fdir,
-    compute_strahler_order,
-    compute_twi,
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
     recompute_flow_accumulation,
 )
+from core.morphometry_raster import (
+    _compute_gradients,
+    compute_aspect_from_gradients,
+    compute_strahler_from_fdir,
+    compute_twi,
+    gradient_strips,
+)
+from core.raster_io import save_raster_geotiff
+from scripts.process_dem import _slope_aspect_twi
 from tests.dem_equivalence import (
     DEM_CASES,
     assert_identical,
@@ -763,8 +763,12 @@ class TestBurnStreamsIntoDem:
         np.testing.assert_array_equal(burned, original)
 
 
-class TestComputeAspect:
-    """Tests for compute_aspect()."""
+class TestComputeAspectFromGradients:
+    """Tests for compute_aspect_from_gradients() of the Sobel gradients of a DEM."""
+
+    @staticmethod
+    def aspect(dem):
+        return compute_aspect_from_gradients(*_compute_gradients(dem, 1.0, NODATA))
 
     def test_north_facing_slope(self):
         """Slope descending northward (row 0 is lower) → aspect ≈ 0° (N)."""
@@ -778,7 +782,7 @@ class TestComputeAspect:
                 [30.0, 30.0, 30.0],
             ]
         )
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         # Center cell should face north (~0° or ~360°)
         center = aspect[1, 1]
         assert center >= 0  # not flat
@@ -793,7 +797,7 @@ class TestComputeAspect:
                 [30.0, 20.0, 10.0],
             ]
         )
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         center = aspect[1, 1]
         assert center >= 0
         assert 45 < center < 135  # roughly east
@@ -807,7 +811,7 @@ class TestComputeAspect:
                 [10.0, 10.0, 10.0],
             ]
         )
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         center = aspect[1, 1]
         assert center >= 0
         assert 135 < center < 225  # roughly south
@@ -821,7 +825,7 @@ class TestComputeAspect:
                 [10.0, 20.0, 30.0],
             ]
         )
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         center = aspect[1, 1]
         assert center >= 0
         assert 225 < center < 315  # roughly west
@@ -829,7 +833,7 @@ class TestComputeAspect:
     def test_flat_area_negative(self):
         """Flat DEM → aspect = -1 for all cells."""
         dem = np.full((5, 5), 100.0)
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         # All interior cells should be flat (-1)
         assert aspect[2, 2] == -1.0
 
@@ -842,7 +846,7 @@ class TestComputeAspect:
                 [10.0, 20.0, 30.0],
             ]
         )
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         assert aspect[0, 0] == -1.0
 
     def test_output_range_0_360(self):
@@ -851,7 +855,7 @@ class TestComputeAspect:
         for i in range(10):
             for j in range(10):
                 dem[i, j] = 200.0 - i * 10.0 - j * 5.0
-        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        aspect = self.aspect(dem)
         valid = aspect[aspect >= 0]
         assert np.all(valid >= 0)
         assert np.all(valid < 360)
@@ -1194,76 +1198,6 @@ class TestHoleFillingAndAccumulationInNumba:
         assert sinks.size > 20
         # Pits next to nodata or on the frame are outlets, not sinks
         assert sinks.size < np.count_nonzero(no_direction & has_data)
-
-
-class TestComputeStrahlerOrder:
-    """Tests for compute_strahler_order()."""
-
-    @pytest.fixture()
-    def v_shaped_dem_20x20(self):
-        """
-        Create 20x20 V-shaped DEM (valley running south down center).
-
-        Elevation profile: higher at edges (east/west), lowest at center column,
-        decreasing southward. This creates two ridge-to-valley streams that merge.
-        """
-        dem = np.zeros((20, 20), dtype=np.float64)
-        for i in range(20):
-            for j in range(20):
-                # V-shape across columns: center (col 10) is low
-                dist_from_center = abs(j - 10)
-                # Decrease south (row increases)
-                dem[i, j] = 200.0 + dist_from_center * 10.0 - i * 5.0
-        # Ensure no negative
-        dem = np.maximum(dem, 1.0)
-
-        metadata = {
-            "ncols": 20,
-            "nrows": 20,
-            "xllcorner": 500000.0,
-            "yllcorner": 300000.0,
-            "cellsize": 5.0,
-            "nodata_value": NODATA,
-        }
-        return dem, metadata
-
-    def test_returns_correct_shape(self, v_shaped_dem_20x20):
-        """Output array has same shape as input DEM."""
-        dem, metadata = v_shaped_dem_20x20
-        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
-        assert strahler.shape == dem.shape
-
-    def test_non_stream_cells_zero(self, v_shaped_dem_20x20):
-        """Non-stream cells have Strahler order 0."""
-        dem, metadata = v_shaped_dem_20x20
-        strahler = compute_strahler_order(dem, metadata, stream_threshold=50)
-        # Many cells should be 0 (non-stream)
-        assert np.sum(strahler == 0) > 0
-
-    def test_headwaters_order_one(self, v_shaped_dem_20x20):
-        """Headwater stream cells have Strahler order 1."""
-        dem, metadata = v_shaped_dem_20x20
-        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
-        # At least some cells should have order 1
-        assert np.any(strahler == 1)
-
-    def test_max_order_increases_with_network(self, v_shaped_dem_20x20):
-        """Lower threshold → more stream cells → potentially higher max order."""
-        dem, metadata = v_shaped_dem_20x20
-        strahler_low = compute_strahler_order(dem, metadata, stream_threshold=3)
-        strahler_high = compute_strahler_order(dem, metadata, stream_threshold=100)
-
-        max_low = int(strahler_low.max())
-        max_high = int(strahler_high.max()) if np.any(strahler_high > 0) else 0
-
-        # More stream cells should give same or higher max order
-        assert max_low >= max_high
-
-    def test_output_dtype_uint8(self, v_shaped_dem_20x20):
-        """Output array is uint8."""
-        dem, metadata = v_shaped_dem_20x20
-        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
-        assert strahler.dtype == np.uint8
 
 
 class TestBurnStreamsMultilayer:

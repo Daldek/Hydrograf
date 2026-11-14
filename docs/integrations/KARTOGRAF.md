@@ -814,7 +814,6 @@ from core.hydrology import raise_buildings_in_dem
 dem = raise_buildings_in_dem(
     dem=dem_array,
     transform=rasterio_transform,
-    crs_epsg=2180,
     building_gpkg="buildings.gpkg",
     building_raise_m=5.0,
 )

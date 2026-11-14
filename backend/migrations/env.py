@@ -6,11 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Import your models' metadata here
-# from models.database import Base
-# target_metadata = Base.metadata
-
-# For now, use None until models are created
+# The migrations are written by hand: no model metadata for autogenerate
 target_metadata = None
 
 # Alembic Config object

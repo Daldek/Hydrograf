@@ -166,10 +166,6 @@ class Settings(BaseSettings):
         Logging level (DEBUG, INFO, WARNING, ERROR)
     cors_origins : str
         Comma-separated list of allowed CORS origins
-    imgw_grid_spacing_km : float
-        Grid spacing for IMGW data preprocessing [km]
-    imgw_rate_limit_delay_s : float
-        Delay between IMGW API requests [s]
     """
 
     # Database - can be set via DATABASE_URL or individual components
@@ -301,10 +297,6 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     admin_api_key_file: str = ""
 
-    # IMGW preprocessing
-    imgw_grid_spacing_km: float = 2.0
-    imgw_rate_limit_delay_s: float = 0.5
-
     @property
     def database_url(self) -> str:
         """Build PostgreSQL connection URL."""
@@ -353,24 +345,15 @@ def get_settings() -> Settings:
 # YAML pipeline configuration
 # ---------------------------------------------------------------------------
 
+# The keys that the pipeline reads (scripts/bootstrap.py, scripts/process_dem.py,
+# scripts/download_sewer.py and the sewer routes of the admin API)
 _DEFAULT_CONFIG = {
-    "database": {
-        "host": "localhost",
-        "port": 5432,
-        "name": "hydro_db",
-        "user": "hydro_user",
-        "password": "",
-    },
     "dem": {
-        "resolution": "5m",
-        "thresholds_m2": [10000, 100000, 1000000],
-        "burn_depth_m": 2.0,
         # BDOT10k streams burned into the DEM: "all" or "main" (core.hydrology)
         "stream_burning": "all",
         # Interpolate the nodata the DEM data encloses before the fill, so that it
         # drains nothing (core.hydrology.interpolate_enclosed_nodata)
         "fill_enclosed_nodata": False,
-        "building_raise_m": 5.0,
     },
     "soil": {
         # The SoilGrids layers of the soil groups of bootstrap step 5 (ADR-079):
@@ -379,53 +362,18 @@ _DEFAULT_CONFIG = {
         "hsg_depth_rule": DEFAULT_HSG_DEPTH_RULE,
     },
     "paths": {
-        "output_dir": "output",
         "cache_dir": "cache",
-        "frontend_data": "frontend/data",
-        "dem_tiles_dir": "frontend/data/dem_tiles",
-    },
-    "steps": {
-        "download_nmt": True,
-        "process_dem": True,
-        "landcover": True,
-        "soil_hsg": True,
-        "precipitation": True,
-        "depressions": False,
-        "tiles": True,
-        "overlays": True,
     },
     "sewer": {
         "enabled": False,
         "inlet_burn_depth_m": 0.5,
-        "snap_tolerance_m": 2.0,
         "source": {
             "type": "file",
             "path": None,
-            "url": None,
-            "layer": None,
-            "connection": None,
-            "table": None,
             "lines_layer": None,
             "points_layer": None,
             "assumed_crs": None,
             "format": "auto",
-        },
-        "attribute_mapping": {
-            "diameter": None,
-            "width": None,
-            "height": None,
-            "cross_section": None,
-            "invert_start": None,
-            "invert_end": None,
-            "depth": None,
-            "material": None,
-            "manning": None,
-            "flow_direction": None,
-            "node_type": None,
-            "rim_elevation": None,
-            "max_depth": None,
-            "ponded_area": None,
-            "outfall_type": None,
         },
         "field_mapping": {
             "node_id": "id",
@@ -479,12 +427,3 @@ def load_config(path: str) -> dict[str, Any]:
             user_config = yaml.safe_load(f) or {}
         config = _deep_merge(config, user_config)
     return config
-
-
-def get_database_url_from_config(config: dict[str, Any]) -> str:
-    """Build a PostgreSQL connection URL from YAML config dict."""
-    db = config["database"]
-    return (
-        f"postgresql://{db['user']}:{db['password']}"
-        f"@{db['host']}:{db['port']}/{db['name']}"
-    )

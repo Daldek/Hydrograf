@@ -244,27 +244,8 @@
         _request++;
     }
 
-    /**
-     * Deactivate profile and clean up.
-     */
-    function deactivateProfile() {
-        Hydrograf.map.cancelDrawing();
-        Hydrograf.map.clearProfileLine();
-        Hydrograf.map.clearProfileHoverMarker();
-        Hydrograf.charts.destroyChart('chart-profile-standalone');
-        clearProviderLines();
-        _lineLatLngs = null;
-        _request++;
-    }
-
-    function init() {
-        // No buttons to bind — drawing is activated via mode toolbar
-    }
-
     window.Hydrograf.profile = {
-        init: init,
         activateDrawProfile: activateDrawProfile,
-        deactivateProfile: deactivateProfile,
         hideProfilePanel: hideProfilePanel,
         refresh: refresh,
         getLineLatLngs: function () { return _lineLatLngs; },

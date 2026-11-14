@@ -33,7 +33,8 @@
     var _CACHE_MAX = 50;
     var _CACHE_TTL = 300000; // 5 minutes
 
-    function _cacheKey(prefix, args) {
+    /** Cache key of a call: the prefix and every further argument. */
+    function _cacheKey(prefix) {
         return prefix + ':' + Array.prototype.slice.call(arguments, 1).map(function(a) {
             return typeof a === 'number' ? a.toFixed(5) : String(a);
         }).join(',');
@@ -184,24 +185,6 @@
      */
     async function getLayers() {
         const response = await apiFetch('/api/layers');
-        if (!response.ok) await handleError(response);
-        return response.json();
-    }
-
-    /**
-     * Get filtered depressions as GeoJSON.
-     *
-     * @param {Object} filters - { min_volume, max_volume, min_area, max_area }
-     * @returns {Promise<Object>} GeoJSON FeatureCollection
-     */
-    async function getDepressions(filters) {
-        const params = new URLSearchParams();
-        if (filters.min_volume !== undefined) params.set('min_volume', filters.min_volume);
-        if (filters.max_volume !== undefined) params.set('max_volume', filters.max_volume);
-        if (filters.min_area !== undefined) params.set('min_area', filters.min_area);
-        if (filters.max_area !== undefined) params.set('max_area', filters.max_area);
-
-        const response = await apiFetch('/api/depressions?' + params.toString());
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -367,7 +350,6 @@
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
         getLayers: getLayers,
-        getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,
         delineateNetwork: delineateNetwork,
