@@ -61,6 +61,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
+      - name: GDAL development files (newest Python)
+        # Fiona publishes wheels only for the Pythons released before it, so on
+        # the newest Python uv builds it from the sdist, which needs gdal-config.
+        if: matrix.experimental
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgdal-dev
       - name: Gate
         shell: bash
         env:
