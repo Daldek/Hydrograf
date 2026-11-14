@@ -1,6 +1,6 @@
 # Regulamin serwisu {{service_name}}
 
-Wersja 1.0, obowiązuje od {{terms_effective}}
+Wersja 1.1, obowiązuje od {{terms_effective}}
 
 ## 1. Postanowienia ogólne
 
@@ -62,7 +62,7 @@ Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 ### ČHMÚ
 
 > Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
-> Dane ČHMÚ zostały przetworzone (…)
+> Dane ČHMÚ zostały przetworzone
 <!-- /block -->
 
 <!-- block: gugik -->
@@ -156,6 +156,7 @@ Uwagi, pytania i błędy zgłaszaj na adres [{{operator_email}}](mailto:{{operat
 
 ## Historia zmian
 
+- **1.1**: linia o przetworzeniu danych ČHMÚ bez opisu sposobu przetworzenia.
 - **1.0**: pierwsza wersja.
 
 Poprzednie wersje regulaminu są w historii jego wzoru w repozytorium Nogat: <https://github.com/Daldek/Nogat/commits/develop/design/kit/nogat-terms.md>

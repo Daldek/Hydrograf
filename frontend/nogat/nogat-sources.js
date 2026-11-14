@@ -20,6 +20,7 @@ export const LINES = {
   PP: "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone",
   C: "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
   CK: "Źródło: ČHMÚ, CC BY 4.0",
+  CP: "Dane ČHMÚ zostały przetworzone",
   G: "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, `<products>` (wytworzono `<period>`, pozyskano `<date>`); dane przetworzone",
   GK: "Źródło: GUGiK (`<products>`)",
   SG: "Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); dane przetworzone",
@@ -81,7 +82,8 @@ const URL_IN_TEXT = /https?:\/\/[^\s()]+[^\s().,;:]/g;
 let counter = 0;
 
 /**
- * Strings of a JSON array, each once in their order; anything else gives none.
+ * Strings of a JSON array, each once in their order; old CP lines count as the
+ * canonical CP (DEV-20.4). Anything other than an array gives none.
  *
  * @param {unknown} value an array or the JSON text of one
  * @returns {string[]} the lines
@@ -96,7 +98,11 @@ export function lines(value) {
     }
   }
   if (!Array.isArray(list)) return [];
-  return [...new Set(list.filter((line) => typeof line === "string" && line.trim() !== ""))];
+  return [...new Set(
+    list
+      .filter((line) => typeof line === "string" && line.trim() !== "")
+      .map((line) => (/^Dane ČHMÚ zostały przetworzone \(.*\)$/.test(line) ? LINES.CP : line)),
+  )];
 }
 
 /**
