@@ -1518,8 +1518,12 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEM_DIR: ${DEM_DIR:-/data/nmt}
+      # The admin key (ADR-086). A deployment keeps it in one host file,
+      # ADMIN_API_KEY_HOST_FILE of .env (~/.config/nogat/keys/hydrograf-admin.key, mode
+      # 0640, group HYDROGRAF_SECRETS_GID), mounted below; given, the API reads it.
+      # ADMIN_API_KEY is for development only and wins over the file when set.
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
-      ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_HOST_FILE:+/run/secrets/admin_api_key}
       # The ecosystem's GUIs for the menu „Aplikacje” (ADR-082); empty, the table
       # `gui` of nogat.toml, and without it no menu
       HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
@@ -1552,6 +1556,10 @@ services:
         limits:
           memory: 8G
           cpus: "2.0"
+    # The container's user (UID 999) joins the group of the admin key file (mode 0640):
+    # HYDROGRAF_SECRETS_GID, the file's numeric group on the host; default the user's own
+    group_add:
+      - "${HYDROGRAF_SECRETS_GID:-999}"
     volumes:
       - ${HYDROGRAF_CACHE_PATH:-./cache}:/cache
       # The daily statistics are <data_dir>/hydrograf/stats.jsonl here (DEV-15.11)
@@ -1562,6 +1570,9 @@ services:
       # (NOGAT_CONFIG of .env; none: an empty file, no regulamin)
       - ./frontend/nogat:/frontend/nogat:ro
       - ${NOGAT_CONFIG:-/dev/null}:/config/nogat.toml:ro
+      # The deployment's admin key file (ADMIN_API_KEY_HOST_FILE of .env; none: an empty
+      # file, which ADMIN_API_KEY_FILE then does not name)
+      - ${ADMIN_API_KEY_HOST_FILE:-/dev/null}:/run/secrets/admin_api_key:ro
       # The access, application and lifecycle logs, deleted by the API after 14 days
       # (Nogat DEV-12.6): <state_dir>/hydrograf of the host, writable by UID 999 like
       # data/ (the default ./state/hydrograf too)
@@ -2083,7 +2094,7 @@ The healthcheck of the `api` container calls it, and in production that of nginx
 2. Install Docker
 3. Clone repo: `git clone ...`
 4. Restore the database from the backup
-5. Deploy: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (with `.env` and the secrets `secrets/db_password.txt` and `secrets/admin_api_key.txt`)
+5. Deploy: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (with `.env`, the secret `secrets/db_password.txt` and the admin key file `~/.config/nogat/keys/hydrograf-admin.key` of `ADMIN_API_KEY_HOST_FILE`)
 6. Update DNS (if applicable)
 
 **RTO (Recovery Time Objective):** < 4 hours  
