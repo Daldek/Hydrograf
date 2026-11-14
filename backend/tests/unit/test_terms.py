@@ -105,7 +105,7 @@ class TestBuildTerms:
         page = terms.page
         # Every field is filled: the project's, the operator's and the address
         assert "<h1>Regulamin serwisu Hydrograf</h1>" in page
-        assert "Wersja 1.1, obowiązuje od 2026-11-20" in page
+        assert "Wersja 1.0, obowiązuje od 2026-11-20" in page
         assert "Serwis prowadzi Jan Kowalski" in page
         assert 'href="mailto:kontakt@example.pl"' in page
         assert "Ruch do serwisu przechodzi przez Cloudflare, Inc." in page
