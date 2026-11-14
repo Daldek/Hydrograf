@@ -99,7 +99,6 @@ def normalize_elevation(
 def compute_hillshade(
     dem: np.ndarray,
     cellsize: float,
-    azimuth: float = 315.0,
     altitude: float = 45.0,
 ) -> np.ndarray:
     """
@@ -107,8 +106,6 @@ def compute_hillshade(
 
     Uses 4 light directions (NW, NE, SE, SW) averaged with weights.
     NW (315 deg) is dominant (conventional cartographic lighting).
-    The ``azimuth`` parameter is kept for backward compatibility but
-    is not used — the 4-direction blend replaces single-source lighting.
 
     Parameters
     ----------
@@ -116,8 +113,6 @@ def compute_hillshade(
         DEM array (in metric CRS for correct gradients)
     cellsize : float
         Cell size in meters
-    azimuth : float
-        Kept for backward compatibility (ignored in multi-directional mode)
     altitude : float
         Light source altitude in degrees (default: 45)
 

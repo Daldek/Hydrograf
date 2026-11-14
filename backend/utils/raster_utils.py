@@ -1,8 +1,8 @@
 """
 Utilities for raster operations including VRT mosaic creation.
 
-This module provides functions for working with multiple DEM tiles,
-creating virtual rasters (VRT), and reading mosaicked data.
+This module provides functions for working with multiple DEM tiles: creating
+virtual rasters (VRT), resampling and describing mosaics.
 
 VRT (Virtual Raster) is preferred over physical merge because:
 - No data duplication on disk
@@ -18,8 +18,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -513,56 +511,6 @@ def _create_mosaic_rasterio(
     return output_path
 
 
-def read_vrt_as_array(
-    vrt_path: Path,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """
-    Read VRT mosaic as numpy array with metadata.
-
-    Parameters
-    ----------
-    vrt_path : Path
-        Path to VRT file
-
-    Returns
-    -------
-    tuple
-        (data array, metadata dict with transform, crs, nodata, shape)
-
-    Examples
-    --------
-    >>> data, meta = read_vrt_as_array(Path("mosaic.vrt"))
-    >>> print(data.shape, meta['nodata'])
-    (5000, 6000) -9999.0
-    """
-    import rasterio
-
-    with rasterio.open(vrt_path) as src:
-        data = src.read(1)
-        metadata = {
-            "transform": src.transform,
-            "crs": src.crs,
-            "nodata": src.nodata,
-            "width": src.width,
-            "height": src.height,
-            "bounds": src.bounds,
-            "dtype": src.dtypes[0],
-            # Extract corner and cellsize for compatibility with ASCII grid format
-            "xllcorner": src.bounds.left,
-            "yllcorner": src.bounds.bottom,
-            "cellsize": src.transform.a,  # Pixel width (assumes square pixels)
-            "ncols": src.width,
-            "nrows": src.height,
-            "nodata_value": src.nodata if src.nodata is not None else -9999.0,
-        }
-
-    logger.info(f"Read VRT: {metadata['nrows']}x{metadata['ncols']} cells")
-    logger.info(f"Bounds: {metadata['bounds']}")
-    logger.info(f"Cell size: {metadata['cellsize']} m")
-
-    return data, metadata
-
-
 def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
     """
     Get information about VRT mosaic without loading data.
@@ -594,90 +542,6 @@ def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
         }
 
     return info
-
-
-def validate_tiles_compatibility(input_files: list[Path]) -> dict[str, Any]:
-    """
-    Validate that all tiles are compatible for mosaicking.
-
-    Checks CRS, cell size, and data type consistency.
-
-    Parameters
-    ----------
-    input_files : List[Path]
-        List of raster files to validate
-
-    Returns
-    -------
-    dict
-        Validation results with 'valid', 'issues', and 'summary'
-    """
-    import rasterio
-
-    results: dict[str, Any] = {
-        "valid": True,
-        "issues": [],
-        "summary": {},
-    }
-
-    if not input_files:
-        results["valid"] = False
-        results["issues"].append("No input files provided")
-        return results
-
-    # Collect metadata from all files
-    metadata_list = []
-    for f in input_files:
-        if not f.exists():
-            results["issues"].append(f"File not found: {f}")
-            continue
-
-        try:
-            with rasterio.open(f) as src:
-                metadata_list.append(
-                    {
-                        "file": f.name,
-                        "crs": str(src.crs),
-                        "cell_size": round(src.transform.a, 6),
-                        "dtype": src.dtypes[0],
-                        "nodata": src.nodata,
-                    }
-                )
-        except Exception as e:
-            results["issues"].append(f"Cannot read {f}: {e}")
-
-    if not metadata_list:
-        results["valid"] = False
-        results["issues"].append("No readable files found")
-        return results
-
-    # Check consistency
-    reference = metadata_list[0]
-    results["summary"]["reference_crs"] = reference["crs"]
-    results["summary"]["reference_cell_size"] = reference["cell_size"]
-    results["summary"]["total_files"] = len(metadata_list)
-
-    for meta in metadata_list[1:]:
-        if meta["crs"] != reference["crs"]:
-            results["valid"] = False
-            results["issues"].append(
-                f"CRS mismatch: {meta['file']} has {meta['crs']}, "
-                f"expected {reference['crs']}"
-            )
-
-        if abs(meta["cell_size"] - reference["cell_size"]) > 0.0001:
-            results["valid"] = False
-            results["issues"].append(
-                f"Cell size mismatch: {meta['file']} has {meta['cell_size']}, "
-                f"expected {reference['cell_size']}"
-            )
-
-    if results["valid"]:
-        logger.info(f"All {len(metadata_list)} tiles are compatible")
-    else:
-        logger.warning(f"Tile validation failed: {results['issues']}")
-
-    return results
 
 
 def resample_raster(
@@ -769,57 +633,3 @@ def resample_raster(
     logger.info(f"File size: {output_path.stat().st_size / (1024 * 1024):.1f} MB")
 
     return output_path
-
-
-def convert_asc_to_geotiff(
-    input_asc: Path,
-    output_tif: Path | None = None,
-    compress: str = "LZW",
-) -> Path:
-    """
-    Convert ASCII Grid to GeoTIFF with compression.
-
-    Useful for reducing disk space - LZW-compressed GeoTIFF is typically
-    50-70% smaller than ASCII Grid.
-
-    Parameters
-    ----------
-    input_asc : Path
-        Input ASCII Grid file
-    output_tif : Path, optional
-        Output GeoTIFF path. If None, uses same name with .tif extension.
-    compress : str
-        Compression algorithm: 'LZW', 'DEFLATE', 'ZSTD', 'NONE'
-
-    Returns
-    -------
-    Path
-        Path to created GeoTIFF
-    """
-    if output_tif is None:
-        output_tif = input_asc.with_suffix(".tif")
-
-    cmd = [
-        "gdal_translate",
-        "-of",
-        "GTiff",
-        "-co",
-        f"COMPRESS={compress}",
-        "-co",
-        "TILED=YES",
-        str(input_asc),
-        str(output_tif),
-    ]
-
-    try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"gdal_translate failed: {e.stderr}") from e
-
-    logger.info(f"Converted {input_asc.name} -> {output_tif.name}")
-    logger.info(
-        f"Size reduction: {input_asc.stat().st_size / 1024:.0f} KB -> "
-        f"{output_tif.stat().st_size / 1024:.0f} KB"
-    )
-
-    return output_tif

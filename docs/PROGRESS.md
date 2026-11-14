@@ -26,6 +26,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | The providers' terms linked, not restated | done on `fix/minimal-provider-texts`, not merged | Nogat ECO-065 (develop `b29eada`, kit 0.6.0; ADR-083 and ADR-084 amended): PMAXTP's `terms_notice` is RK alone, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”, without the notice N; `core/terms.py` without `imgw-terms`; `analyze_watershed` tells terms lines by „Regulamin <whose terms>: <address>” and drops the retired lines on merge; guide, slides and PDF; kit and hand-off schema copied. Next 17. |
 | Regulamin 1.0 corrected, GUGiK's and ISRIC's lines, logs of ECO-066 | done on `fix/terms-1.0`, not merged | Step 3 of Nogat's plan `2026-11-13-terms-fix` (approved 2026-11-13; ADR-085): kit 0.6.2 (Nogat `5703c53`), `BLOCKS` without `copernicus` and `esri`; G and SG in every response, export, image and hand-off of NMT, BDOT10k and SoilGrids data, dated from `sources` of `instance.json`, GK and SK in the strip; the orthophoto of GUGiK; the libraries in `frontend/vendor/`, CSP `'self'`; the logs of Nogat ECO-066 (`core/nogat_logging.py`, `<state_dir>/hydrograf/logs`, nginx without logs, Docker `local`). Next 19. |
 | CI of 2026-11-14 | done on `fix/ci-2026-11-14`, not merged | The `audit` job: opentelemetry-api 1.45.2 for CVE-2026-126360 (`pip-audit` clean). The `gate` job of Python 3.15 (reported only): Fiona 1.10.1 has no 3.15 wheel, so the job installs `libgdal-dev` and uv builds Fiona from the sdist (checked locally: Fiona on the system GDAL beside rasterio's bundled GDAL on 3.15). When Fiona publishes 3.15 wheels the step can go. |
+| Dead and duplicated code | done on `refactor/dead-code`, not merged | The author's request of 2026-11-14: functions without callers or only with their own tests, the re-exports of `scripts/process_dem.py`, settings and `config.yaml` keys that nothing read, the staging LAN binding of S7 and front-end functions and exports without callers removed (CHANGELOG, Removed); the rmtree helper, the sheet box and the map colour helpers have one implementation. Kept on purpose: the routes, validators and response fields that vulture flags, the reference functions of the equivalence tests (`zonal_min`, `zonal_elevation_histogram`, `normalize_elevation`), the CRS constants of TECHNICAL_DEBT and the old columns of the feedback (Next 15). `stream_catchments.hydraulic_length_km` is now written and never read: dropping it needs a migration. |
 | Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; on `feature/compact-sources` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; on `fix/minimal-provider-texts` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
@@ -107,9 +108,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    (`invalid_parameters`, `invalid_bbox`, `invalid_boundary_file`) are the library's; the gateway
    errors of nginx are not problem documents (CLAUDE.md, AGI-6.3).
 9. **Small items carried over from earlier sessions** (no other home):
-   - `docker-compose.staging.yml` still publishes the staging nginx on `192.168.88.9:8081`, to be
-     removed after S7 (the author's decision in S4; S7 ran in place), and
-     `scripts/staging-compose.sh` accepts only the branch `feature/store-migration`.
+   - `scripts/staging-compose.sh` accepts only the branch `feature/store-migration` (the LAN
+     binding of the staging nginx went on 2026-11-14, after S7).
    - „Identyfikuj” reads the water bodies from `frontend/data/bdot_lakes.geojson`
      (`core/point_info.py`), not from the database.
    - `area_km2` is rounded to 4 decimals in the precise mode (`api/endpoints/watershed.py`) and to
@@ -121,9 +121,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - Report to Hydrolog: its conversion of the CN to AMC I/III rounds the CN to an integer
      (`runoff/scs_cn.py`).
    - The docstring of `api/endpoints/watershed.py` says the precise mode runs a „BFS at 1000m²”
-     (the code takes `DEFAULT_THRESHOLD_M2`, 10 000); `backend/config.yaml.example` lists
-     `thresholds_m2: [1000, 10000, 100000]` and `_DEFAULT_CONFIG` of `core/config.py`
-     `[10000, 100000, 1000000]`, while the pipeline uses `PIPELINE_THRESHOLDS_M2`.
+     (the code takes `DEFAULT_THRESHOLD_M2`, 10 000). The keys of `config.yaml` that nothing
+     read (`dem.thresholds_m2` and others) went on 2026-11-14; the pipeline uses
+     `PIPELINE_THRESHOLDS_M2`.
    - `load_bdot_streams_from_gpkg` (`core/db_bulk.py`) may stop on a feature whose geometry is
      NaN rather than None (found 2026-10-25, not checked again).
    - Bootstrap step 8 warned that `ogr2ogr` and `pmtiles` are missing from the image (the

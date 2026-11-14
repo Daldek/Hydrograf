@@ -248,10 +248,11 @@ Pozostałe parametry (powierzchnia, obwód, długość, wysokości, spadek, ciek
 **Status:** ✅ Zaimplementowane (CP4+)
 
 Obliczenia rastrowe na numpy arrays:
-- `compute_slope(dem, cellsize, nodata)` - spadek terenu (Sobel)
-- `compute_aspect(dem, cellsize, nodata)` - ekspozycja
-- `compute_twi(dem, fac, cellsize, nodata)` - Topographic Wetness Index
-- `compute_strahler_order(fdir, fac, threshold)` - rząd Strahlera
+- `gradient_strips`, `compute_slope_from_gradients`, `compute_aspect_from_gradients` - slope
+  (Sobel) and aspect of the DEM, strip by strip
+- `compute_twi(acc, slope, cellsize)` - Topographic Wetness Index
+- `compute_strahler_from_fdir(flw, acc, threshold)` - Strahler order on the flow
+  directions of the run
 
 ### 3. Moduł: `backend/core/catchment_graph.py`
 

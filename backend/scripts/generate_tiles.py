@@ -20,9 +20,7 @@ Prerequisites:
 import argparse
 import json
 import logging
-import os
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -186,14 +184,11 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
     import gzip
     import sqlite3
 
+    from scripts.clean import force_rmtree
+
     tile_dir = output_dir / prefix
     if tile_dir.exists():
-
-        def _on_error(_func, _path, _exc_info):
-            os.chmod(_path, stat.S_IRWXU)
-            _func(_path)
-
-        shutil.rmtree(tile_dir, onerror=_on_error)
+        force_rmtree(tile_dir)
 
     conn = sqlite3.connect(str(mbtiles_path))
     cursor = conn.execute(

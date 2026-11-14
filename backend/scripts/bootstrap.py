@@ -72,7 +72,12 @@ from utils.kartograf_store import (
     refuse_shared_store,
     store_dir,
 )
-from utils.nmt_coverage import area_2180, check_nmt_coverage, sheet_frame
+from utils.nmt_coverage import (
+    area_2180,
+    check_nmt_coverage,
+    sheet_frame,
+    sheets_bbox_2180,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -211,35 +216,14 @@ def parse_bbox(bbox_str: str) -> tuple[float, float, float, float]:
 
 def sheets_to_bbox(sheets: list[str]) -> tuple[float, float, float, float]:
     """Compute bounding box (WGS84) from list of sheet codes via Kartograf."""
-    from kartograf import SheetParser
     from pyproj import Transformer
 
     t = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
 
-    all_bboxes = [SheetParser(s).get_bbox() for s in sheets]
-    min_x = min(b.min_x for b in all_bboxes)
-    min_y = min(b.min_y for b in all_bboxes)
-    max_x = max(b.max_x for b in all_bboxes)
-    max_y = max(b.max_y for b in all_bboxes)
-
+    min_x, min_y, max_x, max_y = sheets_bbox_2180(sheets)
     lon_min, lat_min = t.transform(min_x, min_y)
     lon_max, lat_max = t.transform(max_x, max_y)
     return (lon_min, lat_min, lon_max, lat_max)
-
-
-def sheets_to_bbox_2180(
-    sheets: list[str],
-) -> tuple[float, float, float, float]:
-    """Compute bounding box (EPSG:2180) from list of sheet codes."""
-    from kartograf import SheetParser
-
-    all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
-    return (
-        min(b.min_x for b in all_bboxes),
-        min(b.min_y for b in all_bboxes),
-        max(b.max_x for b in all_bboxes),
-        max(b.max_y for b in all_bboxes),
-    )
 
 
 def resolve_sheets(
@@ -708,7 +692,7 @@ def _bdot10k_packages(
 
     if bdot10k is not None:
         return bdot10k
-    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+    bbox_2180 = mosaic_bbox_2180 or sheets_bbox_2180(sheets)
     return download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
 
 
@@ -816,7 +800,7 @@ def step_soil_hsg(
         hsg_path = report.files[0].file.path
 
     # --- 2. Clip + warp to project bbox in EPSG:2180 ---
-    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+    bbox_2180 = mosaic_bbox_2180 or sheets_bbox_2180(sheets)
     min_x, min_y, max_x, max_y = bbox_2180
 
     from rasterio.transform import from_bounds
@@ -1143,15 +1127,9 @@ def step_overlays(output_dir: Path) -> str:
     dem_tiles_meta = data_dir / "dem_tiles.json"
     if dem_input is not None:
         if dem_tiles_dir.exists():
-            import shutil as _shutil
-            import stat as _stat
+            from scripts.clean import force_rmtree
 
-            def _force_remove(_func, _path, _exc_info):
-                """Handle permission errors in rmtree (rootless Docker UID remap)."""
-                os.chmod(_path, _stat.S_IRWXU)
-                _func(_path)
-
-            _shutil.rmtree(dem_tiles_dir, onerror=_force_remove)
+            force_rmtree(dem_tiles_dir)
             logger.info("Removed old DEM tiles for regeneration")
         logger.info("Generating DEM tile pyramid...")
         from scripts.generate_dem_tiles import generate_tiles as gen_dem_tiles

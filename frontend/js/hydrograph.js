@@ -14,7 +14,6 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
-    var scenariosLoaded = false;
     var _debounceTimer = null;
     var _DEBOUNCE_MS = 300;
     var _requestId = 0;
@@ -203,8 +202,6 @@
     // ── Scenarios ──────────────────────────────────────────────────────
 
     async function initScenarioForm() {
-        if (scenariosLoaded) return;
-
         try {
             var scenarios = await Hydrograf.api.getScenarios();
 
@@ -235,8 +232,6 @@
             if (Hydrograf.advanced) {
                 Hydrograf.advanced.setAreaLimit(scenarios.area_limit_km2);
             }
-
-            scenariosLoaded = true;
         } catch (err) {
             console.warn('Failed to load scenarios:', err.message);
         }
@@ -459,11 +454,6 @@
         'from_lutz': 'Lutz',
         'from_urban_regression': 'Regresja urban.',
     };
-    var HIETOGRAM_LABELS = {
-        'beta': 'Beta',
-        'block': 'Blokowy',
-        'euler_ii': 'DVWK (Euler II)',
-    };
 
     function displayMetadata(meta) {
         var container = document.getElementById('hydrograph-info');
@@ -580,7 +570,6 @@
 
     window.Hydrograf.hydrograph = {
         init: init,
-        initScenarioForm: initScenarioForm,
         generateHydrograph: generateHydrograph,
     };
 })();

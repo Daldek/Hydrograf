@@ -12,7 +12,7 @@ The missing sheets are those of Kartograf's sheet grid that overlap the uncovere
 """
 
 import logging
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from dataclasses import dataclass
 
 import shapely
@@ -65,6 +65,19 @@ def sheet_frame(sheet: str) -> Polygon:
         box(frame.min_x, frame.min_y, frame.max_x, frame.max_y)
     )
     return projected
+
+
+def sheets_bbox_2180(sheets: Iterable[str]) -> tuple[float, float, float, float]:
+    """Return the box (EPSG:2180) of the frames of the sheets, from Kartograf."""
+    from kartograf import SheetParser
+
+    frames = [SheetParser(code).get_bbox(crs="EPSG:2180") for code in sheets]
+    return (
+        min(frame.min_x for frame in frames),
+        min(frame.min_y for frame in frames),
+        max(frame.max_x for frame in frames),
+        max(frame.max_y for frame in frames),
+    )
 
 
 def area_2180(area_wgs84: BaseGeometry) -> BaseGeometry:

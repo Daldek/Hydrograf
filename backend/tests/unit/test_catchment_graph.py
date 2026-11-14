@@ -46,15 +46,11 @@ def small_graph():
     cg._elev_max = np.array([200.0, 210.0, 195.0, 180.0], dtype=np.float32)
     cg._elev_mean = np.array([175.0, 185.0, 167.5, 150.0], dtype=np.float32)
     cg._slope_mean = np.array([5.0, 6.0, 4.0, 3.0], dtype=np.float32)
-    cg._perimeter_km = np.array([10.0, 8.0, 15.0, 20.0], dtype=np.float32)
     cg._stream_length_km = np.array([2.0, 1.5, 3.0, 4.0], dtype=np.float32)
-    # Hydraulic length: max flow path distance to outlet per sub-catchment [km]
-    # Node 0 (headwater, far upstream): 12.5 km from most remote cell to global outlet
-    # Node 1 (headwater, tributary): 10.0 km
-    # Node 2 (mid-basin): 8.0 km
-    # Node 3 (outlet sub-catchment): 5.0 km
-    cg._hydraulic_length_km = np.array([12.5, 10.0, 8.0, 5.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
+    # Flow distance of the most remote cell of each sub-catchment to the global
+    # outlet [m]: node 0 (headwater, far upstream) 12.5 km, node 1 (headwater,
+    # tributary) 10.0 km, node 2 (mid-basin) 8.0 km, node 3 (outlet) 5.0 km
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0], dtype=np.float64)
 
     # Odleglosc spływu w PUNKCIE ujscia kazdej podzlewni (baza dla
@@ -329,9 +325,7 @@ class TestCatchmentGraphAggregateStats:
         cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
         cg._elev_mean = np.array([175.0, 185.0], dtype=np.float32)
         cg._slope_mean = np.array([5.0, 6.0], dtype=np.float32)
-        cg._perimeter_km = np.array([10.0, 8.0], dtype=np.float32)
         cg._stream_length_km = np.array([2.0, 1.5], dtype=np.float32)
-        cg._hydraulic_length_km = np.array([12.5, 10.0], dtype=np.float32)
         cg._strahler = np.array([1, 1], dtype=np.int8)
         cg._max_flow_dist_m = np.array([12500.0, 10000.0], dtype=np.float64)
         cg._histograms = [None, None]
@@ -547,9 +541,7 @@ class TestTraceMainChannel:
         cg._elev_max = np.array([250.0, 250.0, 150.0], dtype=np.float32)
         cg._elev_mean = np.array([225.0, 225.0, 125.0], dtype=np.float32)
         cg._slope_mean = np.array([5.0, 5.0, 3.0], dtype=np.float32)
-        cg._perimeter_km = np.array([6.0, 6.0, 10.0], dtype=np.float32)
         cg._stream_length_km = np.array([2.0, 2.0, 3.0], dtype=np.float32)
-        cg._hydraulic_length_km = np.array([10.0, 10.0, 5.0], dtype=np.float32)
         cg._strahler = np.array([1, 1, 2], dtype=np.int8)
         cg._max_flow_dist_m = np.array([10000.0, 10000.0, 5000.0], dtype=np.float64)
         cg._histograms = [None] * n
@@ -602,9 +594,7 @@ class TestContiguousRealChannel:
         cg._elev_max = cg._elev_min + 10.0
         cg._elev_mean = cg._elev_min + 5.0
         cg._slope_mean = np.full(n, 3.0, dtype=np.float32)
-        cg._perimeter_km = np.full(n, 5.0, dtype=np.float32)
         cg._stream_length_km = np.array(seg_lengths_km, dtype=np.float32)
-        cg._hydraulic_length_km = np.full(n, 10.0, dtype=np.float32)
         cg._strahler = np.ones(n, dtype=np.int8)
         cg._histograms = [None] * n
 
@@ -960,11 +950,7 @@ class TestHydraulicLength:
         assert stats["hydraulic_length_km"] >= main_ch["main_channel_length_km"]
 
     def test_nan_handling(self):
-        """Without max_flow_dist_m loaded and without outlet_idx, return None.
-
-        The legacy per-node _hydraulic_length_km array (set to NaN here) is
-        no longer read by aggregate_stats; it is kept only for DB compatibility.
-        """
+        """Without max_flow_dist_m loaded and without outlet_idx, return None."""
         cg = CatchmentGraph()
         n = 2
         cg._n = n
@@ -976,9 +962,7 @@ class TestHydraulicLength:
         cg._elev_max = np.full(n, np.nan, dtype=np.float32)
         cg._elev_mean = np.full(n, np.nan, dtype=np.float32)
         cg._slope_mean = np.full(n, np.nan, dtype=np.float32)
-        cg._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         cg._stream_length_km = np.full(n, np.nan, dtype=np.float32)
-        cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         cg._strahler = np.zeros(n, dtype=np.int8)
         cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
 

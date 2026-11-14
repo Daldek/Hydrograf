@@ -733,11 +733,9 @@ class TestFlowPathAggregation:
         cg._elev_max = np.array([200.0, 210.0, 220.0], dtype=np.float32)
         cg._elev_mean = np.array([150.0, 150.0, 150.0], dtype=np.float32)
         cg._slope_mean = np.array([5.0, 5.0, 5.0], dtype=np.float32)
-        cg._perimeter_km = np.array([4.0, 5.0, 6.0], dtype=np.float32)
         cg._stream_length_km = np.array([1.0, 1.5, 2.0], dtype=np.float32)
         cg._strahler = np.array([1, 2, 3], dtype=np.int8)
         cg._max_flow_dist_m = np.array([5000.0, 8000.0, 12000.0], dtype=np.float64)
-        cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         cg._outlet_flow_dist_m = np.zeros(3, dtype=np.float64)
 
         indices = np.array([0, 1, 2], dtype=np.int32)
@@ -760,11 +758,9 @@ class TestFlowPathAggregation:
         cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
         cg._elev_mean = np.array([150.0, 150.0], dtype=np.float32)
         cg._slope_mean = np.array([5.0, 5.0], dtype=np.float32)
-        cg._perimeter_km = np.array([4.0, 5.0], dtype=np.float32)
         cg._stream_length_km = np.array([1.0, 1.5], dtype=np.float32)
         cg._strahler = np.array([1, 2], dtype=np.int8)
         cg._max_flow_dist_m = np.array([0.0, 0.0], dtype=np.float64)
-        cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         cg._outlet_flow_dist_m = np.zeros(2, dtype=np.float64)
 
         indices = np.array([0, 1], dtype=np.int32)

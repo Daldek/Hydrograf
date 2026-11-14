@@ -156,7 +156,6 @@ class TestSewerGraphClass:
         assert g.n_nodes == 0
         assert g.n_edges == 0
         assert g.n_components == 0
-        assert g.warnings == []
 
     def test_get_nodes_by_type_empty(self):
         g = SewerGraph()

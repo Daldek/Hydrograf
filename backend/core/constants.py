@@ -24,6 +24,3 @@ DEFAULT_THRESHOLD_M2 = 10000
 # Flow accumulation thresholds of the preprocessing [m²]: stream networks and
 # sub-catchments of 1 ha, 10 ha, 1 km² and 10 km². The lowest is DEFAULT_THRESHOLD_M2.
 PIPELINE_THRESHOLDS_M2 = (10_000, 100_000, 1_000_000, 10_000_000)
-
-# Delineation area limit — above this, auto-switch to selection display
-DELINEATION_MAX_AREA_M2 = 10_000  # 0.01 km²

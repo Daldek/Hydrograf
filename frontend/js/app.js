@@ -868,11 +868,6 @@
             Hydrograf.layers.init();
         }
 
-        // Init profile module
-        if (Hydrograf.profile) {
-            Hydrograf.profile.init();
-        }
-
         // Init identify module (point card of the identify mode)
         if (Hydrograf.identify) {
             Hydrograf.identify.init();
@@ -912,7 +907,8 @@
     document.addEventListener('DOMContentLoaded', init);
 
     window.Hydrograf.app = {
-        init: init,
+        // Polish plural of a count, for the texts of other modules
+        plural: plural,
         getCurrentWatershed: getCurrentWatershed,
         getClickCoords: function () { return { lat: state.clickLat, lng: state.clickLng }; },
         getClickMode: function () { return state.clickMode; },

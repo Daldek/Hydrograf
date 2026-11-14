@@ -93,16 +93,11 @@ Obserwator to biblioteka Python do:
 
 ## 3. Konfiguracja
 
-Parametry w pliku konfiguracyjnym YAML:
-
-| Parametr | Typ | Domyślnie | Opis |
-|----------|-----|-----------|------|
-| `imgw_grid_spacing_km` | float | `2.0` | Odstęp siatki punktów pomiarowych [km] |
-| `imgw_rate_limit_delay_s` | float | `0.5` | Opóźnienie między kolejnymi żądaniami do IMGW [s] |
-
-**Uwaga:** Mniejszy `grid_spacing_km` daje dokładniejszą interpolację, ale wydłuża czas preprocessingu (więcej punktów = więcej żądań HTTP).
-
-**The `IMGW_` prefix:** `imgw_grid_spacing_km` and `imgw_rate_limit_delay_s` are settings of Hydrograf (`core/config.py`, `.env.example`), read from `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`; they name the provider IMGW and keep their names. Obserwator reads its own settings from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml` (IMGWTools before the rename read `IMGW_*`), so the two sets of names no longer share a prefix.
+The grid of the PMAXTP points is set by the options of `scripts/preprocess_precipitation.py`:
+`--spacing` (km, default 2.0) and `--delay` between the requests to IMGW (s, default 0.5);
+step 6 of the bootstrap uses the defaults. A smaller spacing gives a finer interpolation and
+a longer preprocessing (more points, more HTTP requests). Obserwator reads its own settings
+from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml`.
 
 ---
 
@@ -154,10 +149,10 @@ Preprocessing opadów to **krok 6** w orchestratorze `bootstrap.py`. Może być 
 ### 6.2 Algorytm preprocessingu
 
 1. **Parsowanie bbox** — WGS84 (min_lon, min_lat, max_lon, max_lat)
-2. **Generowanie siatki** — grid punktów co `imgw_grid_spacing_km` km w obrębie bbox
+2. **Generowanie siatki** — grid punktów co `--spacing` km w obrębie bbox
 3. **Iteracja po punktach** — dla każdego punktu siatki:
    - `fetch_pmaxtp(latitude=..., longitude=...)` → `PMaXTPResult`
-   - Rate limiting: `sleep(imgw_rate_limit_delay_s)` między żądaniami
+   - Rate limiting: `sleep(--delay)` między żądaniami
 4. **INSERT do bazy** — `INSERT ON CONFLICT DO UPDATE` (aktualizacja istniejących punktów)
 5. **Reprojekcja** — geometrie przechowywane w EPSG:2180
 

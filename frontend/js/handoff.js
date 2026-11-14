@@ -42,13 +42,8 @@
         return (_watershed && _watershed.handoff) || null;
     }
 
-    /** Polish plural: 1 pole, 2–4 pola, 5+ pól. */
-    function plural(n, one, few, many) {
-        if (n === 1) return one;
-        var mod10 = n % 10;
-        var mod100 = n % 100;
-        return (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) ? few : many;
-    }
+    /** Polish plural (app.js): 1 pole, 2–4 pola, 5+ pól. */
+    function plural(n, one, few, many) { return Hydrograf.app.plural(n, one, few, many); }
 
     /** A duration as the scenarios name it: 45 -> "45 min", 90 -> "1,5 h". */
     function durationText(minutes) {

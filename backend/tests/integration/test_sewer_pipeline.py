@@ -168,7 +168,6 @@ class TestSewerPipelineInMemory:
         assert g.n_edges == 3
         assert g.n_components == 1
         assert g.adj.shape == (4, 4)
-        assert len(g.warnings) == 0
 
         assert len(g.get_nodes_by_type("inlet")) == 2
         assert len(g.get_nodes_by_type("junction")) == 1

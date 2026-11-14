@@ -55,6 +55,7 @@ from utils.kartograf_store import (
     describe_error,
     open_metadata_cache,
 )
+from utils.nmt_coverage import sheets_bbox_2180
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +251,7 @@ def set_inputs(
             count=len(missing),
             units=missing,
         )
-    mosaic = _mosaic_bbox(nmt)
+    mosaic = sheets_bbox_2180(nmt)
 
     counties = dict(bdot10k)
     if landcover:
@@ -337,19 +338,6 @@ def _area_sheets(area: Path) -> tuple[list[str], Box]:
             cause=describe_error(error),
         ) from error
     return sheets, bbox
-
-
-def _mosaic_bbox(sheets: dict[str, Path]) -> Box:
-    """Return the box of the frames of the sheets (EPSG:2180)."""
-    from kartograf import SheetParser
-
-    frames = [SheetParser(code).get_bbox(crs="EPSG:2180") for code in sheets]
-    return (
-        min(frame.min_x for frame in frames),
-        min(frame.min_y for frame in frames),
-        max(frame.max_x for frame in frames),
-        max(frame.max_y for frame in frames),
-    )
 
 
 def _counties(mosaic: Box, cache_dir: Path) -> list[str]:

@@ -143,8 +143,8 @@ Every variable is listed in
 `CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
 manifest of the analysis results), the admin key
 (`ADMIN_API_KEY` or the file named by `ADMIN_API_KEY_FILE`, read on every request; without
-either, every admin route refuses with `admin_key_not_configured`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
-`IMGW_RATE_LIMIT_DELAY_S`), the shared Kartograf store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
+either, every admin route refuses with `admin_key_not_configured`), the shared Kartograf
+store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
 through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
 the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
 `{"hydrolog": "http://127.0.0.1:8070/"}`; without it the table `gui` of `[nogat]` in the file

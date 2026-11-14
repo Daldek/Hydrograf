@@ -319,7 +319,7 @@ def _prepare_dem(
     changed = False
     flow_lines = None
     if building_gpkg is not None:
-        dem = raise_buildings_in_dem(dem, transform, 2180, building_gpkg, nodata=nodata)
+        dem = raise_buildings_in_dem(dem, transform, building_gpkg, nodata=nodata)
         changed = True
     if burn_streams_path is not None:
         dem, burn_diag = burn_streams_into_dem(

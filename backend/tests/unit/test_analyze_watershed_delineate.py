@@ -43,7 +43,6 @@ def _graph() -> CatchmentGraph:
     cg._elev_mean = np.array([175.0, 185.0, 167.5, 150.0], dtype=np.float32)
     cg._slope_mean = np.array([5.0, 6.0, 4.0, 3.0], dtype=np.float32)
     cg._stream_length_km = np.array([2.0, 1.5, 3.0, 4.0], dtype=np.float32)
-    cg._hydraulic_length_km = np.array([12.5, 10.0, 8.0, 5.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0])
     cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0])

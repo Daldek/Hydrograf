@@ -249,21 +249,14 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from kartograf import BBox, SheetParser
+            from kartograf import BBox
 
             from scripts.download_landcover import merge_hydro_gpkgs
+            from utils.nmt_coverage import sheets_bbox_2180
 
-            # Compute the EPSG:2180 bbox from the sheets; Kartograf finds the counties
-            all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
+            # The EPSG:2180 box of the sheets; Kartograf finds the counties
             bdot_paths = download_bdot10k(
-                output_dir,
-                bbox=BBox(
-                    min(b.min_x for b in all_bboxes),
-                    min(b.min_y for b in all_bboxes),
-                    max(b.max_x for b in all_bboxes),
-                    max(b.max_y for b in all_bboxes),
-                    "EPSG:2180",
-                ),
+                output_dir, bbox=BBox(*sheets_bbox_2180(sheets), crs="EPSG:2180")
             )
 
             if bdot_paths:

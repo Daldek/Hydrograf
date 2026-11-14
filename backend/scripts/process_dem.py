@@ -61,22 +61,16 @@ from core.db_bulk import (
     update_stream_real_flags_all,
 )
 from core.hydrology import (
-    VALID_D8_SET,
     burn_streams_into_dem,
     classify_endorheic_lakes,
-    fill_internal_nodata_holes,
-    fix_internal_sinks,
     interpolate_enclosed_nodata,
     process_hydrology_pyflwdir,
     raise_buildings_in_dem,
-    recompute_flow_accumulation,
 )
 from core.morphometry_raster import (
-    compute_aspect,
     compute_aspect_from_gradients,
     compute_slope_from_gradients,
     compute_strahler_from_fdir,
-    compute_strahler_order,
     compute_twi,
     gradient_strips,
 )
@@ -103,35 +97,6 @@ from core.stream_extraction import (
     vectorize_streams,
 )
 from scripts.download_sewer import load_sewer_data
-
-# Re-export all public names for backward compatibility
-__all__ = [
-    "VALID_D8_SET",
-    "burn_streams_into_dem",
-    "classify_endorheic_lakes",
-    "compute_aspect",
-    "compute_downstream_links",
-    "compute_strahler_from_fdir",
-    "compute_strahler_order",
-    "compute_twi",
-    "delineate_subcatchments",
-    "fill_internal_nodata_holes",
-    "fix_internal_sinks",
-    "insert_catchments",
-    "insert_stream_segments",
-    "load_hydrology_intermediates",
-    "main",
-    "polygonize_subcatchments",
-    "process_dem",
-    "process_dem_from_intermediates",
-    "process_hydrology_pyflwdir",
-    "raise_buildings_in_dem",
-    "read_ascii_grid",
-    "read_raster",
-    "recompute_flow_accumulation",
-    "save_raster_geotiff",
-    "vectorize_streams",
-]
 
 # Configure logging
 logging.basicConfig(
@@ -1273,7 +1238,7 @@ def process_dem(
     if building_gpkg is not None:
         transform_for_buildings = _get_transform(metadata, dem.shape)
         dem = raise_buildings_in_dem(
-            dem, transform_for_buildings, 2180, building_gpkg, nodata=nodata
+            dem, transform_for_buildings, building_gpkg, nodata=nodata
         )
 
     # 2. Burn streams (optional) — before depression filling
@@ -1367,9 +1332,7 @@ def process_dem(
         points_gdf, lines_gdf = load_sewer_data(sewer_config)
 
         # Parse topology
-        field_mapping = sewer_cfg.get(
-            "field_mapping", sewer_cfg.get("attribute_mapping", {})
-        )
+        field_mapping = sewer_cfg.get("field_mapping", {})
         role_mapping = sewer_cfg.get(
             "role_mapping",
             {

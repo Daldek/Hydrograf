@@ -221,7 +221,7 @@ This document defines precisely:
 #### 2.1.5 Pipeline Configuration (YAML)
 
 **✅ In scope:**
-- A `config.yaml` file that configures the pipeline (database, DEM, paths, steps, custom sources)
+- A `config.yaml` file that configures the pipeline (stream burning, enclosed nodata, soil groups, cache directory, storm sewer)
 - The `--config` flag of `bootstrap.py`
 - The `--waterbody-mode` flag (3 modes: auto, none, custom) that controls the handling of water bodies (ADR-031)
 - A selector of the DEM resolution in the admin panel (5 m / 1 m)
