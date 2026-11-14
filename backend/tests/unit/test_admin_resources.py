@@ -1,4 +1,4 @@
-"""Tests for admin resources endpoint."""
+"""Tests for admin resources endpoint (the section „Zasoby” of the panel)."""
 
 from unittest.mock import MagicMock, patch
 
@@ -8,8 +8,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from api.endpoints.admin import router
+from api.endpoints.admin import _dir_size_mb, router
 from core.database import get_db
+from scripts.clean import DB_TABLES
 
 
 def _noop_auth():
@@ -36,6 +37,12 @@ def _make_mock_db(db_size_bytes: int = 104857600):
 
 class TestResources:
     """Tests for GET /api/admin/resources."""
+
+    @pytest.fixture(autouse=True)
+    def _sizes(self):
+        """Five MB in each data directory, without walking the real ones."""
+        with patch("api.endpoints.admin._dir_size_mb", return_value=5.0):
+            yield
 
     @patch("api.endpoints.admin.get_db_engine")
     @patch("api.endpoints.admin.get_catchment_graph")
@@ -195,3 +202,51 @@ class TestResources:
         data = response.json()
 
         assert data["db_size_mb"] == 100.0
+
+    @patch("api.endpoints.admin.get_db_engine")
+    @patch("api.endpoints.admin.get_catchment_graph")
+    def test_resources_count_the_rows_of_every_table(self, mock_cg, mock_engine, app):
+        mock_cg.return_value = MagicMock(loaded=False)
+        app.dependency_overrides[get_db] = lambda: _make_mock_db(db_size_bytes=42)
+
+        data = TestClient(app).get("/api/admin/resources").json()
+
+        assert data["tables"] == dict.fromkeys(DB_TABLES, 42)
+
+    @patch("api.endpoints.admin.get_db_engine")
+    @patch("api.endpoints.admin.get_catchment_graph")
+    def test_resources_give_the_size_of_the_data(self, mock_cg, mock_engine, app):
+        mock_cg.return_value = MagicMock(loaded=False)
+        app.dependency_overrides[get_db] = lambda: _make_mock_db()
+
+        data = TestClient(app).get("/api/admin/resources").json()
+
+        assert data["disk"] == {
+            "frontend_data_mb": 5.0,
+            "frontend_tiles_mb": 5.0,
+            "nmt_data_mb": 5.0,
+            "cache_mb": 5.0,
+            "total_mb": 20.0,
+        }
+
+
+class TestDirSizeMb:
+    """Tests for _dir_size_mb helper."""
+
+    def test_nonexistent_path(self, tmp_path):
+        """Returns 0.0 for non-existent path."""
+        assert _dir_size_mb(tmp_path / "nonexistent") == 0.0
+
+    def test_empty_dir(self, tmp_path):
+        """Returns 0.0 for empty directory."""
+        assert _dir_size_mb(tmp_path) == 0.0
+
+    def test_dir_with_files(self, tmp_path):
+        """Calculates correct size for directory with files."""
+        # Write 1 MB of data to make rounding work
+        (tmp_path / "file1.bin").write_bytes(b"x" * (512 * 1024))
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "file2.bin").write_bytes(b"x" * (512 * 1024))
+
+        size = _dir_size_mb(tmp_path)
+        assert size == 1.0

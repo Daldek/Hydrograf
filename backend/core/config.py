@@ -295,9 +295,11 @@ class Settings(BaseSettings):
         candidate = os.path.join(self.dem_dir, f"dem_mosaic_{raster}.tif")
         return candidate if os.path.exists(candidate) else None
 
-    # Admin panel API key (empty = auto-generated UUID at startup)
+    # The admin key (Nogat DEV-15.13, ADR-086): ADMIN_API_KEY, else the text of the file
+    # ADMIN_API_KEY_FILE names, read on every request; with neither, every admin route
+    # refuses (401, admin_key_not_configured). Never logged.
     admin_api_key: str = ""
-    admin_api_key_file: str = ""  # Path to file containing admin API key
+    admin_api_key_file: str = ""
 
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0

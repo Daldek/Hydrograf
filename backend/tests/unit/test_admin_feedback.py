@@ -165,23 +165,3 @@ class TestDeleteFeedback:
         response = TestClient(app).delete("/api/admin/feedback/999")
 
         assert response.status_code == 404
-
-
-class TestAdminFeedbackAuth:
-    """Auth via real main app (verify_admin_key NOT overridden)."""
-
-    def test_missing_key_returns_401(self):
-        from api.main import app as main_app
-
-        response = TestClient(main_app).get("/api/admin/feedback")
-        assert response.status_code == 401
-
-    def test_wrong_key_returns_401(self):
-        from api.main import app as main_app
-
-        response = TestClient(main_app).get(
-            "/api/admin/feedback",
-            headers={"X-Admin-Key": "definitely-wrong-key-12345"},
-        )
-        assert response.status_code == 401
-        assert response.json()["details"]["reason"] == "admin_key_invalid"

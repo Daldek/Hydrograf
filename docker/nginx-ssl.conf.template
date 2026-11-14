@@ -69,6 +69,36 @@ http {
             proxy_read_timeout 15s;
         }
 
+        # Admin panel (Nogat DEV-15.13, ADR-086): see nginx.conf. /admin answers 308; the
+        # page, its own files and /api/admin/ are the only admin paths, each answer
+        # no-store; add_header in these locations repeats the server's security headers.
+        location = /admin {
+            return 308 /admin/;
+        }
+        location = /admin/index.html {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
+        }
+        # CSP 'self' but the area map's GUGiK OSM tiles (a basemap, DEV-15.7); no-store
+        # comes with the API's answer
+        location ^~ /_site/admin/ {
+            internal;
+            alias /usr/share/nginx/html/admin/;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        }
+        location ~ ^/admin/.+\.(css|js)$ {
+            root /usr/share/nginx/html;
+            add_header Cache-Control "no-store" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        }
+
         # Own code and styles. Pages reference them as `?v=<content hash>`
         # (scripts/bump_asset_versions.py), so a changed file gets a new URL
         # and bypasses browser and CDN caches regardless of this TTL.
@@ -122,11 +152,6 @@ http {
             expires -1;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
             add_header X-Content-Type-Options "nosniff" always;
-        }
-
-        # Admin panel (Cloudflare Access in front of it, with /api/admin/)
-        location = /admin {
-            rewrite ^ /admin.html last;
         }
 
         # Admin API

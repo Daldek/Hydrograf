@@ -588,11 +588,14 @@ Response: Mapbox Vector Tiles (PBF) / JSON
 
 #### 2.2.8 Admin Panel (ADR-034)
 ```
-All endpoints require the X-Admin-Key header (or ADMIN_API_KEY is not set).
+All endpoints require the X-Admin-Key header with the key of ADMIN_API_KEY or ADMIN_API_KEY_FILE
+(read per request); without a key on the server every one answers 401 admin_key_not_configured.
+Every answer is Cache-Control: no-store; the requests are limited, never counted (ADR-086).
 Prefix: /api/admin
 
-GET  /api/admin/dashboard          — table statistics, uptime, version
-GET  /api/admin/resources          — CPU, RAM, disk (psutil)
+GET  /api/admin/status             — app, version, started_at, uptime_s, data_dir, disk, checks (database, catchment_graph, data_dir) of Nogat DEV-15.13
+GET  /api/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
+GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories
 GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
 POST /api/admin/cleanup            — delete cache/tiles
 GET  /api/admin/bootstrap/status   — status of the bootstrap process
@@ -1136,10 +1139,14 @@ engine = create_engine(
 ```
 frontend/
 ├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (vendor/), no Bootstrap
-├── admin.html               # Admin panel (ADR-034) — shell + Bootstrap 5.3.3 (grid, modal dialogs)
+├── admin/                   # Admin panel at /admin/ (ADR-086): index.html is Nogat's <nogat-admin> shell with the sections
+│                            #   „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja” (admin.css, admin.js shared,
+│                            #   resources.js, processing.js with the Leaflet area map, cleanup.js, boundaries.js; IIFE scripts)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
-├── nogat/                    # Copies of Nogat's GUI kit 0.6.0 (design/kit/, ADR-082, ADR-083, ADR-084) — do NOT edit, copy them again
+├── nogat/                    # Copies of Nogat's GUI kit 0.7.0 (design/kit/, ADR-082 to ADR-086) — do NOT edit, copy them again
+│   ├── nogat-admin.js        # <nogat-admin> and its views „Zgłoszenia”, „Statystyki”, „Stan” (ES module, ADR-086)
+│   ├── nogat-admin.css       # Their styles, in the tokens
 │   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
 │   ├── nogat-sources.js      # <nogat-sources>: the view's strip of provider lines and its dialog, fillSources() for the welcome window (ES module)
@@ -1156,20 +1163,18 @@ frontend/
 │   ├── prezentacja.css       # Separate layout for docs/Hydrograf-prezentacja.html slides
 │   └── Hydrograf-*.png       # Shared 256-colour screenshots for guide and presentation
 ├── vendor/                   # Third-party libraries byte for byte as published (npm), each with its licence files; no CDN
-│   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and /admin)
+│   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and the area map of /admin/)
 │   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (vector basemap)
 │   ├── maplibre-gl-leaflet-0.0.22/ # leaflet-maplibre-gl.js
 │   ├── chart.js-4.4.7/       # chart.umd.js
-│   ├── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
-│   └── bootstrap-5.3.3/      # bootstrap.min.css, bootstrap.bundle.min.js (/admin), with Popper's licence
+│   └── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
 ├── css/
 │   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 7786271) — do NOT edit, copy it again
-│   ├── chrome.css            # Shared shell: top bar, rail, panels, buttons (index, admin, instrukcja)
-│   ├── app.css               # Main page: map, Warstwy/Zlewnia panels, profile drawer, phone layout
-│   └── admin.css             # Admin panel (Bootstrap recoloured with the tokens)
+│   ├── chrome.css            # Shared shell: top bar, rail, panels, buttons (index, instrukcja)
+│   └── app.css               # Main page: map, Warstwy/Zlewnia panels, profile drawer, phone layout
 └── js/
     ├── theme-init.js         # Theme from localStorage (`nogat-theme`) before the first paint
-    ├── theme-switch.js       # Theme switch Auto/Jasny/Ciemny in /admin and /instrukcja
+    ├── theme-switch.js       # Theme switch Auto/Jasny/Ciemny in /instrukcja
     ├── shell.js              # Main-page shell: panels, width handles, phone layout, theme
     ├── api.js                # API calls (fetch wrappers)
     ├── map.js                # Leaflet map, drawing, MVT; wheel zoom without the tail of a gesture or late input
@@ -1190,19 +1195,12 @@ frontend/
     ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
     ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
     ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
-    ├── nogat.js              # ES module (index, admin, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
+    ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
     ├── terms.js              # GET /api/terms: the footer under the map and in the guide (the statement and „Regulamin”), the `terms` of the menu and of the strip, PMAXTP's lines for the welcome window, the operator's e-mail under „Zgłoś uwagę” (ADR-084)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>): the text and the view's context, no contact (ADR-084)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the main-page top-bar "Instrukcja" button; the full provider lines and terms (fillSources)
-    ├── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
-    └── admin/
-        ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
-        ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
-        ├── admin-bbox-picker.js # Map for choosing the area bbox
-        ├── admin-sewer.js    # Card for managing the sewer network
-        ├── admin-feedback.js # List of the reports with their context and the old form's fields
-        └── admin-app.js      # Admin panel orchestrator
+    └── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
 ```
 
 `js/` holds 30 IIFE modules on `window.Hydrograf`, 24 for the main page and 6 in `admin/`, and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.

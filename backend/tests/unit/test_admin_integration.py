@@ -1,133 +1,86 @@
-"""Integration tests for admin panel auth across all endpoints."""
+"""Every admin route refuses a request without the right key (Nogat DEV-15.13, ADR-086).
 
-from unittest.mock import MagicMock, patch
+The routes are those the application documents under `/api/admin/`, so a new route is
+checked as soon as it exists: with no key on the server, without the header and with a
+wrong one, each answers the problem `unauthorized` with the reason of DEV-15.13 and,
+like every admin answer, `Cache-Control: no-store`. Neither the server's key nor a
+guess reaches a log.
+"""
 
-from fastapi import FastAPI
+import json
+
+import pytest
 from fastapi.testclient import TestClient
 
-from api.endpoints.admin import router
-from api.errors import install_error_handlers
+from api.main import app
+from core.config import get_settings
+
+KEY = "the-operators-admin-key"
+
+ADMIN_ROUTES = sorted(
+    (method.upper(), path.replace("{feedback_id}", "1"))
+    for path, operations in app.openapi()["paths"].items()
+    if path.startswith("/api/admin/")
+    for method in operations
+)
 
 
-def _create_app():
-    """Create a fresh FastAPI app with admin router."""
-    app = FastAPI()
-    install_error_handlers(app)
-    app.include_router(router, prefix="/api/admin")
-    return app
+@pytest.fixture
+def server_key(monkeypatch):
+    """Set the server's key: ADMIN_API_KEY, empty for none."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "admin_api_key_file", "")
+
+    def set_key(key: str) -> None:
+        monkeypatch.setattr(settings, "admin_api_key", key)
+
+    return set_key
 
 
-def _mock_settings(api_key=""):
-    """Create a mock settings object."""
-    s = MagicMock()
-    s.admin_api_key = api_key
-    s.admin_api_key_file = ""
-    s.database_url = "postgresql://test:test@localhost/test"
-    s.log_level = "INFO"
-    s.cors_origins = "http://localhost"
-    s.db_statement_timeout_ms = 30000
-    s.dem_path = "/tmp/dem.vrt"
-    return s
+def test_the_core_routes_of_dev_15_13_are_admin_routes():
+    assert {
+        ("GET", "/api/admin/feedback"),
+        ("PATCH", "/api/admin/feedback/1"),
+        ("DELETE", "/api/admin/feedback/1"),
+        ("GET", "/api/admin/stats"),
+        ("GET", "/api/admin/status"),
+    } <= set(ADMIN_ROUTES)
 
 
-class TestAdminAuthIntegration:
-    """Test auth middleware across different endpoints."""
+@pytest.mark.parametrize(("method", "path"), ADMIN_ROUTES)
+@pytest.mark.parametrize(
+    ("configured", "sent", "reason"),
+    [
+        ("", KEY, "admin_key_not_configured"),
+        (KEY, None, "admin_key_missing"),
+        (KEY, "a-wrong-key", "admin_key_invalid"),
+    ],
+)
+def test_every_admin_route_refuses_without_the_key(
+    server_key, method, path, configured, sent, reason
+):
+    server_key(configured)
+    headers = {} if sent is None else {"X-Admin-Key": sent}
 
-    def test_no_key_configured_still_requires_auth(self):
-        """Empty ADMIN_API_KEY generates random key — auth still enforced."""
-        import api.dependencies.admin_auth as auth_module
+    response = TestClient(app).request(method, path, headers=headers)
 
-        auth_module._generated_key = None  # reset generated key
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == "unauthorized"
+    assert response.json()["details"]["reason"] == reason
+    assert response.headers["cache-control"] == "no-store"
 
-        app = _create_app()
-        client = TestClient(app)
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=_mock_settings(api_key=""),
-        ):
-            response = client.get("/api/admin/dashboard")
-        assert response.status_code == 401
-        auth_module._generated_key = None  # cleanup
 
-    def test_wrong_key_blocked_on_dashboard(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="correct")
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=mock_settings,
-        ):
-            response = client.get(
-                "/api/admin/dashboard",
-                headers={"X-Admin-Key": "wrong"},
-            )
-        assert response.status_code == 401
-        assert response.json()["details"]["reason"] == "admin_key_invalid"
+def test_no_key_reaches_a_log(server_key, log_records, caplog):
+    client = TestClient(app)
+    server_key(KEY)
+    client.get("/api/admin/stats", headers={"X-Admin-Key": KEY})
+    client.get("/api/admin/stats", headers={"X-Admin-Key": "a-wrong-key"})
+    server_key("")
+    client.get("/api/admin/stats", headers={"X-Admin-Key": KEY})
 
-    def test_missing_key_blocked(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="correct")
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=mock_settings,
-        ):
-            response = client.get("/api/admin/dashboard")
-        assert response.status_code == 401
+    logged = json.dumps(log_records()) + caplog.text
 
-    def test_correct_key_passes(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="my-secret")
-        with (
-            patch(
-                "api.dependencies.admin_auth.get_settings",
-                return_value=mock_settings,
-            ),
-            patch("api.endpoints.admin.get_db") as mock_get_db,
-        ):
-            mock_db = MagicMock()
-            mock_db.execute.return_value.scalar.return_value = 0
-            mock_get_db.return_value = iter([mock_db])
-            response = client.get(
-                "/api/admin/dashboard",
-                headers={"X-Admin-Key": "my-secret"},
-            )
-        assert response.status_code == 200
-
-    def test_auth_applies_to_resources(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="secret")
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=mock_settings,
-        ):
-            response = client.get("/api/admin/resources")
-        assert response.status_code == 401
-
-    def test_auth_applies_to_cleanup(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="secret")
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=mock_settings,
-        ):
-            response = client.get(
-                "/api/admin/cleanup/estimate",
-            )
-        assert response.status_code == 401
-
-    def test_auth_applies_to_bootstrap(self):
-        app = _create_app()
-        client = TestClient(app)
-        mock_settings = _mock_settings(api_key="secret")
-        with patch(
-            "api.dependencies.admin_auth.get_settings",
-            return_value=mock_settings,
-        ):
-            response = client.get(
-                "/api/admin/bootstrap/status",
-            )
-        assert response.status_code == 401
+    assert "/api/admin/stats" in logged
+    assert KEY not in logged
+    assert "a-wrong-key" not in logged

@@ -77,6 +77,12 @@ MESSAGES: Final[dict[str, Message]] = {
         "i godzinę żądania.",
     ),
     # --- Admin authentication ---
+    "admin_key_not_configured": Message(
+        "No admin API key is set on the server.",
+        "Serwer nie ma ustawionego klucza administratora.",
+        "Start the API with ADMIN_API_KEY or ADMIN_API_KEY_FILE.",
+        "Uruchom API z ADMIN_API_KEY albo ADMIN_API_KEY_FILE.",
+    ),
     "admin_key_missing": Message(
         "The admin API key is missing.",
         "Brak klucza API administratora.",
@@ -90,6 +96,12 @@ MESSAGES: Final[dict[str, Message]] = {
         "Wyślij skonfigurowany klucz w nagłówku X-Admin-Key.",
     ),
     # --- Admin panel ---
+    "stats_period_reversed": Message(
+        "The period ends before it begins: from {first} to {last}.",
+        "Okres kończy się przed początkiem: od {first} do {last}.",
+        "Give `from` no later than `to`.",
+        "Podaj `from` nie późniejsze niż `to`.",
+    ),
     "unknown_cleanup_target": Message(
         "Unknown cleanup target: {target}.",
         "Nieznany cel czyszczenia: {target}.",

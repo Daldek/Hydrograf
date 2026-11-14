@@ -47,7 +47,7 @@ docker compose up -d      # PostGIS, API and web server
 ```
 
 The map is at `http://localhost:8080` (the port is `HYDROGRAF_PORT`), the admin panel at
-`/admin` (it asks for the admin key), and the scrolling user guide at `/instrukcja/`
+`/admin/` (it asks for the admin key; see [Admin panel](#admin-panel)), and the scrolling user guide at `/instrukcja/`
 (on the test server: https://hydrograf-test.debever.pl/instrukcja). The guide is linked
 from the map's top-bar "Instrukcja" button via the welcome dialog. The API is under
 `/api` and the health check at `/health`. The web server listens on the loopback interface only
@@ -142,7 +142,8 @@ Every variable is listed in
 (`POSTGRES_*`, `DATABASE_URL`, `DB_STATEMENT_TIMEOUT_MS`), the API (`LOG_LEVEL`,
 `CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
 manifest of the analysis results), the admin key
-(`ADMIN_API_KEY` or `ADMIN_API_KEY_FILE`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
+(`ADMIN_API_KEY` or the file named by `ADMIN_API_KEY_FILE`, read on every request; without
+either, every admin route refuses with `admin_key_not_configured`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
 `IMGW_RATE_LIMIT_DELAY_S`), the shared Kartograf store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
 through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
 the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
@@ -228,20 +229,40 @@ Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR
   (`HYDROGRAF_DATA_DIR`; `/data` in Docker, `HYDROGRAF_DATA_PATH` on the host), rewritten every
   10 minutes, at 00:00 UTC and at shutdown: `date`, `visitors` (distinct pairs of address and
   User-Agent of the day, counted as HMAC-SHA-256 hashes under a salt drawn daily and kept in
-  memory only), `page_views` (GETs of a page served: the map, the admin panel, the guide, the
-  regulamin), `stations_opened` (always 0: Hydrograf has no stations), `analyses_run`
+  memory only), `page_views` (GETs of a page served: the map, the guide, the regulamin),
+  `stations_opened` (always 0: Hydrograf has no stations), `analyses_run`
   (successful delineations of a watershed or a network, hydrographs and terrain profiles, not
   the previews) and `downloads` (files the interface saves: hietogram CSV and JSON, PMAXTP
   GeoJSON, the hand-off file; the interface reports each to `/api/downloads`). Nothing
-  else is stored.
+  else is stored. The requests of the admin panel count in no total (Nogat DEV-15.13).
 - **„Zgłoś uwagę”.** The form sends the text and the view's context (the map mode, the map and
   the analysis settings); the server adds the app version and stores no User-Agent and no
   address. It has no contact field: it says „Nie wpisuj danych osobowych. Jeśli chcesz
   odpowiedzi, napisz na” the operator's e-mail.
 
 The limit and the visitors live in the memory of one process: run the API with one uvicorn
-process (the Compose files do). The admin paths `/admin`, `/admin.html` and `/api/admin/*`
-sit behind Cloudflare Access besides the `X-Admin-Key`.
+process (the Compose files do).
+
+### Admin panel
+
+The panel is Nogat's kit page at `/admin/` (Nogat DEV-15.13, ADR-086; `/admin` answers 308
+to it): „Zgłoszenia”, „Statystyki” and „Stan” of the kit, then Hydrograf's „Zasoby”,
+„Przetwarzanie NMT”, „Czyszczenie” and „Granice i kanalizacja”. Its API is under
+`/api/admin/`; every route needs the header `X-Admin-Key` with the key of `ADMIN_API_KEY`
+or of the file `ADMIN_API_KEY_FILE` names (the Docker secret `admin_api_key.txt` of the
+production overlay), read on every request. No key is generated or logged: without one
+every admin route answers 401 with `admin_key_not_configured`. The access paths are
+`/admin`, `/admin/*` and `/api/admin/*`, nothing else; Cloudflare Access protects them
+besides the key. Every admin answer is `Cache-Control: no-store`; the page has CSP
+`'self'` (the tiles of GUGiK's OpenStreetMap of the area map excepted) and its requests
+stay under the request limit.
+
+A GET of `/api/admin/status` gives the app, its version, start and uptime, `data_dir`
+(`HYDROGRAF_DATA_DIR`) with its free disk, and three checks: `database` (PostGIS answers),
+`catchment_graph` (the graph of the delineation is in memory; `warning` when it is not)
+and `data_dir` (`<data_dir>/hydrograf`, where the statistics are written, is writable).
+A GET of `/api/admin/stats?from=&to=` gives the days of `stats.jsonl` between the two UTC days
+(default the last 30) with the current day as counted so far, and their totals.
 
 ## Capabilities
 
@@ -261,7 +282,7 @@ sit behind Cloudflare Access besides the `X-Admin-Key`.
 | The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` or the `nogat.toml` of `NOGAT_CONFIG` |
 | The address of the regulamin and the operator's e-mail, both null without an operator | `GET /terms` | the `nogat.toml` of `NOGAT_CONFIG` |
 | Count one file that the interface saved, for the daily statistics | `POST /downloads` | none |
-| Administration (pipeline, data cleanup, sewer network upload, feedback list) | `/admin/*` with the `X-Admin-Key` header | none |
+| Administration: reports, statistics, status, resources, DEM processing, cleanup, boundary and sewer upload | `/admin/*` with the `X-Admin-Key` header (see [Admin panel](#admin-panel)) | none |
 
 The background maps of the interface are OpenFreeMap (vector, drawn by MapLibre GL), the
 grey OpenStreetMap of GUGiK and the orthophoto of GUGiK; the flood hazard map (MZP) of Wody
@@ -270,8 +291,8 @@ example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
 vanilla JS with Leaflet, MapLibre GL and Chart.js, vendored in `frontend/vendor/` (no page
 loads a script, style or font from another site), in the Nogat visual identity
-(`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje” and
-the hand-off); Bootstrap 5 is used only in `/admin`. Hydrograf uses
+(`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje”,
+the hand-off and the admin panel). Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its
@@ -315,7 +336,7 @@ and `details` do not change with the language. The five codes you meet most:
 | `not_found` | 404 | no catchment at the point, or an unknown route |
 | `no_data` | 404 | the request is valid but there is no precipitation or elevation data |
 | `unsupported` | 422 | the catchment is above 250 km² or lacks the parameters of the chosen model |
-| `unauthorized` | 401 | the `X-Admin-Key` of the admin panel is missing or wrong |
+| `unauthorized` | 401 | the `X-Admin-Key` of the admin panel is missing or wrong, or the server has no key |
 
 Over the request limit every route answers 429 with `Retry-After` and the problem
 `rate_limited` (`details`: `reason` `request_limit`, `tile_limit` or `feedback_limit`,

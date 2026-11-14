@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 import pytest
 
 FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
-PAGES = ("index.html", "admin.html", "instrukcja/index.html")
+PAGES = ("index.html", "admin/index.html", "instrukcja/index.html")
 
 # An absolute or protocol-relative address: another origin.
 REMOTE = re.compile(r"^\s*(?:[a-z][a-z0-9+.-]*:)?//", re.IGNORECASE)
@@ -101,8 +101,10 @@ def test_every_vendored_file_has_the_integrity_of_its_bytes(name):
     vendored = [
         tag
         for tag in _refs(name).tags
-        if urlsplit(tag["url"]).path.startswith("vendor/")
+        if not REMOTE.match(tag["url"])
+        and _local_file(name, tag["url"]).is_relative_to(FRONTEND / "vendor")
     ]
+    assert vendored or name == "instrukcja/index.html"
 
     for tag in vendored:
         integrity = tag.get("integrity", "")

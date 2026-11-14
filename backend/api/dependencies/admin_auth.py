@@ -1,14 +1,16 @@
 """
-Admin API key authentication dependency.
+The sign-in of every admin route (Nogat DEV-15.13, ADR-086).
 
-Verifies the X-Admin-Key header against the configured admin_api_key.
-If no key is configured, a random UUID is generated and logged as WARNING.
+The header X-Admin-Key is compared in constant time with the key of ADMIN_API_KEY or,
+without it, with the text of the file that ADMIN_API_KEY_FILE names (a Docker secret in
+production). The file is read on every request, so a rotated key applies at once. A
+refusal is ``unauthorized`` (401) with the reason ``admin_key_not_configured`` (the
+server has no key: every admin route refuses), ``admin_key_missing`` or
+``admin_key_invalid``. No key is generated and none is ever logged.
 """
 
 import contextlib
-import logging
 import secrets
-import uuid
 from pathlib import Path
 
 from fastapi import Header
@@ -16,36 +18,19 @@ from fastapi import Header
 from core.config import get_settings
 from core.errors import UnauthorizedError
 
-logger = logging.getLogger(__name__)
 
-# Module-level generated key (stable for process lifetime)
-_generated_key: str | None = None
+def _resolve_expected_key() -> str | None:
+    """Return the configured admin key, or None when the server has none.
 
-
-def _get_or_generate_admin_key(configured_key: str) -> str:
-    """Return configured key, or generate and log a random one."""
-    global _generated_key
-    if configured_key:
-        return configured_key
-    if _generated_key is None:
-        _generated_key = str(uuid.uuid4())
-        logger.warning(
-            "ADMIN_API_KEY not configured — generated random key "
-            "(set ADMIN_API_KEY or ADMIN_API_KEY_FILE env var for persistent key)"
-        )
-    return _generated_key
-
-
-def _resolve_expected_key() -> str:
-    """Load the configured admin key from settings, key file, or generate one."""
+    ADMIN_API_KEY, else the text of the file of ADMIN_API_KEY_FILE without its
+    surrounding whitespace; a missing, unreadable or blank file is no key.
+    """
     settings = get_settings()
-    expected_key = settings.admin_api_key
-
-    if not expected_key and settings.admin_api_key_file:
-        with contextlib.suppress(OSError):
-            expected_key = Path(settings.admin_api_key_file).read_text().strip()
-
-    return _get_or_generate_admin_key(expected_key or "")
+    key = settings.admin_api_key.strip()
+    if not key and settings.admin_api_key_file:
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            key = Path(settings.admin_api_key_file).read_text(encoding="utf-8").strip()
+    return key or None
 
 
 def _check_admin_key(x_admin_key: str | None, expected_key: str | None = None) -> None:
@@ -61,15 +46,20 @@ def _check_admin_key(x_admin_key: str | None, expected_key: str | None = None) -
     x_admin_key : str | None
         API key supplied by the client (X-Admin-Key header).
     expected_key : str | None
-        Expected value; when None it is resolved from settings/key file.
+        Expected value; when None it is resolved from the settings and the key file.
 
     Raises
     ------
     UnauthorizedError
-        ``unauthorized`` (401) when the key is missing or wrong.
+        ``unauthorized`` (401) when the server has no key or the key is missing or
+        wrong.
     """
     if expected_key is None:
         expected_key = _resolve_expected_key()
+    if not expected_key:
+        raise UnauthorizedError(
+            "admin_key_not_configured", reason="admin_key_not_configured"
+        )
 
     if not x_admin_key:
         raise UnauthorizedError("admin_key_missing", reason="admin_key_missing")

@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
-PAGES = ("index.html", "admin.html", "instrukcja/index.html")
+PAGES = ("index.html", "admin/index.html", "instrukcja/index.html")
 SCRIPTS = FRONTEND / "js"
 
 # A relative path to a .js/.css file with an optional earlier version.

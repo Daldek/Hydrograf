@@ -13,6 +13,9 @@ totals live in that process's memory (``app.state.traffic``):
 - Totals (``core.usage``): a visitor for every counted request, and the page views,
   analyses and downloads of ``count``; stored every 10 minutes, at 00:00 UTC and at
   shutdown in ``<data_dir>/hydrograf/stats.jsonl``.
+- Admin panel (Nogat DEV-15.13, ADR-086): its page under ``/admin/`` and its API under
+  ``/api/admin/`` are limited like any page or route but count in no total, and each
+  of their answers, a refusal included, is ``Cache-Control: no-store``.
 
 The client's address: nginx passes the address of its own peer in ``X-Real-IP``.
 Behind the Cloudflare Tunnel that peer is the tunnel's connector on the host, which
@@ -44,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 # Requests no limit and no total counts: the health checks of Docker and nginx
 UNCOUNTED = frozenset({"/health"})
+# The admin panel and its API: limited, never counted, never cached (DEV-15.13)
+ADMIN = ("/admin/", "/api/admin/")
 TILES = "/api/tiles/"
 FEEDBACK = ("POST", "/api/feedback")
 # Map tiles have their own limit: this many times the general one, in its window
@@ -259,12 +264,18 @@ async def limit_and_count(
     traffic: Traffic = request.app.state.traffic
     traffic.new_day()
     address = client_address(request)
-    traffic.usage.visit(address, request.headers.get("user-agent", ""))
+    admin = path.startswith(ADMIN)
+    if not admin:
+        traffic.usage.visit(address, request.headers.get("user-agent", ""))
     refusal = traffic.check(request.method, path, address, time.monotonic())
     if refusal is not None:
-        return too_many_requests(request, refusal)
-    response = await call_next(request)
-    traffic.count(request.method, path, response.status_code)
+        response = too_many_requests(request, refusal)
+    else:
+        response = await call_next(request)
+        if not admin:
+            traffic.count(request.method, path, response.status_code)
+    if admin:
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 

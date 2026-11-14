@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <!-- The theme chosen in Hydrograf, before the first paint -->
+    <script src="../js/theme-init.js?v=38a679da99"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Hydrograf · Administracja</title>
+    <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
+
+    <!-- The admin page is Nogat's <nogat-admin> shell (DEV-15.13, ADR-086): the tokens,
+         the kit's panel, then Leaflet for the area map and the page's own sections -->
+    <link rel="stylesheet" href="../css/tokens.css?v=6f713b17c3">
+    <link rel="stylesheet" href="../nogat/nogat-admin.css?v=a4bdf8bd02">
+    <link rel="stylesheet" href="../vendor/leaflet-1.9.4/leaflet.css?v=a783710282"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=">
+    <link rel="stylesheet" href="admin.css?v=c7cc564807">
+
+    <script type="module" src="../nogat/nogat-admin.js?v=ed3a49679e"></script>
+    <script defer src="../vendor/leaflet-1.9.4/leaflet.js?v=db49d009c8"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
+    <script defer src="admin.js?v=8684d13385"></script>
+    <script defer src="resources.js?v=55f1abc29f"></script>
+    <script defer src="processing.js?v=b0ab685624"></script>
+    <script defer src="cleanup.js?v=5f3fa7ff4d"></script>
+    <script defer src="boundaries.js?v=e571d67c58"></script>
+</head>
+<body>
+<!-- „Zgłoszenia”, „Statystyki” and „Stan” are the kit's; Hydrograf's sections follow -->
+<nogat-admin app="Hydrograf" project="hydrograf" back="../" marks="../nogat/marks/">
+
+    <section class="admin-section" data-admin-section="resources" data-label="Zasoby">
+        <div class="nogat-admin-head">
+            <h2 class="nogat-admin-heading">Zasoby</h2>
+            <div class="nogat-admin-tools">
+                <button type="button" class="nogat-admin-button" id="resources-refresh">Odśwież</button>
+            </div>
+        </div>
+        <p class="nogat-admin-error" id="resources-error" role="alert" hidden></p>
+        <p class="nogat-admin-note admin-status" id="resources-note" role="status"></p>
+        <div class="admin-panels" id="resources-panels"></div>
+    </section>
+
+    <section class="admin-section" data-admin-section="processing" data-label="Przetwarzanie NMT">
+        <div class="nogat-admin-head">
+            <h2 class="nogat-admin-heading">Przetwarzanie NMT</h2>
+            <p class="admin-run">
+                <span class="nogat-admin-badge nogat-admin-neutral" id="processing-state">Bezczynne</span>
+                <span id="processing-elapsed"></span>
+            </p>
+            <div class="nogat-admin-tools">
+                <button type="button" class="nogat-admin-button" id="processing-refresh">Odśwież</button>
+            </div>
+        </div>
+        <p class="nogat-admin-error" id="processing-error" role="alert" hidden></p>
+        <p class="nogat-admin-note admin-status" id="processing-note" role="status"></p>
+        <form class="admin-panel admin-form" id="processing-form" novalidate>
+            <fieldset class="admin-fieldset">
+                <legend>Obszar</legend>
+                <div class="admin-choice">
+                    <label><input type="radio" name="processing-area" value="bbox" checked> Prostokąt (stopnie WGS84)</label>
+                    <label><input type="radio" name="processing-area" value="boundary"> Granica z pliku</label>
+                </div>
+                <div class="admin-bbox" id="processing-bbox">
+                    <div class="admin-compass">
+                        <label class="admin-field admin-north">N
+                            <input type="number" class="nogat-admin-input" id="bbox-north" step="0.0001" min="-90" max="90" value="52.5870"></label>
+                        <label class="admin-field admin-west">W
+                            <input type="number" class="nogat-admin-input" id="bbox-west" step="0.0001" min="-180" max="180" value="16.9279"></label>
+                        <label class="admin-field admin-east">E
+                            <input type="number" class="nogat-admin-input" id="bbox-east" step="0.0001" min="-180" max="180" value="17.3825"></label>
+                        <label class="admin-field admin-south">S
+                            <input type="number" class="nogat-admin-input" id="bbox-south" step="0.0001" min="-90" max="90" value="52.3729"></label>
+                    </div>
+                    <button type="button" class="nogat-admin-button" id="bbox-map-open">Wybierz na mapie</button>
+                    <p class="nogat-admin-error" id="bbox-error" role="alert" hidden></p>
+                </div>
+                <p class="admin-line" id="processing-boundary" hidden></p>
+            </fieldset>
+            <label class="admin-field">Rozdzielczość NMT
+                <select class="nogat-admin-input" id="processing-resolution">
+                    <option value="5m" selected>5 m (domyślna, szybsza)</option>
+                    <option value="1m">1 m (dokładniejsza, wolniejsza)</option>
+                </select>
+            </label>
+            <p class="admin-line" id="processing-sewer"></p>
+            <div class="admin-actions">
+                <button type="submit" class="nogat-admin-button nogat-admin-primary" id="processing-start">Uruchom</button>
+                <button type="button" class="nogat-admin-button nogat-admin-danger" id="processing-cancel" disabled>Przerwij</button>
+            </div>
+        </form>
+        <h3 class="nogat-admin-subheading admin-log-title">Log przetwarzania</h3>
+        <pre class="admin-log" id="processing-log" role="log" tabindex="0" aria-label="Log przetwarzania"></pre>
+
+        <dialog class="nogat-admin-dialog admin-map-dialog" id="bbox-dialog" aria-labelledby="bbox-dialog-title">
+            <form method="dialog" class="nogat-admin-dialog-body">
+                <h2 id="bbox-dialog-title">Wybierz obszar na mapie</h2>
+                <div class="admin-map" id="bbox-map"></div>
+                <p>Przeciągnij myszą, aby narysować prostokąt; kolejne przeciągnięcie rysuje go od nowa.</p>
+                <div class="nogat-admin-dialog-actions">
+                    <button class="nogat-admin-button" value="cancel">Anuluj</button>
+                    <button class="nogat-admin-button nogat-admin-primary" value="confirm" id="bbox-confirm" disabled>Zatwierdź</button>
+                </div>
+            </form>
+        </dialog>
+    </section>
+
+    <section class="admin-section" data-admin-section="cleanup" data-label="Czyszczenie">
+        <div class="nogat-admin-head">
+            <h2 class="nogat-admin-heading">Czyszczenie</h2>
+            <div class="nogat-admin-tools">
+                <button type="button" class="nogat-admin-button" id="cleanup-refresh">Odśwież</button>
+            </div>
+        </div>
+        <p class="nogat-admin-error" id="cleanup-error" role="alert" hidden></p>
+        <p class="nogat-admin-note admin-status" id="cleanup-note" role="status"></p>
+        <p class="admin-line">Usunięte dane odtwarza przetwarzanie NMT. Bez danych przetwarzania aplikacja nie wyznaczy zlewni; pamięć podręczna pobrań skraca tylko następne przetwarzanie.</p>
+        <ul class="admin-list" id="cleanup-targets"></ul>
+    </section>
+
+    <section class="admin-section" data-admin-section="boundaries" data-label="Granice i kanalizacja">
+        <div class="nogat-admin-head">
+            <h2 class="nogat-admin-heading">Granice i kanalizacja</h2>
+            <div class="nogat-admin-tools">
+                <button type="button" class="nogat-admin-button" id="boundaries-refresh">Odśwież</button>
+            </div>
+        </div>
+        <p class="nogat-admin-error" id="boundaries-error" role="alert" hidden></p>
+        <p class="nogat-admin-note admin-status" id="boundaries-note" role="status"></p>
+        <div class="admin-panels">
+            <div class="admin-panel">
+                <h3 class="admin-panel-title">Granica obszaru</h3>
+                <p class="admin-line">Plik GPKG, GeoJSON albo SHP spakowany do ZIP, do 50 MB. Wgraną granicę wybiera się jako obszar w sekcji <a href="#processing">Przetwarzanie NMT</a>.</p>
+                <label class="admin-field">Plik granicy
+                    <input type="file" class="admin-file" id="boundary-file" accept=".gpkg,.geojson,.json,.zip"></label>
+                <dl class="nogat-admin-facts admin-facts" id="boundary-facts" hidden></dl>
+            </div>
+            <div class="admin-panel">
+                <h3 class="admin-panel-title">Kanalizacja deszczowa</h3>
+                <dl class="nogat-admin-facts admin-facts" id="sewer-facts"></dl>
+                <label class="admin-check"><input type="checkbox" id="sewer-enabled"> Uwzględniaj w przetwarzaniu NMT</label>
+                <label class="admin-field">Plik sieci (GPKG, SHP, GeoJSON albo ZIP)
+                    <input type="file" class="admin-file" id="sewer-file" accept=".gpkg,.shp,.geojson,.json,.zip"></label>
+                <dl class="nogat-admin-facts admin-facts" id="sewer-upload-facts" hidden></dl>
+            </div>
+        </div>
+    </section>
+</nogat-admin>
+</body>
+</html>

@@ -1,12 +1,12 @@
 """
 The pages of the public service and what the front end needs to know of it (ADR-084).
 
-nginx passes every page (`/`, `*.html`, `/admin`, `/instrukcja/`) to the API, so that
+nginx passes every page (`/`, `*.html`, `/admin/`, `/instrukcja/`) to the API, so that
 pages count against the request limit and in the day's totals like the API routes
-(Nogat DEV-15.9, DEV-15.11; api/traffic.py). The API then lets nginx send the page's
-file itself: the answer names it in `X-Accel-Redirect` under nginx's internal location
-`/_site/`. The regulamin (DEV-15.7) is filled by the API (core/terms.py) and sent from
-memory.
+(Nogat DEV-15.9, DEV-15.11; api/traffic.py), the admin page against the limit only
+(DEV-15.13). The API then lets nginx send the page's file itself: the answer names it
+in `X-Accel-Redirect` under nginx's internal location `/_site/`. The regulamin
+(DEV-15.7) is filled by the API (core/terms.py) and sent from memory.
 """
 
 from fastapi import APIRouter, Request, Response
@@ -27,7 +27,7 @@ router = APIRouter()
 
 
 @pages_router.api_route("/index.html", methods=["GET", "HEAD"])
-@pages_router.api_route("/admin.html", methods=["GET", "HEAD"])
+@pages_router.api_route("/admin/index.html", methods=["GET", "HEAD"])
 @pages_router.api_route("/instrukcja/index.html", methods=["GET", "HEAD"])
 def page(request: Request) -> Response:
     """Let nginx send the file of a page of the front end (X-Accel-Redirect)."""

@@ -64,7 +64,7 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   (DEV-15.7): `frontend/vendor/<package>-<version>/` holds the published files byte for byte
   (`-text` in `.gitattributes`) with their licence files, referenced with their `integrity`
   (`tests/contract/test_frontend_vendor.py` checks both). JS and CSS files (own and vendored)
-  in `index.html`, `admin.html` and `instrukcja/index.html` are referenced with
+  in `index.html`, `admin/index.html` and `instrukcja/index.html` are referenced with
   `?v=<content hash>`, the only way a deployment gets through the caches of Cloudflare and
   of the browsers: after changing a JS or CSS file or adding a `<script>` or `<link>`, run
   `python3 scripts/bump_asset_versions.py` before the commit (reference a new file without

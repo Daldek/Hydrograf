@@ -1,4 +1,4 @@
-"""Tests for admin API key authentication dependency."""
+"""The admin key of every admin route (Nogat DEV-15.13, ADR-086)."""
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -80,70 +80,61 @@ class TestVerifyAdminKey:
             _check_admin_key(x_admin_key="", expected_key="secret123")
         assert exc_info.value.details["reason"] == "admin_key_missing"
 
-    def test_no_configured_key_generates_random(self, caplog):
-        """When no key configured, a random key is generated and logged."""
-        import logging
 
-        import api.dependencies.admin_auth as auth_module
+def _server_key(monkeypatch, key: str = "", file: str = "") -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "admin_api_key", key)
+    monkeypatch.setattr(settings, "admin_api_key_file", file)
 
-        auth_module._generated_key = None  # reset
 
-        with caplog.at_level(logging.WARNING):
-            key = auth_module._get_or_generate_admin_key("")
-            assert len(key) == 36  # UUID4 format
-            assert "ADMIN_API_KEY" in caplog.text
-        auth_module._generated_key = None  # cleanup
+def _reason(supplied: str | None) -> str:
+    with pytest.raises(UnauthorizedError) as exc_info:
+        verify_admin_key(x_admin_key=supplied)
+    assert exc_info.value.code == "unauthorized"
+    return str(exc_info.value.details["reason"])
 
-    def test_generated_key_is_stable(self):
-        """Generated key remains the same across calls."""
-        import api.dependencies.admin_auth as auth_module
 
-        auth_module._generated_key = None
-        key1 = auth_module._get_or_generate_admin_key("")
-        key2 = auth_module._get_or_generate_admin_key("")
-        assert key1 == key2
-        auth_module._generated_key = None
+class TestConfiguredKey:
+    """Where the server's key comes from: ADMIN_API_KEY, else ADMIN_API_KEY_FILE."""
 
-    def test_configured_key_skips_generation(self):
-        """When key is configured, no generation happens."""
-        import api.dependencies.admin_auth as auth_module
+    @pytest.mark.parametrize("supplied", [None, "", "anything"])
+    def test_a_server_without_a_key_refuses_every_request(self, monkeypatch, supplied):
+        _server_key(monkeypatch)
 
-        result = auth_module._get_or_generate_admin_key("my-secret-key")
-        assert result == "my-secret-key"
+        assert _reason(supplied) == "admin_key_not_configured"
 
-    def test_no_configured_key_still_requires_header(self):
-        """When no key configured, auth is still enforced with generated key."""
-        import api.dependencies.admin_auth as auth_module
-
-        auth_module._generated_key = None
-        with pytest.raises(UnauthorizedError) as exc_info:
-            _check_admin_key(x_admin_key=None, expected_key="")
-        assert exc_info.value.details["reason"] == "admin_key_missing"
-        auth_module._generated_key = None
-
-    def test_file_based_key(self, tmp_path, monkeypatch):
-        """Key loaded from file when admin_api_key is empty."""
+    def test_the_key_of_the_file(self, tmp_path, monkeypatch):
         key_file = tmp_path / "admin.key"
         key_file.write_text("file-secret-key\n")
+        _server_key(monkeypatch, file=str(key_file))
 
-        settings = get_settings()
-        monkeypatch.setattr(settings, "admin_api_key", "")
-        monkeypatch.setattr(settings, "admin_api_key_file", str(key_file))
+        verify_admin_key(x_admin_key="file-secret-key")
 
-        # Valid key from file should pass
-        _check_admin_key(x_admin_key="file-secret-key", expected_key=None)
+    @pytest.mark.parametrize("content", [None, "", " \n"])
+    def test_a_missing_or_blank_file_is_no_key(self, tmp_path, monkeypatch, content):
+        key_file = tmp_path / "admin.key"
+        if content is not None:
+            key_file.write_text(content)
+        _server_key(monkeypatch, file=str(key_file))
 
-    def test_file_based_key_missing_file_generates_random(self, monkeypatch):
-        """Missing key file with no configured key generates random key."""
-        import api.dependencies.admin_auth as auth_module
+        assert _reason("anything") == "admin_key_not_configured"
 
-        auth_module._generated_key = None
+    def test_the_file_is_read_on_every_request(self, tmp_path, monkeypatch):
+        """A rotated key file applies at once, without a restart."""
+        key_file = tmp_path / "admin.key"
+        key_file.write_text("old-key\n")
+        _server_key(monkeypatch, file=str(key_file))
+        verify_admin_key(x_admin_key="old-key")
 
-        settings = get_settings()
-        monkeypatch.setattr(settings, "admin_api_key", "")
-        monkeypatch.setattr(settings, "admin_api_key_file", "/nonexistent/path")
+        key_file.write_text("new-key\n")
 
-        with pytest.raises(UnauthorizedError) as exc_info:
-            verify_admin_key(x_admin_key=None)
-        assert exc_info.value.details["reason"] == "admin_key_missing"
-        auth_module._generated_key = None
+        assert _reason("old-key") == "admin_key_invalid"
+        verify_admin_key(x_admin_key="new-key")
+
+    def test_admin_api_key_comes_before_the_file(self, tmp_path, monkeypatch):
+        key_file = tmp_path / "admin.key"
+        key_file.write_text("file-key\n")
+        _server_key(monkeypatch, key="env-key", file=str(key_file))
+
+        verify_admin_key(x_admin_key="env-key")
+        assert _reason("file-key") == "admin_key_invalid"
