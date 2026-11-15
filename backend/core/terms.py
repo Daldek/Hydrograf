@@ -4,9 +4,10 @@ A deployment that anyone uses without signing in names its operator in the table
 ``operator`` of ``[nogat]`` in its ``nogat.toml`` (NOGAT_CONFIG). Hydrograf then fills
 the kit's template ``nogat-terms.html`` (Nogat's GUI kit, copied byte for byte into
 ``frontend/nogat/``) once per process and serves it at ``/regulamin.html``; the front
-end links it in the footer of the map, in the guide and in the app menu
-(``GET /api/terms``). Without the table, with a value missing, or with the template
-missing, there is neither page nor link: a local run is no service offered to others.
+end links it at the foot of the map's rail, in the welcome window, under the guide's
+table of contents and in the app menu (``GET /api/terms``; ECO-070). Without the table,
+with a value missing, or with the template missing, there is neither page nor link: a
+local run is no service offered to others.
 
 Filling follows Nogat's ``design/README.md`` (its reference is ``fill`` of
 ``scripts/terms.py``): first the blocks, then the fields. The blocks kept are the data

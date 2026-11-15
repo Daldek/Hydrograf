@@ -4,7 +4,8 @@ Watershed delineation endpoint.
 Unified endpoint with two modes:
 - Precomputed (threshold_m2 given): BFS on pre-computed catchment graph,
   ST_Union boundary
-- Precise (no threshold): BFS at 1000m² + on-the-fly raster boundary via pyflwdir
+- Precise (no threshold): BFS at the finest threshold (DEFAULT_THRESHOLD_M2,
+  10 000 m²) + on-the-fly raster boundary via pyflwdir
 
 Preview endpoint: the sub-catchments precomputed mode will merge, without
 the slow merge, for a progress animation in the GUI.

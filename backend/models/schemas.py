@@ -1768,7 +1768,7 @@ class TermsInfo(BaseModel):
         ...,
         description="Address of the filled regulamin, `/regulamin.html`; null when the "
         "deployment names no operator (`[nogat.operator]` of nogat.toml), and then "
-        "there is no footer link either",
+        "the interface links no „Regulamin” either",
     )
     operator_email: str | None = Field(
         ...,
