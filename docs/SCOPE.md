@@ -423,7 +423,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `0394af7`, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `f4f6a8d`, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -533,9 +533,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 0.8.0.dev0 (commit `e5df06d` of `develop`, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `c9afdd3` of `develop`, the release set candidate-4 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `0394af7`, the release set candidate-4 of Nogat, package `obserwator`; design precipitation from IMGW)
+- Hydrolog 0.8.0.dev0 (commit `3ce7ee8` of `develop`, the release set candidate-5 of Nogat, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
+- Kartograf 0.8.0.dev0 (commit `c9afdd3` of `develop`, the release sets candidate-4 and candidate-5 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f4f6a8d`, the release set candidate-5 of Nogat, package `obserwator`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework

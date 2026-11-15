@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-15 (Hydrolog pinned to `e5df06d`, the head of its `develop` at 0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds `9e2cb61`; production runs these pins, Hydroni candidate-3); 2026-11-14 (the pins follow the release set candidate-4 of Nogat: Obserwator `0394af7`, Kartograf `c9afdd3`, Hydrolog `9e2cb61`; production and Hydroni still run candidate-3); 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-15 (the pins follow the release set candidate-5 of Nogat: Obserwator `f4f6a8d`, Kartograf `c9afdd3`, Hydrolog `3ce7ee8`; production runs Obserwator `0394af7`, Kartograf `c9afdd3` and Hydrolog `e5df06d`, Hydroni candidate-3); 2026-11-15 (Hydrolog pinned to `e5df06d`, the head of its `develop` at 0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds `9e2cb61`; production runs these pins, Hydroni candidate-3); 2026-11-14 (the pins follow the release set candidate-4 of Nogat: Obserwator `0394af7`, Kartograf `c9afdd3`, Hydrolog `9e2cb61`; production and Hydroni still run candidate-3); 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  0394af7      │   │   c9afdd3     │   │   e5df06d     │              │
+│  │  f4f6a8d      │   │   c9afdd3     │   │   3ce7ee8     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,22 +30,22 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit 0394af7 (3.0.0.dev0) |
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit f4f6a8d (3.0.0.dev0) |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | commit c9afdd3 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit e5df06d (0.8.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 3ce7ee8 (0.8.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by commit until their tags exist (REL-5.3, ADR-060, ADR-061): Kartograf and Obserwator by the release set of Nogat (candidate-4: the heads of their `develop`), Hydrolog by the head of its `develop` (0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds its `9e2cb61`); the release replaces each commit with its tag:
+The three producers are pinned by the commits of the release set of Nogat (candidate-5: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
 
 ```toml
 # [tool.uv.sources]
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "0394af7c66b60cccb88f14b6118893b78443dc21" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "e5df06d85f7ca7a0fde2547393748bc17ea3669c" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "3ce7ee847df14f7aaec7abbefd828d389eb7aae8" }
 ```
 
 ---

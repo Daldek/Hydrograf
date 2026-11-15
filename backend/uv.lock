@@ -1058,12 +1058,12 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=e5df06d85f7ca7a0fde2547393748bc17ea3669c" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=3ce7ee847df14f7aaec7abbefd828d389eb7aae8" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
-    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=0394af7c66b60cccb88f14b6118893b78443dc21" },
+    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "platformdirs", specifier = ">=4.2" },
@@ -1100,7 +1100,7 @@ dev = [
 [[package]]
 name = "hydrolog"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=e5df06d85f7ca7a0fde2547393748bc17ea3669c#e5df06d85f7ca7a0fde2547393748bc17ea3669c" }
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=3ce7ee847df14f7aaec7abbefd828d389eb7aae8#3ce7ee847df14f7aaec7abbefd828d389eb7aae8" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1774,7 +1774,7 @@ wheels = [
 [[package]]
 name = "obserwator"
 version = "3.0.0.dev0"
-source = { git = "https://github.com/Daldek/Obserwator.git?rev=0394af7c66b60cccb88f14b6118893b78443dc21#0394af7c66b60cccb88f14b6118893b78443dc21" }
+source = { git = "https://github.com/Daldek/Obserwator.git?rev=f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8#f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
