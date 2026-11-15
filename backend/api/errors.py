@@ -411,8 +411,10 @@ def install_error_handlers(app: FastAPI) -> None:
 
 # ---- OpenAPI -------------------------------------------------------------------------
 
-# One example per documented status: (code, message ID, details).
-_EXAMPLES: Final[dict[int, tuple[str, str, dict[str, Any]]]] = {
+# The example of a problem in the document: (code, message ID, details)
+Example = tuple[str, str, dict[str, Any]]
+# One example per documented status
+_EXAMPLES: Final[dict[int, Example]] = {
     400: (
         "validation_error",
         "invalid_request",
@@ -463,18 +465,27 @@ _DESCRIPTIONS: Final = {
 }
 
 
-def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
-    """Return the OpenAPI ``responses`` that document problems of the given statuses.
+def problem_responses(*problems: int | Example) -> dict[int | str, dict[str, Any]]:
+    """Return the OpenAPI ``responses`` that document problems of a route.
 
     Parameters
     ----------
-    *statuses : int
-        HTTP statuses a route answers with a problem, e.g. ``404``; each one needs an
-        example in ``_EXAMPLES``.
+    *problems : int or Example
+        An HTTP status a route answers with a problem, e.g. ``404``, documented with
+        its example in ``_EXAMPLES``; or the problem of the route itself, ``(code,
+        message ID, details)``, documented under the status of its code.
     """
     responses: dict[int | str, dict[str, Any]] = {}
-    for status in statuses:
-        code, message_id, details = _EXAMPLES[status]
+    for problem in problems:
+        if isinstance(problem, int):
+            code, message_id, details = _EXAMPLES[problem]
+            description = _DESCRIPTIONS.get(problem, BY_CODE[code].title)
+        else:
+            code, message_id, details = problem
+            description = BY_CODE[code].title
+        status = BY_CODE[code].http_status
+        if status is None:
+            raise ValueError(f"{code!r} is not a registry code with an HTTP status")
         hint_en = MESSAGES[message_id].hint_en
         example = problem_body(
             code,
@@ -484,7 +495,7 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
             details=details,
         )
         responses[status] = {
-            "description": _DESCRIPTIONS.get(status, BY_CODE[code].title),
+            "description": description,
             "content": {
                 PROBLEM_MEDIA_TYPE: {
                     "schema": {"$ref": "#/components/schemas/Problem"},

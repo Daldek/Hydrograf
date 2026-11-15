@@ -50,7 +50,7 @@ def terms_info() -> TermsInfo:
 
     The address and the e-mail are null when the deployment names no operator
     (`[nogat.operator]` of the nogat.toml of NOGAT_CONFIG): the front end then shows no
-    footer link and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice`
+    link „Regulamin” and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice`
     are every line of the service's data (core/attribution.py): those of the PMAXTP
     data every hydrograph is made with, then G and SG of the GUGiK and SoilGrids data
     of the instance, which the welcome window shows in full (Nogat DEV-20.5).

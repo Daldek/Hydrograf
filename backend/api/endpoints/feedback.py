@@ -23,6 +23,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
+from api.errors import problem_responses
 from core.database import get_db
 from core.errors import HydrografError, InternalError, NotFoundError
 from core.version import get_version
@@ -34,6 +35,14 @@ admin_router = APIRouter(dependencies=[Depends(verify_admin_key)])
 
 # The columns of the form before ADR-084, which only its reports fill
 LEGACY_COLUMNS = ("contact", "page_url", "user_agent", "diagnostics")
+# A report that does not exist, for the OpenAPI document of the routes of one report
+_NOT_FOUND = problem_responses(
+    (
+        "not_found",
+        "feedback_not_found",
+        {"reason": "feedback_not_found", "feedback_id": 41},
+    )
+)
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
@@ -133,7 +142,7 @@ def _legacy(row: Any) -> dict[str, Any] | None:
     return values if any(v is not None for v in values.values()) else None
 
 
-@admin_router.patch("/feedback/{feedback_id}")
+@admin_router.patch("/feedback/{feedback_id}", responses=_NOT_FOUND)
 def update_feedback(
     feedback_id: int, body: FeedbackUpdate, db: Session = Depends(get_db)
 ) -> dict[str, str]:
@@ -161,9 +170,9 @@ def update_feedback(
         ) from e
 
 
-@admin_router.delete("/feedback/{feedback_id}")
+@admin_router.delete("/feedback/{feedback_id}", responses=_NOT_FOUND)
 def delete_feedback(feedback_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
-    """Delete a feedback submission. Returns JSON (admin-api.js expects it)."""
+    """Delete a feedback submission."""
     try:
         result = db.execute(
             text("DELETE FROM feedback WHERE id = :id"),

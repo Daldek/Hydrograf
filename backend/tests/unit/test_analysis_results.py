@@ -9,7 +9,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from core.analysis_results import provider_lines, sample_water_levels
-from core.attribution import ProviderLines
+from core.attribution import CHMI_PROCESSED, ProviderLines
 
 NODATA = -9999.0
 X0, Y_TOP, CELL = 500000.0, 600000.0, 5.0
@@ -146,6 +146,31 @@ class TestProviderLines:
         )
 
         assert provider_lines(str(tmp_path), ["a"]) == ProviderLines((), ("N1",))
+
+    def test_an_old_cp_of_a_result_is_cp_once(self, tmp_path):
+        """Nogat ECO-071: whatever its parentheses say, CP once, without them."""
+        _write_manifest(
+            tmp_path,
+            [
+                {
+                    "id": "old",
+                    "attribution": [
+                        "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
+                    ],
+                },
+                {"id": "new", "attribution": ["Dane ČHMÚ zostały przetworzone"]},
+            ],
+        )
+
+        assert provider_lines(str(tmp_path), ["old", "new"]) == ProviderLines(
+            (CHMI_PROCESSED,), ()
+        )
+
+    def test_only_the_parenthetical_form_is_read_as_cp(self, tmp_path):
+        line = "Dane ČHMÚ zostały przetworzone przez operatora"
+        _write_manifest(tmp_path, [{"id": "a", "attribution": [line]}])
+
+        assert provider_lines(str(tmp_path), ["a"]) == ProviderLines((line,), ())
 
     def test_missing_manifest_gives_no_lines(self, tmp_path):
         assert provider_lines(str(tmp_path), ["a"]) == ProviderLines()

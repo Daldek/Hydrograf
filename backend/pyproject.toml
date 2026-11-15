@@ -60,8 +60,8 @@ dependencies = [
     # Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and the calculations of Hydrolog. The
     # range is the one the code supports and admits the development version of the pending
     # release (REL-5.6, ECO-053: PEP 440 puts `0.8.0.dev0` below `0.8.0`); the commit is
-    # in `[tool.uv.sources]`. The release pull request narrows the ranges to `>=0.8.0`,
-    # `>=1.0.0` and `>=3.0.0` and replaces each `rev` with the release tag (REL-5.3).
+    # in `[tool.uv.sources]`. The release pull request narrows each range to `>=X.Y.0` of
+    # the producer's release and replaces each `rev` with its release tag (REL-5.3).
     "obserwator>=3.0.0.dev0,<4",
     "kartograf>=0.8.0.dev0,<0.9",
     "hydrolog>=0.8.0.dev0,<0.9",
@@ -99,9 +99,9 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The release set of Nogat (candidate-4): the heads of `develop` of Kartograf
-# (0.8.0.dev0), Obserwator (3.0.0.dev0) and Hydrolog (1.0.0.dev0). All three commits
-# are on GitHub.
+# Kartograf (0.8.0.dev0) and Obserwator (3.0.0.dev0) at the release set of Nogat
+# (candidate-4), Hydrolog (0.8.0.dev0, the author's version of 2026-11-14) at the head of
+# its `develop`, which the set does not hold yet. All three commits are on GitHub.
 obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "0394af7c66b60cccb88f14b6118893b78443dc21" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "e5df06d85f7ca7a0fde2547393748bc17ea3669c" }

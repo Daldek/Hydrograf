@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import QueuePool
 
 from api.dependencies.admin_auth import verify_admin_key
+from api.errors import problem_responses
 from api.traffic import Traffic
 from core.catchment_graph import get_catchment_graph, loaded_catchment_graph
 from core.config import get_settings
@@ -763,7 +764,23 @@ def bootstrap_status() -> BootstrapStatusResponse:
     )
 
 
-@router.post("/bootstrap/start", response_model=BootstrapStartResponse)
+@router.post(
+    "/bootstrap/start",
+    response_model=BootstrapStartResponse,
+    responses=problem_responses(
+        (
+            "forbidden",
+            "shared_store_read_only",
+            {"reason": "shared_store_read_only", "root": "/data/kartograf"},
+        ),
+        (
+            "not_found",
+            "boundary_file_missing",
+            {"reason": "boundary_file_missing", "filename": "zlewnia.gpkg"},
+        ),
+        409,
+    ),
+)
 def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     """Start bootstrap subprocess.
 
@@ -883,7 +900,12 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     return BootstrapStartResponse(status="running", pid=process.pid)
 
 
-@router.post("/bootstrap/cancel")
+@router.post(
+    "/bootstrap/cancel",
+    responses=problem_responses(
+        ("conflict", "bootstrap_not_running", {"reason": "bootstrap_not_running"})
+    ),
+)
 def bootstrap_cancel() -> dict[str, Any]:
     """Cancel running bootstrap process."""
     proc = _bootstrap_state["process"]
@@ -1014,7 +1036,17 @@ def _save_sewer_config(sewer: dict[str, Any]) -> None:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
 
-@router.put("/sewer/config")
+@router.put(
+    "/sewer/config",
+    responses=problem_responses(
+        403,
+        (
+            "not_found",
+            "source_file_missing",
+            {"reason": "source_file_missing", "path": "data/sewer/siec.gpkg"},
+        ),
+    ),
+)
 def sewer_config_update(body: SewerConfigUpdate) -> dict[str, Any]:
     """Toggle sewer processing and set source file path.
 

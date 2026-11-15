@@ -78,3 +78,37 @@ def test_delineate_network_preview_documents_the_problems_of_its_route():
     # The preview reads no window of the rasters, so no 422 for a large one
     assert {"400", "404", "500", "503"} <= set(operation["responses"])
     assert "422" not in operation["responses"]
+
+
+@pytest.mark.parametrize(
+    ("operation_id", "reasons"),
+    [
+        (
+            "bootstrap_start",
+            {
+                "403": "shared_store_read_only",
+                "404": "boundary_file_missing",
+                "409": "bootstrap_running",
+            },
+        ),
+        ("bootstrap_cancel", {"409": "bootstrap_not_running"}),
+        ("update_feedback", {"404": "feedback_not_found"}),
+        ("delete_feedback", {"404": "feedback_not_found"}),
+        (
+            "sewer_config_update",
+            {"403": "path_outside_project", "404": "source_file_missing"},
+        ),
+    ],
+)
+def test_admin_operations_document_the_problems_of_their_route(operation_id, reasons):
+    (operation,) = [op for _, _, op in OPERATIONS if op["operationId"] == operation_id]
+
+    documented = {
+        status: operation["responses"][status]["content"][PROBLEM_MEDIA_TYPE][
+            "example"
+        ]["details"]["reason"]
+        for status in reasons
+        if status in operation["responses"]
+    }
+    assert documented == reasons
+    assert "401" in operation["responses"]
