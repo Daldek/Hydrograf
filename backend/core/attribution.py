@@ -24,7 +24,9 @@ carry them and the front end shows and exports what a response carries; the stri
 the view draws the short forms GK and SK from G and SG itself (Nogat's kit). The user
 guide (``frontend/instrukcja/index.html``) and the slides
 (``docs/Hydrograf-prezentacja.html``) quote the PMAXTP lines under their screenshots
-of PMAXTP results.
+of PMAXTP results. Lines that Hydrograf reads, those of the results manifest and of an
+older ``ATTRIBUTION.txt``, are merged as Nogat's standard writes them today: a CP
+written before ECO-071, with the processing in parentheses, is CP (``merge``).
 """
 
 import re
@@ -55,6 +57,9 @@ PMAXTP_MONOGRAPH: Final = (
 )
 # RK: the link to the PMAXTP terms (DEV-20.7)
 PMAXTP_TERMS: Final = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
+# CP: ČHMÚ's data were processed, never how (DEV §20, ECO-071). Hydrograf has no ČHMÚ
+# data, but a result of the manifest or an older ATTRIBUTION.txt may carry the line
+CHMI_PROCESSED: Final = "Dane ČHMÚ zostały przetworzone"
 # G: the source of GUGiK data, with the products used, the years in which their data
 # were created and the days on which they were downloaded (DEV §20)
 GUGIK_SOURCE: Final = (
@@ -93,6 +98,9 @@ LAYER_KINDS: Final = {
 
 # A terms line names the terms it links: „Regulamin <whose terms>: <address>” (DEV §20)
 _TERMS_LINE = re.compile(r"Regulamin [^:]+: \S+")
+# CP as a product written before ECO-071 carried it, naming the processing in
+# parentheses: whatever the parentheses say, it is CP
+_OLD_CHMI_PROCESSED = re.compile(r"Dane ČHMÚ zostały przetworzone \(.*\)")
 
 
 @dataclass(frozen=True)
@@ -125,7 +133,8 @@ PMAXTP: Final = ProviderLines(
 def merge(lines: Iterable[ProviderLines]) -> ProviderLines:
     """Return the lines of a product with the data of several products.
 
-    Every line once, in the order it first comes (DEV-20.6).
+    Every line once, in the order it first comes (DEV-20.6); a CP written before
+    ECO-071 is CP (``canonical``), so an old and a new CP give one line.
 
     Parameters
     ----------
@@ -139,9 +148,20 @@ def merge(lines: Iterable[ProviderLines]) -> ProviderLines:
     """
     items = list(lines)
     return ProviderLines(
-        attribution=tuple(dict.fromkeys(a for i in items for a in i.attribution)),
+        attribution=tuple(
+            dict.fromkeys(canonical(a) for i in items for a in i.attribution)
+        ),
         terms_notice=tuple(dict.fromkeys(n for i in items for n in i.terms_notice)),
     )
+
+
+def canonical(line: str) -> str:
+    """Return an attribution line as Nogat's standard writes it today.
+
+    „Dane ČHMÚ zostały przetworzone (…)” of a product written before ECO-071, whatever
+    the words in parentheses, is CP; every other line is returned unchanged.
+    """
+    return CHMI_PROCESSED if _OLD_CHMI_PROCESSED.fullmatch(line) else line
 
 
 def is_terms(line: str) -> bool:
