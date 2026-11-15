@@ -1,8 +1,8 @@
 # Kartograf integration
 
 **Version:** 7.8
-**Date:** 2026-11-14
-**Status:** Active (Kartograf 0.8.0.dev0, pinned commit `c9afdd3`, the release sets candidate-4 and candidate-5 of Nogat; ADR-061, ADR-066, ADR-067)
+**Date:** 2026-11-15
+**Status:** Active (Kartograf 0.8.0.dev0, pinned commit `e14bc78`, the release set candidate-5 of Nogat; ADR-061, ADR-066, ADR-067)
 
 ---
 
@@ -10,9 +10,9 @@
 
 Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
 Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
-is a library dependency used through its public API. It is pinned by the commit `c9afdd3` of its
-`develop` branch (0.8.0.dev0, the release sets candidate-4 and candidate-5 of Nogat; was `d0990c8` of candidate-2
-and candidate-3), with the range `>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull
+is a library dependency used through its public API. It is pinned by the commit `e14bc78` of its
+`develop` branch (0.8.0.dev0, the release set candidate-5 of Nogat; was `c9afdd3` of candidate-4,
+and `d0990c8` of candidate-2 and candidate-3), with the range `>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull
 request replaces the commit with the tag (REL-5.3, REL-5.6, ADR-060, ADR-061).
 
 What Hydrograf takes from it:
