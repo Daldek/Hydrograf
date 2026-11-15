@@ -7,7 +7,10 @@ checked (``utils.archiwista_project``), and the set must hold what the run needs
 - the NMT sheets of the project's area: ``find_sheets_for_geometry`` of the area file
   at 1:10000 in the PL-1992 grid (the rule of Archiwista's call, Kartograf's ADR-058),
   among the pins of the segment ``nmt/pl_1992_<resolution>_evrf2007``; the pinned
-  sheets beyond them are used too, and all of them make the mosaic;
+  sheets beyond them are used too, and all of them make the mosaic. A sheet of the
+  area that the segment lacks (GUGiK publishes some sheets only at 1 m) is taken from
+  the segment of a finer resolution pinned in the set, the nearest finer one first
+  (ADR-087); step 3 averages it onto the cells of the run;
 - the BDOT10k packages (``landcover/pl_bdot10k_gpkg``) of the counties that the county
   register (PRG) names for the box of the mosaic, the rule of steps 3 and 4, unless the
   land cover is skipped (then step 3 burns the streams of the packages the set has);
@@ -65,10 +68,18 @@ BDOT10K_SEGMENT = "landcover/pl_bdot10k_gpkg"
 
 type Box = tuple[float, float, float, float]
 
+# The NMT resolutions of the GUGiK sheets, the finest first.
+NMT_RESOLUTIONS = ("1m", "5m")
+
 
 def nmt_segment(resolution: str) -> str:
     """Return the store segment of the NMT sheets of ``resolution`` (``5m``, ``1m``)."""
     return f"nmt/pl_{SHEET_SYSTEM}_{resolution}_evrf2007"
+
+
+def finer_resolutions(resolution: str) -> tuple[str, ...]:
+    """Return the NMT resolutions finer than ``resolution``, the nearest first."""
+    return tuple(reversed(NMT_RESOLUTIONS[: NMT_RESOLUTIONS.index(resolution)]))
 
 
 @dataclass(frozen=True)
@@ -94,7 +105,11 @@ class SetInputs:
     required_sheets : tuple[str, ...]
         The sheets of the area.
     sheets : dict[str, Path]
-        Every pinned sheet of the resolution's segment: its code to its version file.
+        The sheets of the mosaic, code to version file: every pinned sheet of the
+        resolution's segment and the sheets of the area that a finer segment gives.
+    finer_sheets : dict[str, tuple[str, ...]]
+        The finer segments that give sheets of the area the resolution's segment
+        lacks, each with the codes of its sheets (ADR-087); empty when none.
     mosaic_bbox_2180 : Box
         The box of the frames of ``sheets`` (EPSG:2180).
     counties : dict[str, Path]
@@ -120,6 +135,7 @@ class SetInputs:
     resolution: str
     required_sheets: tuple[str, ...]
     sheets: dict[str, Path]
+    finer_sheets: dict[str, tuple[str, ...]]
     mosaic_bbox_2180: Box
     counties: dict[str, Path]
     counties_checked: bool
@@ -150,6 +166,10 @@ class SetInputs:
                     "segment": nmt_segment(self.resolution),
                     "sheets": len(self.sheets),
                     "area_sheets": len(self.required_sheets),
+                    "finer_sheets": {
+                        segment: list(codes)
+                        for segment, codes in self.finer_sheets.items()
+                    },
                 },
                 "bdot10k": sorted(self.counties),
                 "hsg": (
@@ -188,7 +208,8 @@ def set_inputs(
     set_name : str
         The set's name (compared case-folded).
     resolution : str
-        ``5m`` or ``1m``: the NMT segment of the sheets.
+        ``5m`` or ``1m``: the NMT segment of the sheets. A sheet of the area that its
+        segment lacks may come from the segment of a finer resolution (ADR-087).
     cache_dir : Path
         The cache directory of the pipeline (its Kartograf metadata cache).
     landcover : bool
@@ -239,10 +260,33 @@ def set_inputs(
         {unit: root / versions[0] for unit, versions in sorted(units.items())}
         for units in by_segment.values()
     )
-
     required, area_bbox_wgs84 = _area_sheets(area)
-    missing = sorted(set(required) - set(nmt))
-    if missing or not nmt:
+    finer = _finer_sheets(pins, set(required) - set(nmt), resolution, pin_set.name)
+    if finer:
+        logger.warning(
+            "NMT sheets of the area that %s lacks, taken from a finer segment of the "
+            "set (averaged onto the %s cells in step 3): %s",
+            nmt_segment(resolution),
+            resolution,
+            "; ".join(
+                f"{segment}: {len(versions)} ({', '.join(versions)})"
+                for segment, versions in finer.items()
+            ),
+        )
+    sheets = dict(
+        sorted(
+            [
+                *nmt.items(),
+                *(
+                    (code, root / version)
+                    for versions in finer.values()
+                    for code, version in versions.items()
+                ),
+            ]
+        )
+    )
+    missing = sorted(set(required) - set(sheets))
+    if missing or not sheets:
         raise NoDataError(
             "set_sheets_missing",
             reason="set_sheets_missing",
@@ -251,7 +295,7 @@ def set_inputs(
             count=len(missing),
             units=missing,
         )
-    mosaic = sheets_bbox_2180(nmt)
+    mosaic = sheets_bbox_2180(sheets)
 
     counties = dict(bdot10k)
     if landcover:
@@ -291,7 +335,7 @@ def set_inputs(
             )
         raster = covering[0]
 
-    used = {*nmt.values(), *counties.values(), *([raster] if raster else [])}
+    used = {*sheets.values(), *counties.values(), *([raster] if raster else [])}
     return SetInputs(
         project=project,
         pin_set=pin_set,
@@ -301,7 +345,8 @@ def set_inputs(
         digest=pin_set.pins_sha256 or pins_digest(pin_set.pins),
         resolution=resolution,
         required_sheets=tuple(required),
-        sheets=nmt,
+        sheets=sheets,
+        finer_sheets={segment: tuple(codes) for segment, codes in finer.items()},
         mosaic_bbox_2180=mosaic,
         counties=counties,
         counties_checked=landcover,
@@ -319,6 +364,37 @@ def _units(pins: Sequence[Pin], segment: str) -> dict[str, list[str]]:
             unit = PurePosixPath(pin.version).stem
             units.setdefault(unit, []).append(pin.version)
     return units
+
+
+def _finer_sheets(
+    pins: Sequence[Pin], gaps: set[str], resolution: str, set_name: str
+) -> dict[str, dict[str, str]]:
+    """Return the finer segments that give the sheets ``gaps``: code to version.
+
+    Each sheet comes from the nearest finer resolution whose segment has it; a sheet
+    with two versions there is refused (``set_unit_ambiguous``). The finer pins of
+    other sheets are not used.
+    """
+    finer: dict[str, dict[str, str]] = {}
+    left = set(gaps)
+    for finer_resolution in finer_resolutions(resolution):
+        segment = nmt_segment(finer_resolution)
+        units = {u: v for u, v in _units(pins, segment).items() if u in left}
+        ambiguous = sorted(
+            unit for unit, versions in units.items() if len(versions) > 1
+        )
+        if ambiguous:
+            raise ConflictError(
+                "set_unit_ambiguous",
+                reason="set_unit_ambiguous",
+                name=set_name,
+                count=len(ambiguous),
+                units=ambiguous,
+            )
+        if units:
+            finer[segment] = {unit: units[unit][0] for unit in sorted(units)}
+            left -= set(units)
+    return finer
 
 
 def _area_sheets(area: Path) -> tuple[list[str], Box]:

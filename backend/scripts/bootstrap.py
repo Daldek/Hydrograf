@@ -1502,6 +1502,11 @@ def print_set(inputs: SetInputs) -> None:
         f"  Piny:        {len(pin_set.pins)}; piny Kartografa sprawdzone (SHA-256), "
         f"nieużywane: {len(inputs.unused)}; innych producentów: {inputs.foreign}"
     )
+    for segment, codes in inputs.finer_sheets.items():
+        print(
+            f"  NMT {segment} zamiast {nmt_segment(inputs.resolution)} "
+            f"({len(codes)} ark.): {', '.join(codes)}"
+        )
     print()
 
 
@@ -1510,9 +1515,14 @@ def _set_steps(inputs: SetInputs) -> list[str]:
     counties = ", ".join(inputs.counties) or "-"
     which = "powiaty mozaiki (PRG)" if inputs.counties_checked else "paczki zestawu"
     hsg = inputs.hsg.relative_to(inputs.root).as_posix() if inputs.hsg else "-"
+    finer = "".join(
+        f", w tym {len(codes)} ark. z {segment} (uśrednione do {inputs.resolution})"
+        for segment, codes in inputs.finer_sheets.items()
+    )
     return [
         f"NMT z zestawu, {nmt_segment(inputs.resolution)}: {len(inputs.sheets)} ark."
-        f" (obszar projektu: {len(inputs.required_sheets)} ark.), bez pobierania",
+        f" (obszar projektu: {len(inputs.required_sheets)} ark.){finer}, "
+        "bez pobierania",
         "Przetwarzanie NMT: mozaika VRT z wersji zestawu, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k z zestawu, {which}: {counties}",
