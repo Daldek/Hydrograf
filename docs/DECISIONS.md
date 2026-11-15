@@ -72,7 +72,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085 and ADR-086 | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
-| [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 | 2026-11-02 |
+| [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 and ADR-087 | 2026-11-02 |
 | [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | amended by ADR-069 | 2026-11-04 |
 | [ADR-069](decisions/0069-pmaxtp-watershed-mean-by-thiessen-polygons.md) | The PMAXTP design depth is the watershed mean by Thiessen polygons; an optional areal reduction factor of the user | accepted | 2026-11-05 |
 | [ADR-070](decisions/0070-flow-path-heads-measured-in-preprocessing.md) | Flow path heads, overland segments and channel sources measured in preprocessing | accepted | 2026-11-05 |
@@ -92,6 +92,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0) and 2026-11-14 (no footer); amended by ADR-085 (logs, blocks) and ADR-086 (admin paths) | 2026-11-13 |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted | 2026-11-13 |
 | [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted | 2026-11-14 |
+| [ADR-087](decisions/0087-a-sheet-missing-at-the-run-resolution-from-a-finer-nmt-of-the-set.md) | A sheet the source lacks at the run's resolution comes from a finer NMT of the set | accepted | 2026-11-15 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

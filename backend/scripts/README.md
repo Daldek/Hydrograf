@@ -173,7 +173,11 @@ recorded `pins_sha256`, the project's Kartograf store (the same directory as
 `HYDROGRAF_KARTOGRAF_ROOT` when that is set) and every Kartograf pin by size and SHA-256; then that
 the set holds the NMT sheets of the project's area, the BDOT10k packages of the counties of the
 mosaic (unless `--skip-landcover`) and one HSG raster of the segment of `soil.hsg_depth_rule` that
-covers the mosaic (unless `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5
+covers the mosaic (unless `--skip-hsg`), one version per sheet, county and raster. A sheet of the
+area that the segment of `--resolution` lacks may be pinned at a finer resolution (for `5m`:
+`nmt/pl_1992_1m_evrf2007`; GUGiK publishes some sheets only at 1 m): step 3 averages it onto the
+run's cells, and the dry-run, the log and `bootstrap_set.json` (`inputs.nmt.finer_sheets`) name
+those sheets (ADR-087). Steps 2 to 5
 read the pinned files (step 2 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The
 run logs the set and writes `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project,
 set, `pins_sha256`, inputs, `stream_burning`, `fill_enclosed_nodata`, `hsg_depth_rule`, start, end,

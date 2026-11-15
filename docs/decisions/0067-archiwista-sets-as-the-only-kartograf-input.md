@@ -5,6 +5,11 @@
 > (`topsoil`: `hsg/global_soilgrids_0-5cm_mean/`). A set without a raster of that segment that
 > covers the mosaic is refused (`set_hsg_missing`), whatever HSG raster of another rule it
 > holds; the hint names the Kartograf command that computes the raster.
+>
+> **Amended by ADR-087 (2026-11-15):** a sheet of the area that the segment of `--resolution`
+> lacks (GUGiK publishes some sheets only at 1 m) may come from the segment of a finer resolution
+> pinned in the set (for `5m`: `nmt/pl_1992_1m_evrf2007`); step 3 averages it onto the run's cells,
+> and the run records the sheets (`inputs.nmt.finer_sheets`).
 
 **Date:** 2026-11-02
 **Status:** accepted

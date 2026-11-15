@@ -550,9 +550,11 @@ MESSAGES: Final[dict[str, Message]] = {
         "Arkusze NMT ({resolution}) obszaru projektu, których brakuje w zestawie "
         "{name}: {count}.",
         "In Archiwista: „Otwórz do edycji”, add an elevation download over the "
-        "project's area, then „Zamknij zestaw”.",
+        "project's area (a sheet the source lacks at this resolution: the same sheet "
+        "at a finer one, e.g. NMT 1 m), then „Zamknij zestaw”.",
         "W Archiwiście: „Otwórz do edycji”, dodaj polecenie elevation download na "
-        "obszarze projektu, potem „Zamknij zestaw”.",
+        "obszarze projektu (arkusz, którego źródło nie ma w tej rozdzielczości: ten "
+        "sam arkusz w drobniejszej, np. NMT 1 m), potem „Zamknij zestaw”.",
     ),
     "set_counties_missing": Message(
         "Counties of the NMT mosaic whose BDOT10k package the set {name} lacks: "

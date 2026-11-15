@@ -16,7 +16,7 @@ import os
 import shutil
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +60,7 @@ PROFILE = ("0-5cm", "5-15cm", "15-30cm", "30-60cm", "60-100cm")
 TOPSOIL = ("0-5cm",)
 SET = "Hydrograf 2020"
 NMT = "nmt/pl_1992_5m_evrf2007/versions/"
+NMT_1M = "nmt/pl_1992_1m_evrf2007"
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,8 @@ class Store:
 
     root: Path
     versions: dict[str, list[str]]
+    # The versions of the 1 m sheets, by sheet code (GUGiK's only NMT of some sheets)
+    fine: dict[str, list[str]] = field(default_factory=dict)
 
     def version(self, stem: str, index: int = 0) -> str:
         return sorted(self.versions[stem])[index]
@@ -122,9 +125,21 @@ def store(tmp_path_factory: pytest.TempPathFactory) -> Store:
     flights = [flight(sheet, "2020-04-18", "73715") for sheet in sheets]
     newer = flight(AREA_SHEETS[0], "2023-05-01", "84000")
     nmt = kartograf.GugikProvider(vertical_crs="EVRF2007", resolution="5m")
+    fine = kartograf.GugikProvider(vertical_crs="EVRF2007", resolution="1m")
+    fine_flights = [
+        flight(AREA_SHEETS[1], "2021-06-01", "91000", resolution_m=1.0),
+        flight(AREA_SHEETS[1], "2024-06-01", "92000", resolution_m=1.0),
+    ]
     with no_network():
         with gugik_index(GugikIndex(flights)):
             kartograf.DownloadManager(nmt, root=root).download_sheets(sheets)
+        # two versions of the 1 m sheet: the older flight, then the newer one
+        with gugik_index(GugikIndex(fine_flights[:1])):
+            kartograf.DownloadManager(fine, root=root).download_sheets(AREA_SHEETS[1:])
+        with gugik_index(GugikIndex(fine_flights)):
+            kartograf.DownloadManager(fine, root=root).download_sheets(
+                AREA_SHEETS[1:], update="force"
+            )
         with gugik_index(GugikIndex([*flights, newer])):
             kartograf.DownloadManager(nmt, root=root).download_sheets(
                 AREA_SHEETS[:1], update="force"
@@ -144,10 +159,13 @@ def store(tmp_path_factory: pytest.TempPathFactory) -> Store:
                         cache=False,
                     )
     versions: dict[str, list[str]] = {}
+    fine_versions: dict[str, list[str]] = {}
     for path in root.glob("*/*/versions/**/*"):
         if path.is_file() and not path.name.endswith(".meta.json"):
-            versions.setdefault(path.stem, []).append(path.relative_to(root).as_posix())
-    return Store(root, versions)
+            version = path.relative_to(root).as_posix()
+            by_stem = fine_versions if version.startswith(NMT_1M) else versions
+            by_stem.setdefault(path.stem, []).append(version)
+    return Store(root, versions, fine_versions)
 
 
 class Project:
@@ -339,6 +357,97 @@ class TestClosedSet:
 
         assert run.code == 0, run.err
         assert "raster z zestawu -" in run.out
+
+
+def _fine_pin(project: Project, index: int = 1) -> str:
+    """Pin a 1 m version of the second sheet of the area; return the version."""
+    version = sorted(project.store.fine[AREA_SHEETS[1]])[index]
+    project.group["pins"].append(project.store.pin(version))
+    return version
+
+
+@pytest.mark.usefixtures("offline")
+class TestFinerSheets:
+    """A sheet the source lacks at the run's resolution, from its 1 m (ADR-087)."""
+
+    def test_a_sheet_missing_at_5m_comes_from_its_1m_pin(self, project, tmp_path):
+        project.drop(f"{NMT}N-33/130/D/d/1/2/")
+        fine = _fine_pin(project)
+        project.close()
+
+        with bdot10k_counties(Counties(COUNTIES)):
+            inputs = set_inputs(
+                project.write(), SET, resolution="5m", cache_dir=tmp_path / "cache"
+            )
+
+        store = project.store
+        assert inputs.sheets == {
+            AREA_SHEETS[0]: store.root / store.version(AREA_SHEETS[0]),
+            AREA_SHEETS[1]: store.root / fine,
+            EXTRA_SHEET: store.root / store.version(EXTRA_SHEET),
+        }
+        assert inputs.finer_sheets == {NMT_1M: (AREA_SHEETS[1],)}
+        assert fine not in inputs.unused
+        nmt = inputs.identity()["inputs"]["nmt"]
+        assert nmt["segment"] == "nmt/pl_1992_5m_evrf2007"
+        assert nmt["sheets"] == 3
+        assert nmt["finer_sheets"] == {NMT_1M: [AREA_SHEETS[1]]}
+
+    def test_the_dry_run_names_the_sheets_of_the_finer_segment(
+        self, project, bootstrap
+    ):
+        project.drop(f"{NMT}N-33/130/D/d/1/2/")
+        _fine_pin(project)
+        project.close()
+
+        run = bootstrap("--project", str(project.write()), "--set", SET)
+
+        assert run.code == 0, run.err
+        assert (
+            "nmt/pl_1992_5m_evrf2007: 3 ark. (obszar projektu: 2 ark.), w tym 1 ark. "
+            f"z {NMT_1M} (uśrednione do 5m)" in run.out
+        )
+        assert (
+            f"NMT {NMT_1M} zamiast nmt/pl_1992_5m_evrf2007 (1 ark.): {AREA_SHEETS[1]}"
+            in run.out
+        )
+
+    def test_a_1m_pin_of_a_sheet_the_set_has_at_5m_is_not_used(self, project, tmp_path):
+        fine = _fine_pin(project)
+
+        with bdot10k_counties(Counties(COUNTIES)):
+            inputs = set_inputs(
+                project.write(), SET, resolution="5m", cache_dir=tmp_path / "cache"
+            )
+
+        assert inputs.sheets[
+            AREA_SHEETS[1]
+        ] == project.store.root / project.store.version(AREA_SHEETS[1])
+        assert inputs.finer_sheets == {}
+        assert fine in inputs.unused
+
+    def test_a_run_at_1m_takes_no_coarser_sheet(self, project, bootstrap):
+        """Only a finer segment fills a gap: a 1 m run lacks the 5 m-only sheets."""
+        _fine_pin(project)
+
+        run = bootstrap(
+            "--project", str(project.write()), "--set", SET, "--resolution", "1m"
+        )
+
+        assert run.code == 14
+        assert run.document["details"]["reason"] == "set_sheets_missing"
+        assert run.document["details"]["units"] == [AREA_SHEETS[0]]
+
+    def test_two_versions_of_the_finer_sheet_are_refused(self, project, bootstrap):
+        project.drop(f"{NMT}N-33/130/D/d/1/2/")
+        _fine_pin(project, 0)
+        _fine_pin(project, 1)
+
+        run = bootstrap("--project", str(project.write()), "--set", SET)
+
+        assert run.code == 4
+        assert run.document["details"]["reason"] == "set_unit_ambiguous"
+        assert run.document["details"]["units"] == [AREA_SHEETS[1]]
 
 
 def _first_pin(**members: Any) -> Callable[[Project], None]:
