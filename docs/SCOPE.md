@@ -534,7 +534,7 @@ This document defines precisely:
 - Alembic (database migrations)
 **Own libraries:**
 - Hydrolog 0.8.0.dev0 (commit `3ce7ee8` of `develop`, the release set candidate-5 of Nogat, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `c9afdd3` of `develop`, the release sets candidate-4 and candidate-5 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Kartograf 0.8.0.dev0 (commit `e14bc78` of `develop`, the release set candidate-5 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f4f6a8d`, the release set candidate-5 of Nogat, package `obserwator`; design precipitation from IMGW)
 
 #### Frontend

@@ -1059,7 +1059,7 @@ requires-dist = [
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
     { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=3ce7ee847df14f7aaec7abbefd828d389eb7aae8" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=e14bc78c014e9d3e19ad0e8fd8e1764e5191018a" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
@@ -1155,7 +1155,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf.git?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1#c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" }
+source = { git = "https://github.com/Daldek/Kartograf.git?rev=e14bc78c014e9d3e19ad0e8fd8e1764e5191018a#e14bc78c014e9d3e19ad0e8fd8e1764e5191018a" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },

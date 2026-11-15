@@ -103,7 +103,7 @@ package = false
 # and Hydrolog (0.8.0.dev0), the heads of their `develop`. All three commits are on
 # GitHub.
 obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "e14bc78c014e9d3e19ad0e8fd8e1764e5191018a" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "3ce7ee847df14f7aaec7abbefd828d389eb7aae8" }
 
 [tool.ruff]
