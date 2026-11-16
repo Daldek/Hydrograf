@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-16
 
 ### Added
 - **One admin panel on Nogat's kit at `/admin/`** (Nogat DEV-15.13, ECO-067, kit 0.7.0; ADR-086, step 3 of Nogat's plan `2026-11-13-admin-panel`; new `frontend/admin/`, `frontend/nogat/nogat-admin.*`, `api/endpoints/admin.py`, `api/dependencies/admin_auth.py`, `api/traffic.py`, `api/endpoints/site.py`, `core/usage.py`, `docker/nginx*.conf*`): the page is the kit's `<nogat-admin>` with „Zgłoszenia”, „Statystyki” and „Stan”, then „Zasoby”, „Przetwarzanie NMT” (with the area map), „Czyszczenie” and „Granice i kanalizacja” on the tokens; `/admin` answers 308 to `/admin/` and `/admin.html` is gone, so the access paths are `/admin`, `/admin/*` and `/api/admin/*`. New `GET /api/admin/status` (checks `database`, `catchment_graph`, `data_dir`), which replaces `GET /api/admin/dashboard` (its row counts and data sizes moved to `resources`), and `GET /api/admin/stats?from=&to=` from `stats.jsonl`. Without `ADMIN_API_KEY` or `ADMIN_API_KEY_FILE` no key is generated any more: every admin route answers 401 `admin_key_not_configured`. Every admin answer is `Cache-Control: no-store`; the panel's requests are limited but count in no daily total. Bootstrap 5, `admin.key.example` and the key file field of the old sign-in are removed.
@@ -1190,7 +1190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
-[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Daldek/Hydrograf/compare/v0.2.1...v0.2.2
