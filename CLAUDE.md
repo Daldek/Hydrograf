@@ -27,13 +27,13 @@ Introduction: [README.md](README.md). The Nogat standard 1.0 is in
   ADR-021, ADR-022); rasters are processed only by the preprocessing pipeline in
   `backend/scripts/`. PostGIS is required.
 - Hydrolog, Kartograf and Obserwator are dependencies used through their public API, pinned
-  in `backend/pyproject.toml` by the commit of their head while their tags do not exist
-  (REL-5.3, ADR-060, ADR-061), each with the supported range of REL-5.6 in `dependencies`
-  and the commit in `[tool.uv.sources]`; all three commits are on GitHub, so
-  `uv sync --locked` resolves them. Obserwator was IMGWTools until its v3.0.0: Hydrograf
-  installs the distribution `obserwator` (`from obserwator import fetch_pmaxtp`, the
-  `Obserwator*Error` exceptions) from the repository `Obserwator`. The three pins follow
-  the release set of Nogat. Kartograf writes into the store `cache/kartograf/`
+  in `backend/pyproject.toml` by the commit of Nogat's release set until the release commit
+  of v0.5.0 pins their tags Kartograf v0.8.0, Obserwator v3.0.0 and Hydrolog v0.8.0 and
+  narrows the ranges of REL-5.6 in `dependencies` (REL-5.3, ADR-060, ADR-061); the pins are
+  in `[tool.uv.sources]` and on GitHub, so `uv sync --locked` resolves them. Obserwator
+  was IMGWTools until its v3.0.0: Hydrograf installs the distribution `obserwator`
+  (`from obserwator import fetch_pmaxtp`, the `Obserwator*Error` exceptions) from the
+  repository `Obserwator`. Kartograf writes into the store `cache/kartograf/`
   (ADR-061): every script passes `root=` and `cache=` explicitly. A missing function is a
   GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a
   workaround here.
@@ -173,8 +173,8 @@ Registry entry:
 [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml) (Hydrograf).
 Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration time) and
 Obserwator (PMAXTP precipitation; IMGWTools until its v3.0.0) are runtime dependencies used
-as libraries; Hydraulik is a planned compute node. The three producers are pinned to their
-heads, which follow the standard 1.0 (ADR-060, ADR-061).
+as libraries; Hydraulik is a planned compute node. The three producers are pinned by the
+commits of Nogat's release set, then by their tags of the first joint release (ADR-060, ADR-061).
 
 ## Deviations
 

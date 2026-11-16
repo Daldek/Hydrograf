@@ -416,6 +416,6 @@ of a pull request.
 
 ## Status, licence, author
 
-Pre-release: `develop` carries 0.5.0.dev0, the last release is 0.4.0. Licence: MIT
+Releases are the tags `vX.Y.Z` of `main`; 0.5.0 is in the first joint release of Nogat. Licence: MIT
 ([LICENSE](https://github.com/Daldek/Hydrograf/blob/main/LICENSE)). Author:
 [Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/).

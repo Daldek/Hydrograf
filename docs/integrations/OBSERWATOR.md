@@ -294,7 +294,7 @@ obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f4f6a8de
 - **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-5)
 - **Wersja:** 3.0.0.dev0 (untagged), commit `f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
-- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with a tag of Obserwator.
+- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release commit of Hydrograf v0.5.0 replaces it with the tag `v3.0.0` of Obserwator and narrows the range to `obserwator>=3.0.0,<4` (REL-5.3, REL-5.6).
 
 ---
 
