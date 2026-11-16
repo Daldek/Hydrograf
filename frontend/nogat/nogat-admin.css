@@ -1,0 +1,707 @@
+/*
+ * Nogat GUI kit: the admin panel (DEV-15.13, ECO-067). Tokens of design/tokens.css with
+ * fallbacks, so a GUI that has not adopted the tokens yet shows it too. Copy byte for byte
+ * (DEV-15.6).
+ */
+
+nogat-admin,
+nogat-admin-feedback,
+nogat-admin-stats,
+nogat-admin-status {
+  display: block;
+  color: var(--text, #2b2b2b);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-base, 13px);
+  line-height: var(--line-height, 1.4);
+}
+
+/* The admin page is the shell alone: it covers the page. */
+body:has(> nogat-admin) {
+  margin: 0;
+  background: var(--bg, #faf8f8);
+}
+
+nogat-admin {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg, #faf8f8);
+}
+
+:where(nogat-admin, nogat-admin-feedback, nogat-admin-stats, nogat-admin-status) :focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+/* The top bar: mark, „<app> · Administracja”, then „Wróć do aplikacji” and „Wyloguj”. */
+.nogat-admin-bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-height: var(--header-height, 52px);
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  border-bottom: 1px solid var(--line, #e5e5e5);
+  background: var(--surface, #ffffff);
+}
+
+.nogat-admin-mark {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.nogat-admin-mark[hidden] {
+  display: none;
+}
+
+.nogat-admin-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-md, 15px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The app's name in its tool accent (DEV-15.3). */
+nogat-admin[project="archiwista"] .nogat-admin-app { color: var(--tool-archiwista, #4a776c); }
+nogat-admin[project="hydrograf"] .nogat-admin-app { color: var(--tool-hydrograf, #12708a); }
+nogat-admin[project="hydrolog"] .nogat-admin-app { color: var(--tool-hydrolog, #3f7a3a); }
+nogat-admin[project="obserwator"] .nogat-admin-app { color: var(--tool-obserwator, #3b5bab); }
+nogat-admin[project="kartograf"] .nogat-admin-app { color: var(--tool-kartograf, #8a5a1c); }
+nogat-admin[project="hydraulik"] .nogat-admin-app { color: var(--tool-hydraulik, #5e4fa2); }
+nogat-admin[project="retman"] .nogat-admin-app { color: var(--tool-retman, #a4472f); }
+nogat-admin[project="nogat"] .nogat-admin-app { color: var(--tool-nogat, #284b63); }
+
+.nogat-admin-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+/* Buttons and the key field. */
+.nogat-admin-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1, 4px);
+  height: var(--control, 32px);
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid var(--line-2, #d4cfcf);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  font: var(--weight-medium, 500) var(--text-base, 13px) / 1 var(--font-sans, system-ui, sans-serif);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition, 0.2s ease), border-color var(--transition, 0.2s ease);
+}
+
+.nogat-admin-button:hover {
+  background: var(--surface-2, #f4f1f1);
+}
+
+.nogat-admin-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nogat-admin-button[hidden] {
+  display: none;
+}
+
+.nogat-admin-button[aria-pressed="true"] {
+  border-color: var(--accent, #284b63);
+  background: var(--accent-soft, #e4ecf1);
+}
+
+.nogat-admin-primary {
+  border-color: var(--accent, #284b63);
+  background: var(--accent, #284b63);
+  color: var(--accent-ink, #ffffff);
+}
+
+.nogat-admin-primary:hover {
+  border-color: var(--accent-hover, #1a3a50);
+  background: var(--accent-hover, #1a3a50);
+}
+
+.nogat-admin-danger,
+.nogat-admin-danger:hover {
+  border-color: var(--bad, #dc2626);
+  background: var(--bad-bg, #fee2e2);
+  color: var(--bad-ink, #991b1b);
+}
+
+.nogat-admin-danger:hover {
+  box-shadow: inset 0 0 0 1px var(--bad, #dc2626);
+}
+
+.nogat-admin-small {
+  height: var(--control-sm, 26px);
+  padding: 0 var(--space-2, 8px);
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-admin-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nogat-admin-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control, 32px);
+  padding: 0 var(--space-2, 8px);
+  border: 1px solid var(--line-2, #d4cfcf);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  font: inherit;
+}
+
+/* The navigation beside the content, above it on a phone. */
+.nogat-admin-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: start;
+}
+
+.nogat-admin-layout.nogat-admin-signed-out {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nogat-admin-nav {
+  position: sticky;
+  top: 0;
+  padding: var(--space-4, 16px) var(--space-2, 8px);
+}
+
+.nogat-admin-nav[hidden] {
+  display: none;
+}
+
+.nogat-admin-nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nogat-admin-nav a {
+  display: block;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text-2, #4e4e4e);
+  text-decoration: none;
+}
+
+.nogat-admin-nav a:hover {
+  background: var(--surface-2, #f4f1f1);
+  color: var(--text, #2b2b2b);
+}
+
+.nogat-admin-nav a[aria-current="page"] {
+  background: var(--accent-soft, #e4ecf1);
+  color: var(--text, #2b2b2b);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-admin-main {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 1120px;
+  padding: var(--space-6, 24px) var(--space-6, 24px) var(--space-12, 48px);
+}
+
+.nogat-admin-signed-out > .nogat-admin-main {
+  max-width: none;
+}
+
+nogat-admin .nogat-admin-section[hidden] {
+  display: none;
+}
+
+/* The key prompt. */
+.nogat-admin-prompt {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-3, 12px);
+  width: 100%;
+  max-width: 360px;
+  margin: var(--space-12, 48px) auto;
+  padding: var(--space-6, 24px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow, 0 1px 3px rgba(16, 24, 40, 0.08));
+}
+
+.nogat-admin-prompt[hidden] {
+  display: none;
+}
+
+.nogat-admin-prompt h2 {
+  margin: 0;
+  font-size: var(--text-lg, 18px);
+  letter-spacing: -0.01em;
+}
+
+.nogat-admin-prompt label {
+  margin-bottom: calc(-1 * var(--space-2, 8px));
+  font-weight: var(--weight-medium, 500);
+}
+
+/* What the views share. */
+.nogat-admin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px) var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.nogat-admin-heading {
+  margin: 0;
+  font-size: var(--text-lg, 18px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: -0.01em;
+}
+
+.nogat-admin-count {
+  margin: 0;
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-admin-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-left: auto;
+}
+
+.nogat-admin-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  cursor: pointer;
+}
+
+.nogat-admin-error {
+  margin: 0 0 var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bad-bg, #fee2e2);
+  color: var(--bad-ink, #991b1b);
+}
+
+.nogat-admin-error[hidden] {
+  display: none;
+}
+
+.nogat-admin-note {
+  margin: 0;
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+}
+
+/* The line of each view that says what is loading or done; a live region, so never hidden. */
+nogat-admin-feedback > .nogat-admin-note:not(:empty),
+nogat-admin-stats > .nogat-admin-note:not(:empty),
+nogat-admin-status > .nogat-admin-note:not(:empty) {
+  margin-bottom: var(--space-3, 12px);
+}
+
+.nogat-admin-empty {
+  margin: var(--space-4, 16px) 0;
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2, 8px);
+  border-radius: var(--radius-pill, 999px);
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-bold, 700);
+  line-height: 18px;
+}
+
+.nogat-admin-info { background: var(--info-bg, #dbeafe); color: var(--info-ink, #1e40af); }
+.nogat-admin-ok { background: var(--ok-bg, #dcfce7); color: var(--ok-ink, #166534); }
+.nogat-admin-warning { background: var(--warn-bg, #fef3c7); color: var(--warn-ink, #92400e); }
+.nogat-admin-failed { background: var(--bad-bg, #fee2e2); color: var(--bad-ink, #991b1b); }
+.nogat-admin-neutral { background: var(--surface-2, #f4f1f1); color: var(--text-2, #4e4e4e); }
+
+/* The reports. */
+.nogat-admin-reports {
+  display: grid;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nogat-admin-reports[hidden] {
+  display: none;
+}
+
+.nogat-admin-report {
+  min-width: 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-left: 3px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+}
+
+.nogat-admin-report.nogat-admin-unread {
+  border-left-color: var(--info, #1d4ed8);
+}
+
+.nogat-admin-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-admin-report-id {
+  color: var(--text, #2b2b2b);
+  font-variant-numeric: tabular-nums;
+}
+
+.nogat-admin-message {
+  margin: var(--space-2, 8px) 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nogat-admin-context summary {
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-sm, 12px);
+  cursor: pointer;
+}
+
+.nogat-admin-context dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1, 4px) var(--space-3, 12px);
+  margin: var(--space-2, 8px) 0 0;
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-admin-context dt {
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-admin-context dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nogat-admin-json {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2, #f4f1f1);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm, 12px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nogat-admin-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+.nogat-admin-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-4, 16px);
+}
+
+.nogat-admin-pager[hidden] {
+  display: none;
+}
+
+.nogat-admin-range {
+  color: var(--text-2, #4e4e4e);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The statistics. */
+.nogat-admin-periods {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+}
+
+.nogat-admin-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+}
+
+.nogat-admin-scroll[hidden] {
+  display: none;
+}
+
+.nogat-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.nogat-admin-table caption {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+  text-align: left;
+}
+
+.nogat-admin-table th,
+.nogat-admin-table td {
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  border-top: 1px solid var(--line, #e5e5e5);
+  text-align: right;
+  vertical-align: top;
+}
+
+.nogat-admin-table th:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.nogat-admin-table thead th {
+  background: var(--surface-2, #f4f1f1);
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-sm, 12px);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-admin-table tbody th {
+  font-weight: var(--weight-regular, 400);
+}
+
+.nogat-admin-table tfoot th,
+.nogat-admin-table tfoot td {
+  border-top: 2px solid var(--line-2, #d4cfcf);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-admin-table tfoot .nogat-admin-note {
+  display: block;
+  font-weight: var(--weight-regular, 400);
+}
+
+/* The status. */
+.nogat-admin-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2, 8px) var(--space-4, 16px);
+  margin: 0 0 var(--space-6, 24px);
+  padding: var(--space-4, 16px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+}
+
+.nogat-admin-facts dt {
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-admin-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nogat-admin-path,
+.nogat-admin-check-name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.nogat-admin-subheading {
+  margin: 0 0 var(--space-2, 8px);
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nogat-admin-checks {
+  display: grid;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nogat-admin-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+}
+
+.nogat-admin-check-detail {
+  flex-basis: 100%;
+  min-width: 0;
+  color: var(--text-2, #4e4e4e);
+  overflow-wrap: anywhere;
+}
+
+/* The confirmation: its form covers it, so a click on the dialog itself is the backdrop. */
+.nogat-admin-dialog {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.16));
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-base, 13px);
+  line-height: var(--line-height, 1.4);
+}
+
+.nogat-admin-dialog::backdrop {
+  background: rgba(1, 4, 9, 0.5);
+}
+
+.nogat-admin-dialog-body {
+  display: grid;
+  gap: var(--space-3, 12px);
+  margin: 0;
+  padding: var(--space-4, 16px);
+}
+
+.nogat-admin-dialog h2 {
+  margin: 0;
+  font-size: var(--text-md, 15px);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-admin-dialog p {
+  margin: 0;
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-admin-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+
+@media (max-width: 860px) {
+  .nogat-admin-layout {
+    display: block;
+  }
+
+  .nogat-admin-nav {
+    position: static;
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    border-bottom: 1px solid var(--line, #e5e5e5);
+    background: var(--surface, #ffffff);
+  }
+
+  .nogat-admin-nav ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px);
+  }
+
+  .nogat-admin-nav a {
+    padding: var(--space-1, 4px) var(--space-3, 12px);
+  }
+
+  .nogat-admin-main {
+    padding: var(--space-4, 16px) var(--space-3, 12px) var(--space-8, 32px);
+  }
+}
+
+@media (max-width: 600px) {
+  .nogat-admin-bar {
+    gap: var(--space-2, 8px);
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+  }
+
+  .nogat-admin-back {
+    padding: 0 var(--space-2, 8px);
+  }
+
+  /* „Wróć do aplikacji” keeps its arrow on screen and its words for screen readers. */
+  .nogat-admin-back-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .nogat-admin-tools {
+    margin-left: 0;
+  }
+
+  .nogat-admin-facts,
+  .nogat-admin-context dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nogat-admin-facts dd + dt {
+    margin-top: var(--space-2, 8px);
+  }
+
+  .nogat-admin-table th,
+  .nogat-admin-table td {
+    padding: var(--space-1, 4px) var(--space-2, 8px);
+  }
+}
+
+@media (pointer: coarse) {
+  .nogat-admin-button {
+    min-height: var(--control-touch, 44px);
+  }
+
+  .nogat-admin-input {
+    height: var(--control-touch, 44px);
+    font-size: var(--text-site, 16px);
+  }
+}

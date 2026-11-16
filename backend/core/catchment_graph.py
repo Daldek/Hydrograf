@@ -1,9 +1,10 @@
 """
 In-memory graph of sub-catchments for fast upstream traversal.
 
-Loads ~11k sub-catchment nodes from PostGIS into numpy arrays and a
-scipy sparse matrix at API startup. Enables BFS traversal + stat
-aggregation in ~5-50ms.
+Loads the sub-catchment nodes from PostGIS into numpy arrays and a scipy
+sparse matrix at API startup, and again when the network in the database
+changes (loaded_catchment_graph, network_version). Enables BFS traversal +
+stat aggregation in ~5-50ms.
 
 Memory usage: ~0.5 MB RAM.
 """
@@ -11,7 +12,8 @@ Memory usage: ~0.5 MB RAM.
 import logging
 import threading
 import time
-from collections import deque
+from collections.abc import Iterable
+from typing import Any
 
 import numpy as np
 from scipy import sparse
@@ -23,6 +25,89 @@ logger = logging.getLogger(__name__)
 
 _FETCH_SIZE = 50_000
 
+# Placeholder of an unloaded graph; never mutated, replaced by load().
+_EMPTY: np.ndarray = np.empty(0)
+
+
+def _measured(values: np.ndarray, idx: int) -> float | None:
+    """Value of a node, None when it was not measured (NaN or not loaded)."""
+    if idx >= values.size:
+        return None
+    value = float(values[idx])
+    return None if np.isnan(value) else value
+
+
+# Consecutive segments without a BDOT10k stream that the main channel along BDOT10k
+# streams bridges: the flow path of the DEM can leave the BDOT10k channel for a
+# segment or two at bends and meanders, or run between two parallel channels whose
+# buffers alternate.
+MAX_REAL_CHANNEL_GAP = 2
+
+
+def contiguous_real_length_km(
+    is_real: Iterable[bool], lengths_km: Iterable[float]
+) -> float:
+    """Length of a main channel along BDOT10k streams, counted from its outlet.
+
+    The segments come from the outlet upstream. The length adds up the segments
+    matched to BDOT10k streams from the outlet, with the gaps of at most
+    MAX_REAL_CHANNEL_GAP consecutive unmatched segments between two matched ones;
+    it stops at the first unmatched segment before any matched one and at a longer
+    gap: everything above is overland flow, even where later segments are matched.
+
+    Parameters
+    ----------
+    is_real : Iterable[bool]
+        Whether each segment matches a BDOT10k stream, from the outlet upstream.
+    lengths_km : Iterable[float]
+        Length of each segment [km], in the same order.
+
+    Returns
+    -------
+    float
+        The length [km], 0 when the segment of the outlet is unmatched.
+    """
+    contiguous_real_km = 0.0
+    gap_count = 0
+    pending_gap_km = 0.0
+    started = False  # gap tolerance only after the first real segment
+    for real, length_km in zip(is_real, lengths_km, strict=True):
+        if real:
+            started = True
+            contiguous_real_km += pending_gap_km + length_km
+            pending_gap_km = 0.0
+            gap_count = 0
+        else:
+            if not started:
+                break  # not real before any real one: no real channel
+            gap_count += 1
+            if gap_count > MAX_REAL_CHANNEL_GAP:
+                break
+            pending_gap_km += length_km
+    return contiguous_real_km
+
+
+# Column indices for stream_catchments SELECT in load()
+(
+    _COL_SEG_IDX,
+    _COL_THRESHOLD,
+    _COL_AREA,
+    _COL_ELEV_MEAN,
+    _COL_SLOPE,
+    _COL_STRAHLER,
+    _COL_DS_SEG_IDX,
+    _COL_ELEV_MIN,
+    _COL_ELEV_MAX,
+    _COL_STREAM_LEN,
+    _COL_HISTOGRAM,
+    _COL_FLOW_DIST,
+    _COL_OUTLET_DIST,
+    _COL_HEAD_ELEV,
+    _COL_OVERLAND_LEN,
+    _COL_OVERLAND_DROP,
+    _COL_STREAM_HEAD_ELEV,
+) = range(17)
+
 
 class CatchmentGraph:
     """
@@ -33,33 +118,53 @@ class CatchmentGraph:
     Per-node stats are stored in numpy arrays for fast aggregation.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._loaded = False
+        # network_version() of the database when the graph was loaded
+        # (set by loaded_catchment_graph)
+        self.network_version: tuple[int | None, ...] | None = None
         self._n = 0
 
-        # Per-node numpy arrays (indexed 0..n-1)
-        self._segment_idx: np.ndarray | None = None
-        self._threshold_m2: np.ndarray | None = None
-        self._area_km2: np.ndarray | None = None
-        self._elev_min: np.ndarray | None = None
-        self._elev_max: np.ndarray | None = None
-        self._elev_mean: np.ndarray | None = None
-        self._slope_mean: np.ndarray | None = None
-        self._perimeter_km: np.ndarray | None = None
-        self._stream_length_km: np.ndarray | None = None
-        self._strahler: np.ndarray | None = None
+        # Per-node numpy arrays (indexed 0..n-1); empty until load()
+        self._segment_idx: np.ndarray = _EMPTY
+        self._threshold_m2: np.ndarray = _EMPTY
+        self._area_km2: np.ndarray = _EMPTY
+        self._elev_min: np.ndarray = _EMPTY
+        self._elev_max: np.ndarray = _EMPTY
+        self._elev_mean: np.ndarray = _EMPTY
+        self._slope_mean: np.ndarray = _EMPTY
+        self._stream_length_km: np.ndarray = _EMPTY
+        self._strahler: np.ndarray = _EMPTY
+        self._max_flow_dist_m: np.ndarray = _EMPTY
+        self._outlet_flow_dist_m: np.ndarray | None = None
+        # Head of each node's longest flow path: its elevation and the
+        # overland segment down to the node's stream (NaN: not measured)
+        self._flow_path_head_elev_m: np.ndarray = _EMPTY
+        self._overland_length_m: np.ndarray = _EMPTY
+        self._overland_drop_m: np.ndarray = _EMPTY
+        # Elevation of the upstream end of each node's stream segment
+        self._stream_head_elev_m: np.ndarray = _EMPTY
+
+        # Per-segment data from stream_network (loaded separately)
+        self._is_real_stream: np.ndarray | None = None
+        self._segment_length_km: np.ndarray | None = None
+        self._upstream_area_km2: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
-        self._upstream_adj: sparse.csr_matrix | None = None
+        self._upstream_adj: sparse.csr_matrix = sparse.csr_matrix((0, 0))
 
         # Index lookup: (threshold_m2, segment_idx) → internal idx
         self._lookup: dict[tuple[int, int], int] = {}
 
         # Elevation histograms: list of dicts per node (variable size)
-        self._histograms: list[dict | None] = []
+        self._histograms: list[dict[str, Any] | None] = []
+
+        # coarser_at_outlets(): by threshold, computed once per loaded graph
+        self._coarser: dict[int, dict[int, np.ndarray]] = {}
 
     @property
     def loaded(self) -> bool:
+        """Whether the graph has been loaded from the database."""
         return self._loaded
 
     def load(self, db: Session) -> None:
@@ -67,7 +172,8 @@ class CatchmentGraph:
         Load sub-catchment graph from database into memory.
 
         Reads all rows from stream_catchments, builds numpy arrays
-        and sparse upstream adjacency matrix.
+        and sparse upstream adjacency matrix. A graph is loaded once:
+        loaded_catchment_graph loads a new one when the network changes.
         """
         if self._loaded:
             return
@@ -79,7 +185,7 @@ class CatchmentGraph:
         count_result = db.execute(
             text("SELECT COUNT(*) FROM stream_catchments")
         ).fetchone()
-        n = count_result[0]
+        n = count_result[0] if count_result is not None else 0
         if n == 0:
             logger.warning("stream_catchments is empty, graph not loaded")
             return
@@ -96,9 +202,14 @@ class CatchmentGraph:
         self._elev_max = np.full(n, np.nan, dtype=np.float32)
         self._elev_mean = np.full(n, np.nan, dtype=np.float32)
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
-        self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
+        self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
+        self._outlet_flow_dist_m = np.full(n, np.nan, dtype=np.float64)
+        self._flow_path_head_elev_m = np.full(n, np.nan, dtype=np.float32)
+        self._overland_length_m = np.full(n, np.nan, dtype=np.float32)
+        self._overland_drop_m = np.full(n, np.nan, dtype=np.float32)
+        self._stream_head_elev_m = np.full(n, np.nan, dtype=np.float32)
         self._histograms = [None] * n
 
         # Edge lists for sparse matrix
@@ -107,14 +218,18 @@ class CatchmentGraph:
 
         # Stream via server-side cursor
         raw_conn = db.connection().connection
-        cursor = raw_conn.cursor(name="catchment_graph_load")
+        cursor: Any = raw_conn.cursor(name="catchment_graph_load")
         try:
             cursor.itersize = _FETCH_SIZE
             cursor.execute(
                 "SELECT segment_idx, threshold_m2, area_km2, "
                 "mean_elevation_m, mean_slope_percent, strahler_order, "
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
-                "perimeter_km, stream_length_km, elev_histogram "
+                "stream_length_km, elev_histogram, "
+                "COALESCE(max_flow_dist_m, 0), "
+                "outlet_flow_dist_m, "
+                "flow_path_head_elev_m, overland_length_m, overland_drop_m, "
+                "stream_head_elev_m "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
 
@@ -124,36 +239,50 @@ class CatchmentGraph:
                 if not rows:
                     break
                 for r in rows:
-                    seg_idx = r[0]
-                    threshold = r[1]
+                    seg_idx = r[_COL_SEG_IDX]
+                    threshold = r[_COL_THRESHOLD]
 
                     self._segment_idx[i] = seg_idx
                     self._threshold_m2[i] = threshold
-                    self._area_km2[i] = r[2] if r[2] is not None else 0.0
+                    self._area_km2[i] = (
+                        r[_COL_AREA] if r[_COL_AREA] is not None else 0.0
+                    )
 
-                    if r[3] is not None:
-                        self._elev_mean[i] = r[3]
-                    if r[4] is not None:
-                        self._slope_mean[i] = r[4]
-                    if r[5] is not None:
-                        self._strahler[i] = r[5]
-                    if r[7] is not None:
-                        self._elev_min[i] = r[7]
-                    if r[8] is not None:
-                        self._elev_max[i] = r[8]
-                    if r[9] is not None:
-                        self._perimeter_km[i] = r[9]
-                    if r[10] is not None:
-                        self._stream_length_km[i] = r[10]
+                    if r[_COL_ELEV_MEAN] is not None:
+                        self._elev_mean[i] = r[_COL_ELEV_MEAN]
+                    if r[_COL_SLOPE] is not None:
+                        self._slope_mean[i] = r[_COL_SLOPE]
+                    if r[_COL_STRAHLER] is not None:
+                        self._strahler[i] = r[_COL_STRAHLER]
+                    if r[_COL_ELEV_MIN] is not None:
+                        self._elev_min[i] = r[_COL_ELEV_MIN]
+                    if r[_COL_ELEV_MAX] is not None:
+                        self._elev_max[i] = r[_COL_ELEV_MAX]
+                    if r[_COL_STREAM_LEN] is not None:
+                        self._stream_length_km[i] = r[_COL_STREAM_LEN]
 
                     # Histogram (JSONB → dict)
-                    self._histograms[i] = r[11]
+                    self._histograms[i] = r[_COL_HISTOGRAM]
+
+                    # max_flow_dist_m (COALESCE ensures 0 for NULL)
+                    self._max_flow_dist_m[i] = r[_COL_FLOW_DIST]
+
+                    if r[_COL_OUTLET_DIST] is not None:
+                        self._outlet_flow_dist_m[i] = r[_COL_OUTLET_DIST]
+                    if r[_COL_HEAD_ELEV] is not None:
+                        self._flow_path_head_elev_m[i] = r[_COL_HEAD_ELEV]
+                    if r[_COL_OVERLAND_LEN] is not None:
+                        self._overland_length_m[i] = r[_COL_OVERLAND_LEN]
+                    if r[_COL_OVERLAND_DROP] is not None:
+                        self._overland_drop_m[i] = r[_COL_OVERLAND_DROP]
+                    if r[_COL_STREAM_HEAD_ELEV] is not None:
+                        self._stream_head_elev_m[i] = r[_COL_STREAM_HEAD_ELEV]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
 
                     # Downstream link → edge
-                    ds_seg_idx = r[6]
+                    ds_seg_idx = r[_COL_DS_SEG_IDX]
                     if ds_seg_idx is not None:
                         ds_key = (threshold, ds_seg_idx)
                         # Defer edge — downstream node may not be seen yet
@@ -163,6 +292,51 @@ class CatchmentGraph:
                     i += 1
         finally:
             cursor.close()
+        if i != n:
+            # A publication committed between the count and the read
+            raise RuntimeError(
+                f"stream_catchments changed during the load: {n:,} rows counted, "
+                f"{i:,} read"
+            )
+
+        # Load is_real_stream, per-segment length and upstream_area from stream_network
+        self._is_real_stream = np.zeros(n, dtype=np.bool_)
+        self._segment_length_km = np.zeros(n, dtype=np.float64)
+        self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
+
+        sn_cursor: Any = raw_conn.cursor(name="catchment_graph_stream_network")
+        try:
+            sn_cursor.itersize = _FETCH_SIZE
+            sn_cursor.execute(
+                "SELECT segment_idx, threshold_m2, "
+                "COALESCE(is_real_stream, false) AS is_real, "
+                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km, "
+                "COALESCE(upstream_area_km2, 0) AS upstream_area_km2 "
+                "FROM stream_network "
+                "ORDER BY threshold_m2, segment_idx"
+            )
+
+            while True:
+                sn_rows = sn_cursor.fetchmany(_FETCH_SIZE)
+                if not sn_rows:
+                    break
+                for sr in sn_rows:
+                    sn_key = (sr[1], sr[0])  # (threshold_m2, segment_idx)
+                    sn_idx = self._lookup.get(sn_key)
+                    if sn_idx is not None:
+                        self._is_real_stream[sn_idx] = sr[2]
+                        self._segment_length_km[sn_idx] = sr[3]
+                        self._upstream_area_km2[sn_idx] = sr[4]
+        except Exception as e:
+            logger.warning(
+                f"Failed to load is_real_stream from stream_network: {e}. "
+                "Defaulting to all false / 0.0."
+            )
+            self._is_real_stream = np.zeros(n, dtype=np.bool_)
+            self._segment_length_km = np.zeros(n, dtype=np.float64)
+            self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
+        finally:
+            sn_cursor.close()
 
         # Resolve deferred edges
         resolved_from = []
@@ -201,9 +375,17 @@ class CatchmentGraph:
                 self._elev_max,
                 self._elev_mean,
                 self._slope_mean,
-                self._perimeter_km,
                 self._stream_length_km,
                 self._strahler,
+                self._max_flow_dist_m,
+                self._outlet_flow_dist_m,
+                self._flow_path_head_elev_m,
+                self._overland_length_m,
+                self._overland_drop_m,
+                self._stream_head_elev_m,
+                self._is_real_stream,
+                self._segment_length_km,
+                self._upstream_area_km2,
             ]
         )
         mem_sparse = (
@@ -218,6 +400,25 @@ class CatchmentGraph:
             f"Catchment graph loaded: {n:,} nodes, {n_edges:,} edges "
             f"in {elapsed:.1f}s ({total_mb:.1f} MB RAM)"
         )
+
+        n_missing_outlet = int(np.isnan(self._outlet_flow_dist_m).sum())
+        if n_missing_outlet > 0:
+            logger.warning(
+                "%d/%d catchments missing outlet_flow_dist_m — "
+                "hydraulic_length_km will use understating fallback; "
+                "run scripts/backfill_outlet_flow_dist.py",
+                n_missing_outlet,
+                self._n,
+            )
+        n_missing_head = int(np.isnan(self._flow_path_head_elev_m).sum())
+        if n_missing_head > 0:
+            logger.warning(
+                "%d/%d catchments missing flow_path_head_elev_m — the flow path "
+                "slope, overland segment and channel slope stay empty; "
+                "run scripts/backfill_flow_path_heads.py",
+                n_missing_head,
+                self._n,
+            )
 
         # Quick integrity check (set _loaded temporarily for verify_graph)
         self._loaded = True
@@ -282,7 +483,7 @@ class CatchmentGraph:
         if result is None:
             raise ValueError(
                 "Nie znaleziono zlewni cząstkowej w tym punkcie. "
-                "Kliknij w obszarze pokrytym siecią rzeczną."
+                "Kliknij w obszarze pokrytym liniami spływu."
             )
 
         key = (threshold_m2, result.segment_idx)
@@ -310,13 +511,122 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
         return int(self._segment_idx[internal_idx])
 
-    def verify_graph(self, db: Session | None = None) -> dict:
+    def get_threshold_m2(self, internal_idx: int) -> int:
+        """Flow accumulation threshold [m²] of a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return int(self._threshold_m2[internal_idx])
+
+    def get_max_flow_dist_m(self, internal_idx: int) -> float:
+        """Get max_flow_dist_m for a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return float(self._max_flow_dist_m[internal_idx])
+
+    def get_outlet_flow_dist_m(self, internal_idx: int) -> float:
+        """Flow distance [m] at the node's outlet point (NaN if not loaded)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if self._outlet_flow_dist_m is None:
+            return float("nan")
+        return float(self._outlet_flow_dist_m[internal_idx])
+
+    def get_upstream_area_km2(self, internal_idx: int) -> float:
+        """Upstream area [km²] at the end of the node's segment (NaN if not loaded)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if self._upstream_area_km2 is None:
+            return float("nan")
+        return float(self._upstream_area_km2[internal_idx])
+
+    def get_area_km2(self, indices: np.ndarray) -> np.ndarray:
+        """Area [km²] of each node of ``indices``, as loaded (float32)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        areas: np.ndarray = self._area_km2[indices]
+        return areas
+
+    def thresholds_m2(self) -> list[int]:
+        """Flow accumulation thresholds [m²] of the graph's nodes, ascending."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return [int(t) for t in np.unique(self._threshold_m2)]
+
+    def coarser_at_outlets(self, threshold_m2: int) -> dict[int, np.ndarray]:
+        """Return the node of each coarser threshold that ends where a node ends.
+
+        A confluence of a coarser network is a confluence of a finer one, so a
+        sub-catchment of a coarser threshold is made of whole sub-catchments of
+        ``threshold_m2``, the lowest of which ends at its outlet cell. The two are
+        matched by the flow distance and the upstream area at that cell
+        (``outlet_flow_dist_m``, ``upstream_area_km2``), which both networks take
+        from it; a pair of values that two nodes of one threshold share stays
+        unmatched. Computed once per loaded graph.
+
+        Parameters
+        ----------
+        threshold_m2 : int
+            The finer threshold [m²].
+
+        Returns
+        -------
+        dict[int, np.ndarray]
+            By each threshold of the graph above ``threshold_m2``: for every node,
+            the internal index of the node of that threshold whose segment ends at
+            the outlet cell of the node's segment when the node is of
+            ``threshold_m2``, else -1.
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if threshold_m2 not in self._coarser:
+            self._coarser[threshold_m2] = self._match_outlets(threshold_m2)
+        return self._coarser[threshold_m2]
+
+    def _match_outlets(self, threshold_m2: int) -> dict[int, np.ndarray]:
+        """Match the outlet cells of the thresholds (coarser_at_outlets)."""
+        if self._outlet_flow_dist_m is None or self._upstream_area_km2 is None:
+            return {}
+        flow_dist = self._outlet_flow_dist_m
+        area = self._upstream_area_km2
+        measured = ~(np.isnan(flow_dist) | np.isnan(area))
+
+        def by_outlet(threshold: int) -> dict[tuple[float, float], int]:
+            """Map the nodes of a threshold by the values at their outlet cell."""
+            nodes = np.flatnonzero((self._threshold_m2 == threshold) & measured)
+            found: dict[tuple[float, float], int] = {}
+            shared: set[tuple[float, float]] = set()
+            for node, key in zip(
+                nodes.tolist(),
+                zip(flow_dist[nodes].tolist(), area[nodes].tolist(), strict=True),
+                strict=True,
+            ):
+                if key in found:
+                    shared.add(key)
+                found[key] = node
+            return {key: node for key, node in found.items() if key not in shared}
+
+        finer = by_outlet(threshold_m2)
+        matched = {}
+        for coarser in self.thresholds_m2():
+            if coarser <= threshold_m2:
+                continue
+            at_outlet = np.full(self._n, -1, dtype=np.int64)
+            for key, node in by_outlet(coarser).items():
+                fine = finer.get(key)
+                if fine is not None:
+                    at_outlet[fine] = node
+            matched[coarser] = at_outlet
+        return matched
+
+    def verify_graph(self, db: Session | None = None) -> dict[str, Any]:
         """Verify graph integrity. Returns diagnostic dict."""
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
 
         thresholds = np.unique(self._threshold_m2)
-        report = {"thresholds": {}, "total_nodes": self._n}
+        report: dict[str, Any] = {"thresholds": {}, "total_nodes": self._n}
+        # Upstream neighbours of each node: the stored entries of its CSR row
+        upstream_counts = np.diff(self._upstream_adj.indptr)
 
         for t in thresholds:
             t = int(t)
@@ -325,9 +635,7 @@ class CatchmentGraph:
             n_nodes = len(indices)
 
             # Count edges (nodes with at least one upstream neighbor)
-            n_with_upstream = sum(
-                1 for idx in indices if self._upstream_adj[idx].nnz > 0
-            )
+            n_with_upstream = int(np.count_nonzero(upstream_counts[indices]))
             # Count outlets (nodes with no downstream = no node points to them)
             col_sums = self._upstream_adj[:, indices].sum(axis=0).A1
             n_outlets = int(np.sum(col_sums == 0))
@@ -383,20 +691,87 @@ class CatchmentGraph:
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
 
-        return breadth_first_order(
+        order: np.ndarray = breadth_first_order(
             self._upstream_adj,
             start_idx,
             directed=True,
             return_predecessors=False,
         )
+        return order
 
-    def traverse_to_confluence(self, start_idx: int) -> np.ndarray:
+    def upstream_tree(self, start_idx: int) -> tuple[np.ndarray, np.ndarray]:
         """
-        BFS upstream, stop at confluence nodes (>1 upstream neighbor).
+        Nodes upstream of a node, as traverse_upstream orders them, with the node below.
 
-        Includes confluence nodes in the result but does not continue
-        BFS past them. A confluence is any node with more than one
-        upstream neighbor in the adjacency matrix.
+        Parameters
+        ----------
+        start_idx : int
+            Internal index of the starting node
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The internal indices of ``traverse_upstream(start_idx)``, start_idx
+            first and every node after the node it drains into, and for each the
+            internal index of the node it drains into: -1 for start_idx
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        order, predecessors = breadth_first_order(
+            self._upstream_adj,
+            start_idx,
+            directed=True,
+            return_predecessors=True,
+        )
+        below = predecessors[order]
+        below[0] = -1
+        return order, below
+
+    def upstream_segments_by_depth(
+        self,
+        start_idx: int,
+    ) -> tuple[list[int], list[int]]:
+        """
+        Sub-catchments upstream of a node in BFS order, with their depth.
+
+        Parameters
+        ----------
+        start_idx : int
+            Internal index of the starting node
+
+        Returns
+        -------
+        tuple[list[int], list[int]]
+            segment_idx of every node reached by traverse_upstream(start_idx),
+            in its BFS order (edges link nodes of one threshold, so all share
+            the threshold of start_idx), and for each of them the number of
+            drainage links up from start_idx: 0 for start_idx itself,
+            non-decreasing along the order.
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        order, predecessors = breadth_first_order(
+            self._upstream_adj,
+            start_idx,
+            directed=True,
+            return_predecessors=True,
+        )
+        nodes = order.tolist()
+        depth_of = {nodes[0]: 0}
+        for node, downstream in zip(
+            nodes[1:],
+            predecessors[order[1:]].tolist(),
+            strict=True,
+        ):
+            depth_of[node] = depth_of[downstream] + 1
+        depths = [depth_of[node] for node in nodes]
+        return self._segment_idx[order].tolist(), depths
+
+    def trace_downstream(self, start_idx: int) -> np.ndarray:
+        """
+        Nodes from a catchment node down to the outlet of its network.
 
         Parameters
         ----------
@@ -406,28 +781,21 @@ class CatchmentGraph:
         Returns
         -------
         np.ndarray
-            Array of internal indices (including start_idx)
+            Internal indices in the order of the flow: start_idx first, the
+            outlet of the network (the node that drains into no other) last
         """
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
 
-        visited: set[int] = set()
-        queue = deque([start_idx])
-        visited.add(start_idx)
-        result = [start_idx]
-
-        while queue:
-            current = queue.popleft()
-            upstream = self._upstream_adj[current].indices
-            for up_idx in upstream:
-                if up_idx not in visited:
-                    visited.add(up_idx)
-                    result.append(up_idx)
-                    # Only continue BFS through non-confluence nodes
-                    if self._upstream_adj[up_idx].nnz <= 1:
-                        queue.append(up_idx)
-
-        return np.array(result, dtype=np.int32)
+        # Every node drains into one node at most, so the search over the
+        # reversed edges walks the single path downstream
+        order: np.ndarray = breadth_first_order(
+            self._upstream_adj.T,
+            start_idx,
+            directed=True,
+            return_predecessors=False,
+        )
+        return order
 
     def get_segment_indices(
         self,
@@ -450,9 +818,12 @@ class CatchmentGraph:
             List of segment_idx values
         """
         mask = self._threshold_m2[indices] == threshold_m2
-        return self._segment_idx[indices[mask]].tolist()
+        segment_idxs: list[int] = self._segment_idx[indices[mask]].tolist()
+        return segment_idxs
 
-    def aggregate_stats(self, indices: np.ndarray) -> dict:
+    def aggregate_stats(
+        self, indices: np.ndarray, outlet_idx: int | None = None
+    ) -> dict[str, Any]:
         """
         Aggregate pre-computed stats across multiple catchment nodes.
 
@@ -460,6 +831,10 @@ class CatchmentGraph:
         ----------
         indices : np.ndarray
             Internal indices from traverse_upstream()
+        outlet_idx : int | None
+            Internal index of the watershed outlet node. Required to compute
+            hydraulic_length_km — without it the length cannot be anchored
+            to the selected watershed's outlet and is returned as None.
 
         Returns
         -------
@@ -470,11 +845,17 @@ class CatchmentGraph:
             - elevation_max_m: max
             - elevation_mean_m: area-weighted mean
             - mean_slope_percent: area-weighted mean
-            - perimeter_km: sum (individual sub-catchment perimeters)
             - stream_length_km: sum
             - drainage_density_km_per_km2: total_stream_length / total_area
             - max_strahler_order: max
             - stream_frequency_per_km2: n_segments / total_area
+            - hydraulic_length_km: (max(max_flow_dist_m) -
+              outlet_flow_dist_m[outlet]) / 1000; None bez outlet_idx
+            - flow_path_head_elevation_m, overland_length_km,
+              overland_slope_m_per_m: the head of the longest flow path (the
+              farthest cell of the node with the largest max_flow_dist_m) and
+              its overland segment down to that node's stream; None when not
+              measured, a slope also when it is not positive
         """
         areas = self._area_km2[indices]
         total_area = float(np.nansum(areas))
@@ -515,16 +896,70 @@ class CatchmentGraph:
         stream_lengths = self._stream_length_km[indices]
         total_stream_km = float(np.nansum(stream_lengths))
 
-        # Drainage density
-        drainage_density = total_stream_km / total_area if total_area > 0 else None
+        # Pre-compute real stream mask (used for Strahler + BDOT metrics)
+        real_mask = (
+            self._is_real_stream[indices] if self._is_real_stream is not None else None
+        )
 
-        # Max Strahler
-        strahlers = self._strahler[indices]
-        max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
+        # Max Strahler from BDOT real streams only
+        if real_mask is not None:
+            real_strahlers = self._strahler[indices][real_mask]
+            max_strahler = (
+                int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
+            )
+        else:
+            strahlers = self._strahler[indices]
+            max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
-        # Stream frequency
-        n_segments = len(indices)
-        stream_frequency = n_segments / total_area if total_area > 0 else None
+        # BDOT-based drainage metrics (real streams only)
+        if real_mask is not None and self._segment_length_km is not None:
+            real_lengths = self._segment_length_km[indices]
+            bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
+            bdot_n_segments = int(np.sum(real_mask))
+            bdot_drainage_density = (
+                bdot_stream_km / total_area if total_area > 0 else None
+            )
+            bdot_stream_frequency = (
+                bdot_n_segments / total_area if total_area > 0 else None
+            )
+        else:
+            bdot_stream_km = 0.0
+            bdot_n_segments = 0
+            bdot_drainage_density = None
+            bdot_stream_frequency = None
+
+        # Hydraulic length: max_flow_dist_m stores the cumulative distance
+        # from each subcatchment's farthest cell to the GLOBAL basin outlet
+        # (from pyflwdir.stream_distance). The flow path length within the
+        # SELECTED watershed is that maximum minus the flow distance at the
+        # outlet POINT (outlet_flow_dist_m). Without outlet_idx the length
+        # cannot be computed correctly, so it is None.
+        hydraulic_length_km = None
+        if self._max_flow_dist_m is not None and outlet_idx is not None:
+            flow_dists = self._max_flow_dist_m[indices]
+            max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
+            if max_flow_dist > 0:
+                baseline = float("nan")
+                if self._outlet_flow_dist_m is not None:
+                    baseline = float(self._outlet_flow_dist_m[outlet_idx])
+                if np.isnan(baseline):
+                    # Un-backfilled data: understate (never inflate).
+                    baseline = float(self._max_flow_dist_m[outlet_idx])
+                hydraulic_length_km = max(0.0, max_flow_dist - baseline) / 1000.0
+
+        # Head of the longest flow path and its overland segment
+        head_elev = None
+        overland_length_km = None
+        overland_slope = None
+        far = self._farthest_node(indices)
+        if far is not None:
+            head_elev = _measured(self._flow_path_head_elev_m, far)
+            length_m = _measured(self._overland_length_m, far)
+            drop_m = _measured(self._overland_drop_m, far)
+            if length_m is not None and length_m > 0:
+                overland_length_km = length_m / 1000.0
+                if drop_m is not None and drop_m > 0:
+                    overland_slope = drop_m / length_m
 
         return {
             "area_km2": round(total_area, 6),
@@ -539,19 +974,50 @@ class CatchmentGraph:
             ),
             "stream_length_km": round(total_stream_km, 4),
             "drainage_density_km_per_km2": (
-                round(drainage_density, 4) if drainage_density is not None else None
+                round(bdot_drainage_density, 4)
+                if bdot_drainage_density is not None
+                else None
             ),
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
-                round(stream_frequency, 4) if stream_frequency is not None else None
+                round(bdot_stream_frequency, 4)
+                if bdot_stream_frequency is not None
+                else None
+            ),
+            "bdot_stream_length_km": round(bdot_stream_km, 4),
+            "bdot_stream_count": bdot_n_segments,
+            "hydraulic_length_km": (
+                round(hydraulic_length_km, 4)
+                if hydraulic_length_km is not None
+                else None
+            ),
+            "flow_path_head_elevation_m": (
+                round(head_elev, 2) if head_elev is not None else None
+            ),
+            "overland_length_km": (
+                round(overland_length_km, 4) if overland_length_km is not None else None
+            ),
+            "overland_slope_m_per_m": (
+                round(overland_slope, 6) if overland_slope is not None else None
             ),
         }
+
+    def _farthest_node(self, indices: np.ndarray) -> int | None:
+        """Node of ``indices`` with the largest max_flow_dist_m, None when unknown.
+
+        Its farthest cell is the head of the longest flow path of the nodes.
+        """
+        if len(indices) == 0 or self._max_flow_dist_m.size == 0:
+            return None
+        dists = self._max_flow_dist_m[indices]
+        k = int(np.argmax(dists))
+        return int(indices[k]) if dists[k] > 0 else None
 
     def trace_main_channel(
         self,
         outlet_idx: int,
         upstream_indices: np.ndarray,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Trace the main channel upstream from outlet following highest Strahler order.
 
@@ -571,8 +1037,12 @@ class CatchmentGraph:
         -------
         dict
             - main_channel_length_km: float — sum of stream lengths
-            - main_channel_slope_m_per_m: float | None — relief/length
+            - main_channel_slope_m_per_m: float | None — (elevation of the
+              channel's source, the upstream end of the head node's stream
+              segment, − elevation of the outlet) / length; None when an
+              elevation is missing or the slope is not positive
             - main_channel_nodes: list[int] — path indices
+            - real_channel_length_km: float | None — BDOT10k part from the outlet
         """
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
@@ -580,22 +1050,33 @@ class CatchmentGraph:
         upstream_set = set(upstream_indices.tolist())
         path = [outlet_idx]
         current = outlet_idx
+        # The upstream neighbours of a node are its row of the CSR matrix: sliced
+        # from its arrays, not by indexing the matrix, which builds a matrix per
+        # step (thousands of steps up the main river of a large catchment)
+        indptr = self._upstream_adj.indptr
+        indices = self._upstream_adj.indices
 
         while True:
-            neighbors = self._upstream_adj[current].indices
+            neighbors = indices[indptr[current] : indptr[current + 1]].tolist()
             # Filter to nodes within this watershed
             candidates = [n for n in neighbors if n in upstream_set]
             if not candidates:
                 break
 
-            # Select best upstream: max Strahler, then max stream_length, then max area
+            # Select best upstream: max upstream_area_km2 (cumulative drainage
+            # area from stream_network — true flow accumulation), then prefer
+            # BDOT real stream, then Strahler, then local subcatchment area.
+            # upstream_area_km2 is threshold-independent → consistent path.
+            # Falls back to local area_km2 if upstream_area not loaded.
+            _ua = self._upstream_area_km2
             best = max(
                 candidates,
                 key=lambda n: (
+                    _ua[n] if _ua is not None else self._area_km2[n],
+                    int(self._is_real_stream[n])
+                    if self._is_real_stream is not None
+                    else 0,
                     self._strahler[n],
-                    self._stream_length_km[n]
-                    if not np.isnan(self._stream_length_km[n])
-                    else 0.0,
                     self._area_km2[n],
                 ),
             )
@@ -607,34 +1088,41 @@ class CatchmentGraph:
         lengths = self._stream_length_km[path_arr]
         main_length_km = float(np.nansum(lengths))
 
-        # Slope: head elev_max - outlet elev_min
+        # Slope from the source of the main channel (the upstream end of the
+        # head node's stream segment), not from the highest point of the head
+        # sub-catchment: feedback #13
         head_idx = path[-1]  # furthest upstream node
-        head_elev_max = self._elev_max[head_idx]
-        outlet_elev_min = self._elev_min[outlet_idx]
+        source_elev = _measured(self._stream_head_elev_m, head_idx)
+        outlet_elev = _measured(self._elev_min, outlet_idx)
 
         main_slope = None
-        if (
-            main_length_km > 0
-            and not np.isnan(head_elev_max)
-            and not np.isnan(outlet_elev_min)
-        ):
-            main_slope = round(
-                (float(head_elev_max) - float(outlet_elev_min))
-                / (main_length_km * 1000),
-                6,
+        if main_length_km > 0 and source_elev is not None and outlet_elev is not None:
+            slope = (source_elev - outlet_elev) / (main_length_km * 1000)
+            if slope > 0:
+                main_slope = round(slope, 6)
+
+        # Real channel length: contiguous BDOT-matched segments from the outlet
+        # (path_arr[0]) upstream
+        real_length_km = None
+        if self._is_real_stream is not None and self._segment_length_km is not None:
+            real_length_km = contiguous_real_length_km(
+                self._is_real_stream[path_arr], self._segment_length_km[path_arr]
             )
 
         return {
             "main_channel_length_km": round(main_length_km, 4),
             "main_channel_slope_m_per_m": main_slope,
             "main_channel_nodes": path,
+            "real_channel_length_km": (
+                round(real_length_km, 4) if real_length_km is not None else None
+            ),
         }
 
     def aggregate_hypsometric(
         self,
         indices: np.ndarray,
         n_points: int = 20,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Merge elevation histograms and produce a normalized hypsometric curve.
 
@@ -651,78 +1139,192 @@ class CatchmentGraph:
             List of {"relative_height": float, "relative_area": float} dicts.
             Empty list if no histograms available.
         """
-        # Collect valid histograms
-        histograms = []
-        for idx in indices:
-            h = self._histograms[idx]
-            if h is not None and "counts" in h and len(h["counts"]) > 0:
-                histograms.append(h)
-
-        if not histograms:
-            return []
-
-        # Merge histograms on absolute elevation axis
-        interval_m = histograms[0].get("interval_m", 1)
-        global_min = min(h["base_m"] for h in histograms)
-        global_max = max(
-            h["base_m"] + len(h["counts"]) * interval_m for h in histograms
+        histograms = [self._histograms[idx] for idx in indices]
+        return hypsometric_curve(
+            [h for h in histograms if h is not None], n_points=n_points
         )
-        n_bins = max(1, (global_max - global_min) // interval_m)
-        merged = np.zeros(n_bins, dtype=np.int64)
-
-        for h in histograms:
-            offset = (h["base_m"] - global_min) // interval_m
-            counts = h["counts"]
-            end = offset + len(counts)
-            if end <= n_bins:
-                merged[offset:end] += counts
-            else:
-                merged[offset:n_bins] += counts[: n_bins - offset]
-
-        total_cells = int(merged.sum())
-        if total_cells == 0:
-            return []
-
-        # Normalize to hypsometric curve
-        cumulative = np.cumsum(merged[::-1])[::-1]  # area above each elevation
-        elevations = np.arange(n_bins) * interval_m + global_min
-
-        h_range = float(elevations[-1] - elevations[0])
-        if h_range <= 0:
-            return [
-                {"relative_height": 0.0, "relative_area": 1.0},
-                {"relative_height": 1.0, "relative_area": 0.0},
-            ]
-
-        # Sample at n_points evenly spaced relative heights
-        curve = []
-        for i in range(n_points + 1):
-            rh = i / n_points  # relative height 0..1
-            elev_threshold = elevations[0] + rh * h_range
-            # Find cumulative area above this elevation
-            bin_idx = int((elev_threshold - global_min) / interval_m)
-            bin_idx = max(0, min(bin_idx, n_bins - 1))
-            ra = float(cumulative[bin_idx]) / total_cells
-            curve.append(
-                {
-                    "relative_height": round(rh, 4),
-                    "relative_area": round(ra, 4),
-                }
-            )
-
-        return curve
 
 
-# Global singleton
+def hypsometric_curve(
+    histograms: Iterable[dict[str, Any]], n_points: int = 20
+) -> list[dict[str, Any]]:
+    """Merge elevation histograms and produce a normalized hypsometric curve.
+
+    Parameters
+    ----------
+    histograms : Iterable[dict[str, Any]]
+        Histograms of absolute elevation bins: ``base_m``, ``interval_m`` and
+        ``counts`` (``zonal_elevation_histogram``).
+    n_points : int
+        Number of intervals of the curve (default: 20).
+
+    Returns
+    -------
+    list[dict]
+        List of {"relative_height": float, "relative_area": float} dicts.
+        Empty list if no histograms available.
+    """
+    # Collect valid histograms
+    valid = [h for h in histograms if "counts" in h and len(h["counts"]) > 0]
+    if not valid:
+        return []
+
+    # Merge histograms on absolute elevation axis
+    interval_m = valid[0].get("interval_m", 1)
+    global_min = min(h["base_m"] for h in valid)
+    global_max = max(h["base_m"] + len(h["counts"]) * interval_m for h in valid)
+    n_bins = max(1, (global_max - global_min) // interval_m)
+    merged = np.zeros(n_bins, dtype=np.int64)
+
+    for h in valid:
+        offset = (h["base_m"] - global_min) // interval_m
+        counts = h["counts"]
+        end = offset + len(counts)
+        if end <= n_bins:
+            merged[offset:end] += counts
+        else:
+            merged[offset:n_bins] += counts[: n_bins - offset]
+
+    total_cells = int(merged.sum())
+    if total_cells == 0:
+        return []
+
+    # Normalize to hypsometric curve
+    cumulative = np.cumsum(merged[::-1])[::-1]  # area above each elevation
+    elevations = np.arange(n_bins) * interval_m + global_min
+
+    h_range = float(elevations[-1] - elevations[0])
+    if h_range <= 0:
+        return [
+            {"relative_height": 0.0, "relative_area": 1.0},
+            {"relative_height": 1.0, "relative_area": 0.0},
+        ]
+
+    # Sample at n_points evenly spaced relative heights
+    curve = []
+    for i in range(n_points + 1):
+        rh = i / n_points  # relative height 0..1
+        elev_threshold = elevations[0] + rh * h_range
+        # Find cumulative area above this elevation
+        bin_idx = int((elev_threshold - global_min) / interval_m)
+        bin_idx = max(0, min(bin_idx, n_bins - 1))
+        ra = float(cumulative[bin_idx]) / total_cells
+        curve.append(
+            {
+                "relative_height": round(rh, 4),
+                "relative_area": round(ra, 4),
+            }
+        )
+
+    return curve
+
+
+# Global singleton: the graph requests use. loaded_catchment_graph replaces it
+# with a newly loaded graph when the network in the database changes.
 _catchment_graph: CatchmentGraph | None = None
 _catchment_graph_lock = threading.Lock()
+# One load at a time: the requests that find the network changed wait for it
+_reload_lock = threading.Lock()
+
+# (file node, writes) of the two tables the graph is loaded from; NULLs for a
+# table that does not exist
+_NETWORK_VERSION_SQL = text("""
+    SELECT pg_relation_filenode(t.oid) AS filenode,
+           pg_stat_get_tuples_inserted(t.oid) + pg_stat_get_tuples_updated(t.oid)
+               + pg_stat_get_tuples_deleted(t.oid) AS writes
+    FROM (VALUES (1, to_regclass('stream_catchments')),
+                 (2, to_regclass('stream_network'))) AS t(n, oid)
+    ORDER BY t.n
+""")
 
 
 def get_catchment_graph() -> CatchmentGraph:
-    """Get or create the global CatchmentGraph instance (thread-safe)."""
+    """Get or create the global CatchmentGraph instance (thread-safe).
+
+    The graph of the last load, which may not be loaded; requests take theirs
+    from :func:`loaded_catchment_graph`.
+    """
     global _catchment_graph
     if _catchment_graph is None:
         with _catchment_graph_lock:
             if _catchment_graph is None:
                 _catchment_graph = CatchmentGraph()
     return _catchment_graph
+
+
+def network_version(db: Session) -> tuple[int | None, ...]:
+    """Return the version of the stream network in the database, cheap to read.
+
+    The file nodes and the write counters of ``stream_catchments`` and
+    ``stream_network`` in PostgreSQL's cumulative statistics. Every row that a
+    publication of a run, the BDOT10k stream matching after it, a backfill or a
+    manual change inserts, updates or deletes adds to the counters, and TRUNCATE
+    gives a table a new file node. The writer's backend adds a transaction's
+    counts after the transaction ends: when it goes idle, but at most once a
+    second (otherwise ten seconds later), or when it disconnects. So a new
+    version never comes before the rows it counts are committed, and comes
+    seconds after. A reset of the statistics or a write that is rolled back
+    changes the version without changing the network: one needless reload.
+
+    Parameters
+    ----------
+    db : Session
+        Database session. PostgreSQL keeps the statistics a transaction read first
+        until it ends, so a session reads a new version in a new transaction.
+
+    Returns
+    -------
+    tuple[int | None, ...]
+        File node and writes of ``stream_catchments``, then of ``stream_network``;
+        None for a table that does not exist.
+    """
+    rows = db.execute(_NETWORK_VERSION_SQL).fetchall()
+    return tuple(value for row in rows for value in (row.filenode, row.writes))
+
+
+def loaded_catchment_graph(db: Session) -> CatchmentGraph | None:
+    """Return the graph of the network that the database holds now, or None.
+
+    Reads :func:`network_version` and, when it differs from the version the
+    current graph was loaded at (a run was published, the whole raster processed
+    again, the tables cleaned), loads a new graph and makes it the current one.
+    Each API worker does so at its first request after the change. A request
+    keeps the graph it got until it ends, so a reload never changes the graph
+    under it; the requests that find the network changed wait for one load.
+
+    Parameters
+    ----------
+    db : Session
+        Database session the version is read and the graph loaded from.
+
+    Returns
+    -------
+    CatchmentGraph | None
+        The loaded graph; None when ``stream_catchments`` is empty or the load
+        failed (logged; the next call loads again).
+    """
+    global _catchment_graph
+    version = network_version(db)
+    graph = get_catchment_graph()
+    if graph.loaded and graph.network_version == version:
+        return graph
+    with _reload_lock:
+        graph = get_catchment_graph()
+        if graph.loaded and graph.network_version == version:
+            return graph
+        if graph.loaded:
+            logger.info(
+                "Network in the database changed (version %s, was %s): "
+                "reloading the catchment graph",
+                version,
+                graph.network_version,
+            )
+        fresh = CatchmentGraph()
+        try:
+            fresh.load(db)
+        except Exception:
+            logger.exception("Catchment graph load failed")
+            fresh = CatchmentGraph()
+        fresh.network_version = version
+        _catchment_graph = fresh
+    return fresh if fresh.loaded else None

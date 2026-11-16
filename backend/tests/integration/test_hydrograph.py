@@ -2,7 +2,7 @@
 Integration tests for hydrograph generation endpoint.
 
 Tests the CatchmentGraph-based hydrograph endpoint by mocking:
-- get_catchment_graph() -> CatchmentGraph with traverse/aggregate
+- loaded_catchment_graph() -> CatchmentGraph with traverse/aggregate
 - get_stream_info_by_segment_idx() -> stream segment dict
 - merge_catchment_boundaries() -> MultiPolygon boundary
 - get_segment_outlet() -> outlet coordinates
@@ -11,6 +11,7 @@ Tests the CatchmentGraph-based hydrograph endpoint by mocking:
 - DB session for precipitation query (IDW interpolation)
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -45,7 +46,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(cn: int = 75) -> dict:
+def _make_morph_dict(cn: int = 75) -> dict[str, Any]:
     """
     Build a morph dict compatible with WatershedParameters.from_dict()
     and MorphometricParameters schema.
@@ -60,6 +61,13 @@ def _make_morph_dict(cn: int = 75) -> dict:
         "mean_slope_m_per_m": 0.04,
         "channel_length_km": 6.5,
         "channel_slope_m_per_m": 0.0108,
+        "length_to_centroid_km": 3.5,
+        # The longest flow path and its overland segment (ADR-070), the inputs of tc
+        "hydraulic_length_km": 7.0,
+        "flow_path_length_km": 7.0,
+        "flow_path_slope_m_per_m": 0.01,
+        "overland_length_km": 0.2,
+        "overland_slope_m_per_m": 0.05,
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
@@ -102,7 +110,7 @@ def _make_mock_cg():
     return cg
 
 
-def _make_segment_dict() -> dict:
+def _make_segment_dict() -> dict[str, Any]:
     """Return a segment dict as from find_nearest_stream_segment."""
     return {
         "segment_idx": 10,
@@ -116,18 +124,17 @@ def _make_segment_dict() -> dict:
 
 def _make_precip_db_mock():
     """
-    Create a mock DB session that returns precipitation = 45.0 mm
+    Create a mock DB session whose PMAXTP grid is one point with 45.0 mm
     for any precipitation_data query.
     """
     mock_session = MagicMock()
+    grid_point = MagicMock(x=639139.0, y=486706.0, precipitation_mm=45.0)
 
     def execute_side_effect(query, params=None):
         result = MagicMock()
         query_str = str(query)
         if "precipitation_data" in query_str:
-            precip = MagicMock()
-            precip.precipitation_interpolated = 45.0
-            result.fetchone.return_value = precip
+            result.fetchall.return_value = [grid_point]
         else:
             result.fetchone.return_value = None
             result.fetchall.return_value = []
@@ -161,7 +168,7 @@ def _patch_happy_path(cn: int = 75):
     segment = _make_segment_dict()
 
     patches = {
-        "cg": patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
+        "cg": patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
         "seg": patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
         "merge": patch(f"{_HG}.merge_catchment_boundaries", return_value=boundary),
         "outlet": patch(
@@ -275,6 +282,28 @@ class TestGenerateHydrographEndpoint:
         finally:
             app.dependency_overrides.clear()
 
+    def test_handoff_carries_the_area_the_hydrograph_used(self, client):
+        """The graph's unrounded area, not the morphometry's 0.01 km2, is handed off."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        try:
+            with _HappyPathContext() as mocks:
+                stats = mocks["cg"].return_value.aggregate_stats.return_value
+                stats["area_km2"] = 10.004321
+                small = self._post(client).json()
+                stats["area_km2"] = 10.0
+                rounded = self._post(client).json()
+
+            watershed = small["handoff"]["payload"]["nodes"][0]["watershed"]
+            assert watershed["area_km2"] == 10.004321
+            volume = small["handoff"]["result"]["total_volume_m3"]
+            assert volume == pytest.approx(
+                rounded["handoff"]["result"]["total_volume_m3"] * 1.0004321
+            )
+        finally:
+            app.dependency_overrides.clear()
+
     # ---- 4. test_water_balance_structure ----
 
     def test_water_balance_structure(self, client):
@@ -321,7 +350,7 @@ class TestGenerateHydrographEndpoint:
             assert "uh_model" in meta
 
             assert meta["tc_min"] > 0
-            assert meta["tc_method"] == "kirpich"
+            assert meta["tc_method"] == "nrcs"
             assert meta["hietogram_type"] == "beta"
             assert meta["uh_model"] == "scs"
         finally:
@@ -351,6 +380,42 @@ class TestGenerateHydrographEndpoint:
         finally:
             app.dependency_overrides.clear()
 
+    # ---- 6a. test_lutz_uses_the_land_cover_of_the_watershed ----
+
+    def test_lutz_uses_the_land_cover_of_the_watershed(self, client):
+        """Nash by Lutz takes W and U from the land cover of the delineation."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        land_cover = {
+            "categories": [],
+            "total_area_m2": 10_000_000.0,
+            "weighted_cn": 70.0,
+            "weighted_imperviousness": 0.08,
+            "forest_pct": 40.0,
+            "urban_pct": 5.0,
+        }
+        payload = {
+            **self._DEFAULT_PAYLOAD,
+            "uh_model": "nash",
+            "nash_estimation": "from_lutz",
+        }
+
+        try:
+            with _HappyPathContext() as mocks:
+                mocks["lc"].return_value = land_cover
+                response = self._post(client, payload)
+
+            assert response.status_code == 200, response.text
+            data = response.json()
+            meta = data["metadata"]
+            morph = data["watershed"]["morphometry"]
+            handed = data["handoff"]["payload"]["nodes"][0]["watershed"]
+            assert (meta["nash_forest_pct"], meta["nash_urban_pct"]) == (40.0, 5.0)
+            assert (morph["forest_pct"], morph["urban_pct"]) == (40.0, 5.0)
+            assert (handed["forest_pct"], handed["urban_pct"]) == (40.0, 5.0)
+        finally:
+            app.dependency_overrides.clear()
+
     # ---- 7. test_no_stream_returns_404 ----
 
     def test_no_stream_returns_404(self, client):
@@ -365,7 +430,7 @@ class TestGenerateHydrographEndpoint:
         )
 
         try:
-            with patch(f"{_HG}.get_catchment_graph", return_value=mock_cg):
+            with patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg):
                 response = self._post(
                     client,
                     {
@@ -377,14 +442,15 @@ class TestGenerateHydrographEndpoint:
                 )
 
             assert response.status_code == 404
-            assert "zlewni" in response.json()["detail"].lower()
+            assert response.json()["code"] == "not_found"
+            assert response.json()["details"]["reason"] == "no_catchment_at_point"
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 8. test_area_too_large_returns_400 ----
+    # ---- 8. test_area_too_large_returns_422 ----
 
-    def test_area_too_large_returns_400(self, client):
-        """Test that watershed > 250 km2 returns 400."""
+    def test_area_too_large_returns_422(self, client):
+        """Test that watershed > 250 km2 is unsupported (422)."""
         mock_db = MagicMock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -402,31 +468,34 @@ class TestGenerateHydrographEndpoint:
 
         try:
             with (
-                patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
+                patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
                 patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
             ):
                 response = self._post(client)
 
-            assert response.status_code == 400
-            assert "250" in response.json()["detail"]
+            assert response.status_code == 422
+            problem = response.json()
+            assert problem["code"] == "unsupported"
+            assert problem["details"]["limit_km2"] == 250
+            assert problem["details"]["area_km2"] == 300.0
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 9. test_invalid_duration_returns_422 ----
+    # ---- 9. test_invalid_duration_returns_400 ----
 
-    def test_invalid_duration_returns_422(self, client):
-        """Test that invalid duration returns 422 (Pydantic validation)."""
+    def test_invalid_duration_returns_400(self, client):
+        """Test that invalid duration returns 400 (Pydantic validation)."""
         response = self._post(
             client,
             {
                 "latitude": 52.23,
                 "longitude": 21.01,
-                "duration": "45min",  # Invalid
+                "duration": "96h",  # Invalid
                 "probability": 10,
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     # ---- 10. test_invalid_probability_returns_400 ----
 
@@ -458,7 +527,24 @@ class TestGenerateHydrographEndpoint:
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        valid_durations = ["15min", "30min", "1h", "2h", "6h", "12h", "24h"]
+        valid_durations = [
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
+        ]
 
         try:
             with _HappyPathContext():
@@ -510,7 +596,7 @@ class TestGenerateHydrographEndpoint:
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        methods = ["kirpich", "scs_lag", "giandotti"]
+        methods = ["kirpich", "nrcs", "giandotti"]
 
         try:
             with _HappyPathContext():
@@ -638,7 +724,24 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = ["12h", "15min", "1h", "24h", "2h", "30min", "6h"]
+        expected = [
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
+        ]
         assert data["durations"] == expected
 
     def test_scenarios_valid_probabilities(self, client):
@@ -646,8 +749,9 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = [1, 2, 5, 10, 20, 50]
-        assert data["probabilities"] == expected
+        assert len(data["probabilities"]) == 27
+        assert data["probabilities"][0] == 0.01
+        assert data["probabilities"][-1] == 99.9
 
     def test_scenarios_area_limit(self, client):
         """Test scenarios returns area limit."""

@@ -6,101 +6,60 @@ Tests for CN calculation using Kartograf integration.
 
 from unittest.mock import MagicMock, patch
 
+import kartograf
 import pytest
 
 from core.cn_calculator import (
-    CNCalculationResult,
     calculate_cn_from_kartograf,
     check_kartograf_available,
     get_default_land_cover_stats,
+    get_hsg_from_soilgrids,
+    weighted_cn_of_shares,
 )
-
-
-class TestCNCalculationResult:
-    """Tests for CNCalculationResult dataclass."""
-
-    def test_creation(self):
-        """Test creating a CNCalculationResult instance."""
-        result = CNCalculationResult(
-            cn=72,
-            method="kartograf_hsg",
-            dominant_hsg="B",
-            hsg_stats={"B": 80.0, "C": 20.0},
-            land_cover_stats={"forest": 50.0, "arable": 50.0},
-            cn_details=[
-                {"land_cover": "forest", "cn": 55, "percentage": 50.0, "hsg": "B"}
-            ],
-        )
-        assert result.cn == 72
-        assert result.method == "kartograf_hsg"
-        assert result.dominant_hsg == "B"
-
-    def test_all_attributes_accessible(self):
-        """Test all attributes are accessible."""
-        result = CNCalculationResult(
-            cn=75,
-            method="test",
-            dominant_hsg="A",
-            hsg_stats={},
-            land_cover_stats={},
-            cn_details=[],
-        )
-        assert hasattr(result, "cn")
-        assert hasattr(result, "method")
-        assert hasattr(result, "dominant_hsg")
-        assert hasattr(result, "hsg_stats")
-        assert hasattr(result, "land_cover_stats")
-        assert hasattr(result, "cn_details")
+from core.land_cover import VALID_CATEGORIES
+from tests.kartograf_offline import LOAM, SANDY, SoilRasters, soil_rasters
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
 
 class TestCheckKartografAvailable:
     """Tests for check_kartograf_available function."""
 
-    def test_returns_bool(self):
-        """Test function returns boolean."""
-        result = check_kartograf_available()
-        assert isinstance(result, bool)
-
-    @patch.dict("sys.modules", {"kartograf": None})
-    def test_returns_false_when_kartograf_missing(self):
-        """Test returns False when kartograf not installed."""
-        # Note: This test may not work properly due to module caching
-        # The function should handle ImportError gracefully
-        pass
+    def test_true_when_the_functions_used_here_are_importable(self):
+        """The Kartograf names that core.cn_calculator calls exist in the pinned one."""
+        assert check_kartograf_available() is True
 
 
 class TestGetDefaultLandCoverStats:
-    """Tests for get_default_land_cover_stats function."""
+    """The assumed land cover of an area without one."""
 
-    def test_returns_dict(self):
-        """Test returns a dictionary."""
+    def test_categories_of_the_table_summing_to_100(self):
         stats = get_default_land_cover_stats()
-        assert isinstance(stats, dict)
 
-    def test_sums_to_100(self):
-        """Test percentages sum to 100."""
-        stats = get_default_land_cover_stats()
-        total = sum(stats.values())
-        assert total == pytest.approx(100.0, rel=0.01)
+        assert set(stats) <= VALID_CATEGORIES
+        assert sum(stats.values()) == pytest.approx(100.0)
 
-    def test_has_expected_categories(self):
-        """Test contains expected land cover categories."""
-        stats = get_default_land_cover_stats()
-        assert "arable" in stats
-        assert "meadow" in stats
-        assert "forest" in stats
 
-    def test_all_values_positive(self):
-        """Test all percentage values are positive."""
-        stats = get_default_land_cover_stats()
-        for value in stats.values():
-            assert value > 0
+class TestWeightedCnOfShares:
+    """Every category on every soil group in their shares (no overlay)."""
 
-    def test_values_are_floats(self):
-        """Test all values are floats."""
-        stats = get_default_land_cover_stats()
-        for value in stats.values():
-            assert isinstance(value, float)
+    def test_cn_of_the_complexes_weighted_by_both_shares(self):
+        # las B 55, C 70; grunt_orny B 75, C 83
+        cn, details = weighted_cn_of_shares(
+            {"las": 60.0, "grunt_orny": 40.0}, {"A": 0.0, "B": 80.0, "C": 20.0}
+        )
+
+        # las: 0.8*55 + 0.2*70 = 58; grunt_orny: 0.8*75 + 0.2*83 = 76.6
+        assert cn == pytest.approx(0.6 * 58 + 0.4 * 76.6, abs=0.05)
+        assert details == [
+            {"land_cover": "las", "percentage": 60.0, "cn": 58.0},
+            {"land_cover": "grunt_orny", "percentage": 40.0, "cn": 76.6},
+        ]
+
+    @pytest.mark.parametrize(
+        ("land_cover", "hsg"), [({}, {"B": 100.0}), ({"las": 100.0}, {"B": 0.0})]
+    )
+    def test_without_land_cover_or_soil_groups_the_default_cn(self, land_cover, hsg):
+        assert weighted_cn_of_shares(land_cover, hsg) == (75.0, [])
 
 
 class TestCalculateCNFromKartograf:
@@ -174,18 +133,18 @@ class TestCalculateCNFromKartograf:
         sample_boundary_wgs84,
         tmp_path,
     ):
-        """Test CN calculation with mocked data."""
+        """The CN of forest is weighted over the soil groups of the area."""
         mock_check.return_value = True
         mock_bbox.return_value = MagicMock(
             min_x=500000, min_y=600000, max_x=501000, max_y=601000
         )
         mock_hsg.return_value = ("B", {"B": 80.0, "C": 20.0})
-        mock_land_cover.return_value = {"forest": 100.0}
+        mock_land_cover.return_value = {"las": 100.0}
 
         result = calculate_cn_from_kartograf(sample_boundary_wgs84, tmp_path)
 
         assert result is not None
-        assert result.cn == 55  # forest + B = 55
+        assert result.cn == 58.0  # woods, good: 0.8 * 55 (B) + 0.2 * 70 (C)
         assert result.dominant_hsg == "B"
         assert result.method == "kartograf_hsg"
 
@@ -208,19 +167,15 @@ class TestCalculateCNFromKartograf:
             min_x=500000, min_y=600000, max_x=501000, max_y=601000
         )
         mock_hsg.return_value = ("B", {"B": 100.0})
-        mock_land_cover.return_value = {"forest": 60.0, "arable": 40.0}
+        mock_land_cover.return_value = {"las": 60.0, "grunt_orny": 40.0}
 
         result = calculate_cn_from_kartograf(sample_boundary_wgs84, tmp_path)
 
         assert result is not None
-        assert len(result.cn_details) == 2
-        # Check forest detail
-        forest_detail = next(
-            (d for d in result.cn_details if d["land_cover"] == "forest"), None
-        )
-        assert forest_detail is not None
-        assert forest_detail["cn"] == 55
-        assert forest_detail["percentage"] == 60.0
+        assert result.cn_details == [
+            {"land_cover": "las", "percentage": 60.0, "cn": 55.0},
+            {"land_cover": "grunt_orny", "percentage": 40.0, "cn": 75.0},
+        ]
 
     @patch("core.cn_calculator.check_kartograf_available")
     @patch("core.cn_calculator.convert_boundary_to_bbox")
@@ -240,7 +195,7 @@ class TestCalculateCNFromKartograf:
         mock_bbox.return_value = MagicMock(
             min_x=500000, min_y=600000, max_x=501000, max_y=601000
         )
-        mock_land_cover.return_value = {"forest": 100.0}
+        mock_land_cover.return_value = {"las": 100.0}
 
         # HSG A
         mock_hsg.return_value = ("A", {"A": 100.0})
@@ -360,11 +315,11 @@ class TestIntegrationScenarios:
         )
         mock_hsg.return_value = ("B", {"A": 10.0, "B": 70.0, "C": 20.0})
         mock_land_cover.return_value = {
-            "arable": 45.0,
-            "meadow": 25.0,
-            "forest": 20.0,
-            "urban_residential": 8.0,
-            "road": 2.0,
+            "grunt_orny": 45.0,
+            "łąka": 25.0,
+            "las": 20.0,
+            "zabudowa_mieszkaniowa": 8.0,
+            "droga": 2.0,
         }
 
         result = calculate_cn_from_kartograf(sample_boundary_wgs84, tmp_path)
@@ -395,10 +350,10 @@ class TestIntegrationScenarios:
         )
         mock_hsg.return_value = ("C", {"B": 20.0, "C": 80.0})
         mock_land_cover.return_value = {
-            "urban_commercial": 40.0,
-            "urban_residential": 35.0,
-            "road": 20.0,
-            "meadow": 5.0,
+            "zabudowa_przemysłowa": 40.0,
+            "zabudowa_mieszkaniowa": 35.0,
+            "droga": 20.0,
+            "łąka": 5.0,
         }
 
         result = calculate_cn_from_kartograf(sample_boundary_wgs84, tmp_path)
@@ -428,9 +383,9 @@ class TestIntegrationScenarios:
         )
         mock_hsg.return_value = ("A", {"A": 90.0, "B": 10.0})
         mock_land_cover.return_value = {
-            "forest": 85.0,
-            "meadow": 10.0,
-            "water": 5.0,
+            "las": 85.0,
+            "łąka": 10.0,
+            "woda": 5.0,
         }
 
         result = calculate_cn_from_kartograf(sample_boundary_wgs84, tmp_path)
@@ -439,3 +394,54 @@ class TestIntegrationScenarios:
         # Forested watershed with HSG A should have low CN
         assert result.cn < 50
         assert result.dominant_hsg == "A"
+
+
+@pytest.mark.usefixtures("offline")
+class TestGetHsgFromSoilgrids:
+    """The dominant soil group of an area through calculate_hsg (plain, temporary)."""
+
+    BBOX = kartograf.BBox(450000, 550000, 460000, 560000, "EPSG:2180")
+
+    def test_loam_is_group_b(self):
+        with soil_rasters(SoilRasters(LOAM)):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
+
+        assert dominant == "B"
+        assert stats == {"A": 0.0, "B": 100.0, "C": 0.0, "D": 0.0}
+
+    def test_loamy_sand_is_group_a(self):
+        with soil_rasters(SoilRasters(SANDY)):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
+
+        assert dominant == "A"
+        assert stats["A"] == pytest.approx(100.0)
+
+    def test_the_group_is_that_of_the_least_permeable_layer(self):
+        """Loamy sand (A) over loam at 60-100 cm (B) is B, not A (ADR-079)."""
+        soil = SoilRasters(SANDY, layers={"60-100cm": LOAM})
+        with soil_rasters(soil):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
+
+        assert dominant == "B"
+        assert stats == {"A": 0.0, "B": 100.0, "C": 0.0, "D": 0.0}
+
+    def test_all_nodata_uses_the_default_group_not_group_a(self):
+        empty = {"clay": 0.0, "sand": 0.0, "silt": 0.0}
+        with soil_rasters(SoilRasters(empty)):
+            result = get_hsg_from_soilgrids(self.BBOX)
+
+        assert result == ("B", {"B": 100.0})
+
+    def test_a_failed_download_uses_the_default_group(self):
+        down = {name: kartograf.DownloadError("HTTP 500") for name in LOAM}
+        with soil_rasters(SoilRasters(down)):
+            result = get_hsg_from_soilgrids(self.BBOX)
+
+        assert result == ("B", {"B": 100.0})
+
+    def test_nothing_of_the_call_stays_on_disk(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with soil_rasters(SoilRasters(LOAM)):
+            get_hsg_from_soilgrids(self.BBOX)
+
+        assert list(tmp_path.iterdir()) == []

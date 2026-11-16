@@ -1,8 +1,8 @@
 """
 Utilities for raster operations including VRT mosaic creation.
 
-This module provides functions for working with multiple DEM tiles,
-creating virtual rasters (VRT), and reading mosaicked data.
+This module provides functions for working with multiple DEM tiles: creating
+virtual rasters (VRT), resampling and describing mosaics.
 
 VRT (Virtual Raster) is preferred over physical merge because:
 - No data duplication on disk
@@ -12,13 +12,12 @@ VRT (Virtual Raster) is preferred over physical merge because:
 """
 
 import logging
+import math
 import re
 import subprocess
 import tempfile
 from pathlib import Path
-
-import numpy as np
-from pyproj import Transformer
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ TARGET_CRS = "EPSG:2180"  # PUWG 1992
 TARGET_RES_M = 5.0  # Default hydro resolution (matches Kartograf download)
 
 
-def _read_asc_header(path: Path) -> dict:
+def _read_asc_header(path: Path) -> dict[str, Any]:
     """Read ASC grid header (first 6 lines) to get origin and cellsize."""
     header = {}
     with open(path) as f:
@@ -61,81 +60,37 @@ def _detect_crs_from_coords(xll: float, yll: float) -> str | None:
     return None  # EPSG:2180 or unknown
 
 
-_epsg2180_wkt_cache: str | None = None
-
-
-def _get_epsg2180_wkt() -> str:
-    """Get WKT for EPSG:2180 from the local GDAL installation.
-
-    Caches the result to avoid repeated subprocess calls.
-    """
-    global _epsg2180_wkt_cache  # noqa: PLW0603
-    if _epsg2180_wkt_cache is not None:
-        return _epsg2180_wkt_cache
-
-    try:
-        result = subprocess.run(
-            ["gdalsrsinfo", "EPSG:2180", "-o", "wkt_simple", "--single-line"],
-            capture_output=True, text=True, check=True,
-        )
-        _epsg2180_wkt_cache = result.stdout.strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        # Fallback — matches GDAL 3.9+ EPSG database
-        _epsg2180_wkt_cache = (
-            'PROJCS["ETRF2000-PL / CS92",'
-            'GEOGCS["ETRF2000-PL",'
-            'DATUM["ETRF2000_Poland",'
-            'SPHEROID["GRS 1980",6378137,298.257222101]],'
-            'PRIMEM["Greenwich",0],'
-            'UNIT["degree",0.0174532925199433]],'
-            'PROJECTION["Transverse_Mercator"],'
-            'PARAMETER["latitude_of_origin",0],'
-            'PARAMETER["central_meridian",19],'
-            'PARAMETER["scale_factor",0.9993],'
-            'PARAMETER["false_easting",500000],'
-            'PARAMETER["false_northing",-5300000],'
-            'UNIT["metre",1]]'
-        )
-    return _epsg2180_wkt_cache
-
-
-def _ensure_prj_sidecar(asc_path: Path) -> None:
-    """Create .prj sidecar file for ASC grid if it doesn't exist."""
-    prj_path = asc_path.with_suffix(".prj")
-    if not prj_path.exists():
-        prj_path.write_text(_get_epsg2180_wkt())
-
-
 def normalize_crs(
     input_files: list[Path],
-    output_dir: Path | None = None,
+    output_dir: Path,
 ) -> list[Path]:
     """Detect and reproject ASC files not in EPSG:2180 (PUWG 1992).
 
     GUGiK serves NMT 1m data in PUWG 1992 (EPSG:2180) or PUWG 2000
     (EPSG:2176-2179) depending on the region.  Files in PUWG 2000 are
-    reprojected to EPSG:2180 at 1 m resolution using gdalwarp so that
-    all tiles can be mosaicked into a single VRT.
+    reprojected to EPSG:2180 using gdalwarp so that all tiles can be
+    mosaicked into a single VRT.  Files already in EPSG:2180 pass through
+    unchanged and nothing is written next to any input: the inputs may live
+    in a store that Hydrograf must not modify.
 
     Parameters
     ----------
     input_files : list[Path]
         ASC files to check.
-    output_dir : Path, optional
-        Directory for reprojected GeoTIFFs.  Defaults to a ``reprojected/``
-        subdirectory next to the first input file.
+    output_dir : Path
+        Hydrograf's directory for the reprojected copies (gdalwarp writes
+        each ``.asc`` with its ``.prj`` there).  Never the directory of the
+        inputs.
 
     Returns
     -------
     list[Path]
-        Paths ready for mosaicking — original files for EPSG:2180,
-        reprojected GeoTIFFs for others.
+        Paths ready for mosaicking, in input order: original files for
+        EPSG:2180, reprojected ASC grids for the others.  Missing inputs
+        are skipped.
     """
     if not input_files:
         return []
-
-    if output_dir is None:
-        output_dir = input_files[0].parent / "reprojected"
 
     result: list[Path] = []
     n_reprojected = 0
@@ -151,8 +106,7 @@ def normalize_crs(
         source_crs = _detect_crs_from_coords(xll, yll)
 
         if source_crs is None:
-            # Already in EPSG:2180 — ensure .prj sidecar exists for GDAL
-            _ensure_prj_sidecar(f)
+            # Already in EPSG:2180: used as it is, nothing written beside it.
             result.append(f)
             continue
 
@@ -175,18 +129,23 @@ def normalize_crs(
 
         if out_asc.exists():
             logger.debug(f"Reprojected file exists, reusing: {out_asc.name}")
-            _ensure_prj_sidecar(out_asc)
             result.append(out_asc)
             n_reprojected += 1
             continue
 
         cmd = [
             "gdalwarp",
-            "-s_srs", source_crs,
-            "-t_srs", TARGET_CRS,
-            "-tr", str(target_res), str(target_res),
-            "-r", "bilinear",
-            "-of", "AAIGrid",
+            "-s_srs",
+            source_crs,
+            "-t_srs",
+            TARGET_CRS,
+            "-tr",
+            str(target_res),
+            str(target_res),
+            "-r",
+            "bilinear",
+            "-of",
+            "AAIGrid",
             "-overwrite",
             str(f),
             str(out_asc),
@@ -194,14 +153,11 @@ def normalize_crs(
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            _ensure_prj_sidecar(out_asc)
             result.append(out_asc)
             n_reprojected += 1
         except subprocess.CalledProcessError as e:
             logger.error(f"gdalwarp failed for {f.name}: {e.stderr}")
-            raise RuntimeError(
-                f"Reprojection failed for {f.name}: {e.stderr}"
-            ) from e
+            raise RuntimeError(f"Reprojection failed for {f.name}: {e.stderr}") from e
 
     if n_reprojected:
         logger.info(
@@ -214,82 +170,143 @@ def normalize_crs(
     return result
 
 
-def discover_asc_files(
-    nmt_dir: Path,
-    bbox_2180: tuple[float, float, float, float],
-) -> list[Path]:
-    """Discover all ASC files in nmt_dir whose extent overlaps bbox.
+def _sheet_frame(path: Path) -> tuple[float, float, float, float, float]:
+    """Return ``(left, bottom, right, top, cellsize)`` of a sheet in its own CRS."""
+    if path.suffix.lower() == ".asc":
+        header = _read_asc_header(path)
+        cellsize = header["cellsize"]
+        left = header.get("xllcorner", header.get("xllcenter", 0.0) - cellsize / 2)
+        bottom = header.get("yllcorner", header.get("yllcenter", 0.0) - cellsize / 2)
+        return (
+            left,
+            bottom,
+            left + header["ncols"] * cellsize,
+            bottom + header["nrows"] * cellsize,
+            cellsize,
+        )
+    import rasterio
 
-    Scans recursively for ``*.asc`` files (excluding the ``reprojected/``
-    subdirectory), reads each header to determine its extent, and keeps
-    only files that intersect the given bounding box in EPSG:2180.
+    with rasterio.open(path) as src:
+        if abs(src.res[0] - src.res[1]) > 1e-9 * src.res[0]:
+            raise ValueError(f"{path} has cells that are not square: {src.res}")
+        return (*src.bounds, src.res[0])
+
+
+def align_to_cellsize(
+    input_files: list[Path],
+    output_dir: Path,
+    cellsize_m: float = TARGET_RES_M,
+) -> list[Path]:
+    """Put every sheet on the grid of the sheets of ``cellsize_m``, without a VRT.
+
+    A set of one resolution can hold sheets of a finer one: GUGiK delivers some of
+    the 5 m NMT sheets of 2021 as 1 m grids. ``gdalbuildvrt -resolution highest``
+    then makes the whole mosaic 1 m, and a VRT of any other resolution resamples the
+    odd sheets on every read, where two windows can read one cell differently. So
+    each finer sheet is averaged (``gdalwarp -r average``) to ``cellsize_m`` on the
+    lattice of the sheets that already have it (their corners agree modulo
+    ``cellsize_m``), as an ASC grid in ``output_dir``; the mosaic of the result has
+    the cells of those sheets and reads every source cell for cell.
 
     Parameters
     ----------
-    nmt_dir : Path
-        Root directory containing ASC tiles (possibly nested).
-    bbox_2180 : tuple
-        Bounding box ``(min_x, min_y, max_x, max_y)`` in EPSG:2180.
+    input_files : list[Path]
+        Sheets in EPSG:2180 (after ``normalize_crs``).
+    output_dir : Path
+        Hydrograf's directory for the averaged copies (never the store of the
+        inputs); a copy that exists is used again.
+    cellsize_m : float
+        Cell size of the run [m].
 
     Returns
     -------
     list[Path]
-        ASC file paths whose extent overlaps *bbox_2180*.
+        The paths for the mosaic, in input order.
+
+    Raises
+    ------
+    ValueError
+        The sheets of ``cellsize_m`` lie on different lattices, or a sheet is
+        coarser than ``cellsize_m``.
     """
-    reprojected_dir = (nmt_dir / "reprojected").resolve()
-
-    all_asc = [
-        p for p in nmt_dir.rglob("*.asc")
-        if not p.resolve().is_relative_to(reprojected_dir)
-    ]
-
-    if not all_asc:
-        logger.info("discover_asc_files: no ASC files found in %s", nmt_dir)
-        return []
-
-    logger.info("discover_asc_files: found %d ASC files in %s", len(all_asc), nmt_dir)
-
-    bx_min, by_min, bx_max, by_max = bbox_2180
-    matched: list[Path] = []
-
-    for path in all_asc:
-        hdr = _read_asc_header(path)
-        ncols = int(hdr.get("ncols", 0))
-        nrows = int(hdr.get("nrows", 0))
-        cellsize = hdr.get("cellsize", 0.0)
-        xll = hdr.get("xllcorner", hdr.get("xllcenter", 0.0))
-        yll = hdr.get("yllcorner", hdr.get("yllcenter", 0.0))
-
-        if ncols == 0 or nrows == 0 or cellsize == 0.0:
+    tolerance = 1e-6 * cellsize_m
+    frames = {path: _sheet_frame(path) for path in input_files}
+    offsets = {
+        (round(left % cellsize_m, 6), round(top % cellsize_m, 6))
+        for left, _, _, top, cellsize in frames.values()
+        if abs(cellsize - cellsize_m) <= tolerance
+    }
+    if len(offsets) > 1:
+        raise ValueError(
+            f"The {cellsize_m:g} m sheets lie on {len(offsets)} different grids "
+            f"(corner offsets {sorted(offsets)}): no mosaic reads them cell for cell"
+        )
+    offset_x, offset_y = offsets.pop() if offsets else (0.0, 0.0)
+    result: list[Path] = []
+    averaged = 0
+    for path in input_files:
+        left, bottom, right, top, cellsize = frames[path]
+        if abs(cellsize - cellsize_m) <= tolerance:
+            result.append(path)
             continue
-
-        # File extent in its native CRS
-        f_min_x = xll
-        f_min_y = yll
-        f_max_x = xll + ncols * cellsize
-        f_max_y = yll + nrows * cellsize
-
-        # Transform PUWG 2000 bounds to EPSG:2180 for comparison
-        source_crs = _detect_crs_from_coords(xll, yll)
-        if source_crs is not None:
-            transformer = Transformer.from_crs(
-                source_crs, TARGET_CRS, always_xy=True,
+        if cellsize > cellsize_m:
+            raise ValueError(
+                f"{path.name} has {cellsize:g} m cells, coarser than the "
+                f"{cellsize_m:g} m of the run"
             )
-            f_min_x, f_min_y = transformer.transform(f_min_x, f_min_y)
-            f_max_x, f_max_y = transformer.transform(f_max_x, f_max_y)
-
-        # Check bbox overlap (two rectangles overlap iff no gap on either axis)
-        if f_max_x < bx_min or f_min_x > bx_max:
+        target = output_dir / f"{path.stem}_{cellsize_m:g}m.asc"
+        result.append(target)
+        averaged += 1
+        if target.exists():
             continue
-        if f_max_y < by_min or f_min_y > by_max:
-            continue
-
-        matched.append(path)
-
-    logger.info(
-        "discover_asc_files: %d/%d files overlap bbox", len(matched), len(all_asc),
-    )
-    return matched
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # The frame grows outward to whole cells of the lattice.
+        x0 = math.floor((left - offset_x) / cellsize_m) * cellsize_m + offset_x
+        y0 = math.floor((bottom - offset_y) / cellsize_m) * cellsize_m + offset_y
+        x1 = math.ceil((right - offset_x) / cellsize_m) * cellsize_m + offset_x
+        y1 = math.ceil((top - offset_y) / cellsize_m) * cellsize_m + offset_y
+        partial = target.with_name(f".{target.name}.partial")
+        cmd = [
+            "gdalwarp",
+            "-q",
+            "-overwrite",
+            "-s_srs",
+            TARGET_CRS,
+            "-t_srs",
+            TARGET_CRS,
+            "-r",
+            "average",
+            "-tr",
+            repr(cellsize_m),
+            repr(cellsize_m),
+            "-te",
+            *(repr(value) for value in (x0, y0, x1, y1)),
+            "-srcnodata",
+            "-9999",
+            "-dstnodata",
+            "-9999",
+            "-of",
+            "AAIGrid",
+            str(path),
+            str(partial),
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Averaging {path.name} failed: {e.stderr}") from e
+        partial.replace(target)
+        for sidecar in output_dir.glob(f"{partial.name}.*"):
+            sidecar.unlink()
+        partial.with_suffix(".prj").unlink(missing_ok=True)
+    if averaged:
+        logger.info(
+            "Grid alignment: %d of %d sheets averaged to %g m on the grid of the "
+            "others",
+            averaged,
+            len(input_files),
+            cellsize_m,
+        )
+    return result
 
 
 def create_vrt_mosaic(
@@ -319,6 +336,11 @@ def create_vrt_mosaic(
         Default 'highest' uses the finest resolution among inputs.
     nodata : float
         NoData value for the mosaic (default: -9999.0)
+    target_crs : str, optional
+        CRS of every input (e.g. ``"EPSG:2180"``), assigned to the mosaic;
+        the CRS an input declares itself, or the lack of one (ASC sheets of
+        the Kartograf store have no ``.prj``), is ignored.  If None, the
+        mosaic takes the CRS of the inputs.
 
     Returns
     -------
@@ -365,7 +387,9 @@ def create_vrt_mosaic(
             logger.warning("GDAL not available, falling back to rasterio.merge")
             # Change extension to .tif for physical merge
             output_tif = output_vrt.with_suffix(".tif")
-            return _create_mosaic_rasterio(existing_files, output_tif, nodata)
+            return _create_mosaic_rasterio(
+                existing_files, output_tif, nodata, target_crs
+            )
         raise
 
 
@@ -376,7 +400,13 @@ def _create_vrt_gdal(
     nodata: float,
     target_crs: str | None = None,
 ) -> Path:
-    """Create VRT using GDAL's gdalbuildvrt command."""
+    """Create VRT using GDAL's gdalbuildvrt command.
+
+    With ``target_crs`` the VRT gets that CRS (``-a_srs``) and inputs whose
+    own projection differs or is missing are kept
+    (``-allow_projection_difference``); without the flag gdalbuildvrt
+    silently drops them.
+    """
     cmd = [
         "gdalbuildvrt",
         "-resolution",
@@ -388,7 +418,7 @@ def _create_vrt_gdal(
         "-overwrite",
     ]
     if target_crs:
-        cmd.extend(["-a_srs", target_crs])
+        cmd.extend(["-a_srs", target_crs, "-allow_projection_difference"])
     cmd.append(str(output_vrt))
     cmd.extend(str(f) for f in input_files)
 
@@ -424,12 +454,14 @@ def _create_mosaic_rasterio(
     input_files: list[Path],
     output_path: Path,
     nodata: float,
+    target_crs: str | None = None,
 ) -> Path:
     """
     Create physical mosaic using rasterio.merge.
 
     This is a fallback when GDAL is not available. Creates a GeoTIFF
-    file with LZW compression.
+    file with LZW compression.  The mosaic gets ``target_crs`` when given,
+    otherwise the CRS of the first input.
     """
     import rasterio
     from rasterio.merge import merge
@@ -459,6 +491,8 @@ def _create_mosaic_rasterio(
                 "compress": "lzw",
             }
         )
+        if target_crs:
+            out_meta["crs"] = target_crs
 
         # Write output
         with rasterio.open(output_path, "w", **out_meta) as dest:
@@ -477,57 +511,7 @@ def _create_mosaic_rasterio(
     return output_path
 
 
-def read_vrt_as_array(
-    vrt_path: Path,
-) -> tuple[np.ndarray, dict]:
-    """
-    Read VRT mosaic as numpy array with metadata.
-
-    Parameters
-    ----------
-    vrt_path : Path
-        Path to VRT file
-
-    Returns
-    -------
-    tuple
-        (data array, metadata dict with transform, crs, nodata, shape)
-
-    Examples
-    --------
-    >>> data, meta = read_vrt_as_array(Path("mosaic.vrt"))
-    >>> print(data.shape, meta['nodata'])
-    (5000, 6000) -9999.0
-    """
-    import rasterio
-
-    with rasterio.open(vrt_path) as src:
-        data = src.read(1)
-        metadata = {
-            "transform": src.transform,
-            "crs": src.crs,
-            "nodata": src.nodata,
-            "width": src.width,
-            "height": src.height,
-            "bounds": src.bounds,
-            "dtype": src.dtypes[0],
-            # Extract corner and cellsize for compatibility with ASCII grid format
-            "xllcorner": src.bounds.left,
-            "yllcorner": src.bounds.bottom,
-            "cellsize": src.transform.a,  # Pixel width (assumes square pixels)
-            "ncols": src.width,
-            "nrows": src.height,
-            "nodata_value": src.nodata if src.nodata is not None else -9999.0,
-        }
-
-    logger.info(f"Read VRT: {metadata['nrows']}x{metadata['ncols']} cells")
-    logger.info(f"Bounds: {metadata['bounds']}")
-    logger.info(f"Cell size: {metadata['cellsize']} m")
-
-    return data, metadata
-
-
-def get_mosaic_info(vrt_path: Path) -> dict:
+def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
     """
     Get information about VRT mosaic without loading data.
 
@@ -558,90 +542,6 @@ def get_mosaic_info(vrt_path: Path) -> dict:
         }
 
     return info
-
-
-def validate_tiles_compatibility(input_files: list[Path]) -> dict:
-    """
-    Validate that all tiles are compatible for mosaicking.
-
-    Checks CRS, cell size, and data type consistency.
-
-    Parameters
-    ----------
-    input_files : List[Path]
-        List of raster files to validate
-
-    Returns
-    -------
-    dict
-        Validation results with 'valid', 'issues', and 'summary'
-    """
-    import rasterio
-
-    results = {
-        "valid": True,
-        "issues": [],
-        "summary": {},
-    }
-
-    if not input_files:
-        results["valid"] = False
-        results["issues"].append("No input files provided")
-        return results
-
-    # Collect metadata from all files
-    metadata_list = []
-    for f in input_files:
-        if not f.exists():
-            results["issues"].append(f"File not found: {f}")
-            continue
-
-        try:
-            with rasterio.open(f) as src:
-                metadata_list.append(
-                    {
-                        "file": f.name,
-                        "crs": str(src.crs),
-                        "cell_size": round(src.transform.a, 6),
-                        "dtype": src.dtypes[0],
-                        "nodata": src.nodata,
-                    }
-                )
-        except Exception as e:
-            results["issues"].append(f"Cannot read {f}: {e}")
-
-    if not metadata_list:
-        results["valid"] = False
-        results["issues"].append("No readable files found")
-        return results
-
-    # Check consistency
-    reference = metadata_list[0]
-    results["summary"]["reference_crs"] = reference["crs"]
-    results["summary"]["reference_cell_size"] = reference["cell_size"]
-    results["summary"]["total_files"] = len(metadata_list)
-
-    for meta in metadata_list[1:]:
-        if meta["crs"] != reference["crs"]:
-            results["valid"] = False
-            results["issues"].append(
-                f"CRS mismatch: {meta['file']} has {meta['crs']}, "
-                f"expected {reference['crs']}"
-            )
-
-        if abs(meta["cell_size"] - reference["cell_size"]) > 0.0001:
-            results["valid"] = False
-            results["issues"].append(
-                f"Cell size mismatch: {meta['file']} has {meta['cell_size']}, "
-                f"expected {reference['cell_size']}"
-            )
-
-    if results["valid"]:
-        logger.info(f"All {len(metadata_list)} tiles are compatible")
-    else:
-        logger.warning(f"Tile validation failed: {results['issues']}")
-
-    return results
 
 
 def resample_raster(
@@ -733,57 +633,3 @@ def resample_raster(
     logger.info(f"File size: {output_path.stat().st_size / (1024 * 1024):.1f} MB")
 
     return output_path
-
-
-def convert_asc_to_geotiff(
-    input_asc: Path,
-    output_tif: Path | None = None,
-    compress: str = "LZW",
-) -> Path:
-    """
-    Convert ASCII Grid to GeoTIFF with compression.
-
-    Useful for reducing disk space - LZW-compressed GeoTIFF is typically
-    50-70% smaller than ASCII Grid.
-
-    Parameters
-    ----------
-    input_asc : Path
-        Input ASCII Grid file
-    output_tif : Path, optional
-        Output GeoTIFF path. If None, uses same name with .tif extension.
-    compress : str
-        Compression algorithm: 'LZW', 'DEFLATE', 'ZSTD', 'NONE'
-
-    Returns
-    -------
-    Path
-        Path to created GeoTIFF
-    """
-    if output_tif is None:
-        output_tif = input_asc.with_suffix(".tif")
-
-    cmd = [
-        "gdal_translate",
-        "-of",
-        "GTiff",
-        "-co",
-        f"COMPRESS={compress}",
-        "-co",
-        "TILED=YES",
-        str(input_asc),
-        str(output_tif),
-    ]
-
-    try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"gdal_translate failed: {e.stderr}") from e
-
-    logger.info(f"Converted {input_asc.name} -> {output_tif.name}")
-    logger.info(
-        f"Size reduction: {input_asc.stat().st_size / 1024:.0f} KB -> "
-        f"{output_tif.stat().st_size / 1024:.0f} KB"
-    )
-
-    return output_tif

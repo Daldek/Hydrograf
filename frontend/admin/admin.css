@@ -1,0 +1,283 @@
+/*
+ * Hydrograf admin panel: the page's own sections inside Nogat's <nogat-admin> shell
+ * (DEV-15.13, ADR-086). Buttons, fields, notes, facts and dialogs are the kit's classes
+ * (nogat/nogat-admin.css); this file lays out „Zasoby”, „Przetwarzanie NMT”,
+ * „Czyszczenie” and „Granice i kanalizacja” with the tokens only (css/tokens.css).
+ */
+
+/* What a section hides is hidden, whatever display its class gives it */
+.admin-section [hidden] {
+    display: none !important;
+}
+
+.admin-status:not(:empty) {
+    margin-bottom: var(--space-3);
+}
+
+.admin-line {
+    margin: 0 0 var(--space-3);
+    color: var(--text-2);
+}
+
+.admin-section a {
+    color: var(--accent);
+}
+
+/* Cards of a section, side by side on a wide screen */
+.admin-panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-4);
+    align-items: start;
+}
+
+.admin-panel {
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.admin-panel-title {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+}
+
+.admin-panel .nogat-admin-scroll {
+    margin-top: var(--space-3);
+}
+
+/* The facts of a card sit on the card, without a frame of their own */
+.admin-facts {
+    margin: 0 0 var(--space-3);
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+.admin-facts dd {
+    font-variant-numeric: tabular-nums;
+}
+
+/* „Przetwarzanie NMT”: the run's state, the form and the log */
+.admin-run {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-form {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 560px;
+    margin-bottom: var(--space-6);
+}
+
+.admin-fieldset {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.admin-fieldset legend {
+    margin-bottom: var(--space-2);
+    padding: 0;
+    font-weight: var(--weight-medium);
+}
+
+.admin-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+}
+
+.admin-choice label,
+.admin-check {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.admin-section input[type="radio"],
+.admin-section input[type="checkbox"] {
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.admin-field {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+    font-weight: var(--weight-medium);
+}
+
+.admin-field .nogat-admin-input {
+    font-weight: var(--weight-regular);
+}
+
+.admin-bbox {
+    display: grid;
+    gap: var(--space-3);
+    justify-items: start;
+}
+
+/* N above, W and E beside each other, S below */
+.admin-compass {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 150px));
+    grid-template-areas:
+        "north north"
+        "west east"
+        "south south";
+    gap: var(--space-2) var(--space-3);
+}
+
+.admin-compass .admin-field {
+    width: 150px;
+    justify-self: center;
+}
+
+.admin-north { grid-area: north; }
+.admin-west { grid-area: west; }
+.admin-east { grid-area: east; }
+.admin-south { grid-area: south; }
+
+.admin-compass .nogat-admin-input[aria-invalid="true"] {
+    border-color: var(--bad);
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.admin-log-title {
+    margin-top: var(--space-2);
+}
+
+.admin-log {
+    box-sizing: border-box;
+    min-height: 80px;
+    max-height: 420px;
+    margin: 0;
+    padding: var(--space-3);
+    overflow: auto;
+    border-radius: var(--radius-md);
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* The area map: a wider dialog of the kit, the GUGiK basemap in grey */
+.nogat-admin-dialog.admin-map-dialog {
+    width: min(760px, calc(100vw - 16px));
+}
+
+.admin-map {
+    height: min(440px, 60dvh);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+}
+
+.admin-map .basemap-grey {
+    filter: grayscale(1);
+}
+
+/* „Czyszczenie”: one row per target */
+.admin-list {
+    display: grid;
+    gap: var(--space-2);
+    max-width: 720px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-target {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.admin-target-name {
+    font-weight: var(--weight-bold);
+}
+
+.admin-target-size {
+    display: block;
+    color: var(--text-3);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+/* „Granice i kanalizacja”: the file fields */
+.admin-file {
+    max-width: 100%;
+    color: var(--text-2);
+    font: inherit;
+    font-weight: var(--weight-regular);
+}
+
+.admin-file::file-selector-button {
+    height: var(--control);
+    margin-right: var(--space-3);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+}
+
+.admin-file::file-selector-button:hover {
+    background: var(--surface-2);
+}
+
+.admin-panel .admin-check,
+.admin-panel .admin-field {
+    margin-bottom: var(--space-3);
+}
+
+@media (max-width: 600px) {
+    .admin-panel {
+        padding: var(--space-3);
+    }
+
+    .admin-compass {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-compass .admin-field {
+        width: 100%;
+    }
+}
+
+@media (pointer: coarse) {
+    .admin-file::file-selector-button {
+        height: var(--control-touch);
+    }
+}

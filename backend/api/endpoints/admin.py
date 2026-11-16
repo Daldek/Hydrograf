@@ -1,11 +1,15 @@
 """
-Admin panel API endpoints.
+The admin API of Hydrograf under /api/admin/ (Nogat DEV-15.13, ADR-086).
 
-Provides dashboard, resources, cleanup, and bootstrap management
-for the Hydrograf administration panel.
+The core routes of every GUI's panel, `status` and `stats` (the reports are in
+`feedback.py`), then the routes of Hydrograf's own sections of the panel: resources,
+cleanup, the DEM bootstrap, the boundary upload and the storm sewer. Every route needs
+the admin key (`api/dependencies/admin_auth.py`).
 """
 
 import asyncio
+import datetime
+import logging
 import os
 import re
 import shutil
@@ -14,18 +18,38 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import QueuePool
 
 from api.dependencies.admin_auth import verify_admin_key
-from core.catchment_graph import get_catchment_graph
+from api.errors import problem_responses
+from api.traffic import Traffic
+from core.catchment_graph import get_catchment_graph, loaded_catchment_graph
+from core.config import get_settings
 from core.database import get_db, get_db_engine
+from core.errors import (
+    ConflictError,
+    FileOperationError,
+    ForbiddenError,
+    InvalidRequestError,
+    NotFoundError,
+)
+from core.usage import TOTALS, utc_today
+from core.version import get_version
+from scripts.clean import DB_TABLES, dir_size, execute_clean, force_rmtree
+from utils.kartograf_store import refuse_shared_store
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -35,10 +59,15 @@ FRONTEND_DATA = PROJECT_ROOT / "frontend" / "data"
 FRONTEND_TILES = PROJECT_ROOT / "frontend" / "tiles"
 DATA_NMT = PROJECT_ROOT / "data" / "nmt"
 DATA_HYDRO = PROJECT_ROOT / "data" / "hydro"
+DATA_SEWER = PROJECT_ROOT / "data" / "sewer"
 CACHE_DIR = PROJECT_ROOT / "cache"
 
-# Module load time — for uptime calculation
-_start_time = time.time()
+ALLOWED_SEWER_EXTENSIONS = {".shp", ".gpkg", ".geojson", ".json", ".zip"}
+MAX_SEWER_UPLOAD_MB = 100
+
+# When this process started: the module is imported as the API starts
+_STARTED_AT = datetime.datetime.now(datetime.UTC)
+_STARTED = time.monotonic()
 
 # ---------------------------------------------------------------------------
 # Router (all endpoints require admin auth)
@@ -49,99 +78,240 @@ router = APIRouter(dependencies=[Depends(verify_admin_key)])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+_dir_size_cache: dict[str, tuple[float, float]] = {}  # path -> (timestamp, size_mb)
+_DIR_SIZE_TTL = 30.0  # seconds
+
+
 def _dir_size_mb(path: Path) -> float:
-    """Sum file sizes recursively, return MB."""
-    if not path.exists():
-        return 0.0
-    total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-    return round(total / (1024 * 1024), 2)
+    """Sum file sizes recursively, return MB. Cached for 30s."""
+    key = str(path)
+    now = time.time()
+    cached = _dir_size_cache.get(key)
+    if cached and now - cached[0] < _DIR_SIZE_TTL:
+        return cached[1]
+
+    result = round(dir_size(path) / (1024 * 1024), 2)
+    _dir_size_cache[key] = (now, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Dashboard
+# Status: GET /api/admin/status of Nogat DEV-15.13, the view „Stan” of the panel
 # ---------------------------------------------------------------------------
-_TABLE_NAMES = [
-    "stream_network",
-    "stream_catchments",
-    "depressions",
-    "land_cover",
-    "soil_hsg",
-    "precipitation_data",
-]
+class DiskSpace(BaseModel):
+    """The file system of the data directory; null where it cannot be read."""
+
+    free_bytes: int | None = Field(description="Free space in bytes")
+    total_bytes: int | None = Field(description="Size in bytes")
 
 
-class DashboardResponse(BaseModel):
-    """Dashboard overview response."""
+class StatusCheck(BaseModel):
+    """One check of the status (README "Admin panel")."""
 
-    status: str = Field(description="healthy or unhealthy")
-    version: str = Field(default="1.0.0")
-    uptime_s: float = Field(description="Seconds since module loaded")
-    database: str = Field(description="connected or error message")
-    tables: dict[str, int] = Field(description="Row counts per table")
-    disk: dict[str, float] = Field(description="Disk usage in MB")
+    name: str = Field(description="database, catchment_graph or data_dir")
+    status: Literal["ok", "warning", "failed"] = Field(description="What it found")
+    detail: str = Field(description="What it found, in Polish")
 
 
-@router.get("/dashboard", response_model=DashboardResponse)
-def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
-    """Admin dashboard with system overview."""
-    # Database check
+class StatusResponse(BaseModel):
+    """The server and its checks (Nogat DEV-15.13)."""
+
+    app: str = Field(description="Hydrograf")
+    version: str = Field(description="Hydrograf version, from backend/pyproject.toml")
+    started_at: str = Field(description="Start of the process, ISO 8601 with offset")
+    uptime_s: int = Field(description="Seconds since the start")
+    data_dir: str = Field(description="The deployment's data_dir (HYDROGRAF_DATA_DIR)")
+    disk: DiskSpace
+    checks: list[StatusCheck]
+
+
+@router.get("/status", response_model=StatusResponse)
+def server_status(db: Session = Depends(get_db)) -> StatusResponse:
+    """Return the server and its checks: the database, the catchment graph, data_dir."""
+    data_dir = Path(get_settings().hydrograf_data_dir)
+    return StatusResponse(
+        app="Hydrograf",
+        version=get_version(),
+        started_at=_STARTED_AT.isoformat(timespec="seconds"),
+        uptime_s=int(time.monotonic() - _STARTED),
+        data_dir=str(data_dir),
+        disk=_disk_space(data_dir),
+        checks=[
+            _database_check(db),
+            _catchment_graph_check(),
+            _data_dir_check(data_dir),
+        ],
+    )
+
+
+def _disk_space(path: Path) -> DiskSpace:
+    """Return the free and the total bytes of the file system that holds ``path``."""
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return DiskSpace(free_bytes=None, total_bytes=None)
+    return DiskSpace(free_bytes=usage.free, total_bytes=usage.total)
+
+
+def _database_check(db: Session) -> StatusCheck:
+    """Whether PostGIS answers a query."""
     try:
         db.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {e}"
+    except Exception as error:
+        cause = (str(error).splitlines() or [type(error).__name__])[0]
+        return StatusCheck(
+            name="database",
+            status="failed",
+            detail=f"Baza danych nie odpowiada: {cause}",
+        )
+    return StatusCheck(name="database", status="ok", detail="Baza danych odpowiada.")
 
-    # Table row counts
-    tables: dict[str, int] = {}
-    for table in _TABLE_NAMES:
-        try:
-            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
-            tables[table] = result.scalar() or 0
-        except Exception:
-            tables[table] = 0
 
-    # Disk usage
-    frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
-    frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
-    nmt_data_mb = _dir_size_mb(DATA_NMT)
-    cache_mb = _dir_size_mb(CACHE_DIR)
-
-    status = "healthy" if db_status == "connected" else "unhealthy"
-
-    return DashboardResponse(
-        status=status,
-        version="1.0.0",
-        uptime_s=round(time.time() - _start_time, 1),
-        database=db_status,
-        tables=tables,
-        disk={
-            "frontend_data_mb": frontend_data_mb,
-            "frontend_tiles_mb": frontend_tiles_mb,
-            "nmt_data_mb": nmt_data_mb,
-            "cache_mb": cache_mb,
-            "total_mb": round(
-                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
-                2,
+def _catchment_graph_check() -> StatusCheck:
+    """Whether the in-memory catchment graph of the delineation is loaded."""
+    graph = get_catchment_graph()
+    if not graph.loaded:
+        return StatusCheck(
+            name="catchment_graph",
+            status="warning",
+            detail=(
+                "Graf zlewni nie jest wczytany: baza danych nie ma sieci cieków albo "
+                "wczytanie się nie udało (log aplikacji). Wczyta go następne "
+                "wyznaczenie zlewni."
             ),
-        },
+        )
+    thresholds = ", ".join(_grouped(t) for t in graph.thresholds_m2())
+    return StatusCheck(
+        name="catchment_graph",
+        status="ok",
+        detail=(
+            f"Wczytany: {_grouped(graph._n)} zlewni cząstkowych, progi {thresholds} m²."
+        ),
+    )
+
+
+def _data_dir_check(data_dir: Path) -> StatusCheck:
+    """Whether the daily statistics can be written: ``<data_dir>/hydrograf``.
+
+    Before the first write that directory does not exist yet, and ``data_dir``,
+    where it is then made, is checked.
+    """
+    own = data_dir / "hydrograf"
+    folder = own if own.exists() else data_dir
+    if not folder.is_dir():
+        problem = f"Nie ma katalogu {folder}"
+    elif not os.access(folder, os.W_OK | os.X_OK):
+        problem = f"Katalog {folder} nie jest zapisywalny"
+    else:
+        return StatusCheck(
+            name="data_dir", status="ok", detail=f"Katalog {folder} jest zapisywalny."
+        )
+    return StatusCheck(
+        name="data_dir",
+        status="failed",
+        detail=f"{problem}: statystyki dzienne nie są zapisywane.",
+    )
+
+
+def _grouped(number: int) -> str:
+    """Return a whole number with its thousands apart, as Polish writes it: 41 515."""
+    return f"{number:,}".replace(",", "\u00a0")
+
+
+# ---------------------------------------------------------------------------
+# Statistics: GET /api/admin/stats of Nogat DEV-15.13, the view „Statystyki”
+# ---------------------------------------------------------------------------
+# Days of the period when the request gives no `from`, the last one included
+STATS_DAYS = 30
+
+
+class StatsDay(BaseModel):
+    """One UTC day of `stats.jsonl` (Nogat DEV-15.11; README "Public service")."""
+
+    date: datetime.date
+    visitors: int
+    page_views: int
+    stations_opened: int
+    analyses_run: int
+    downloads: int
+
+
+class StatsTotals(BaseModel):
+    """The sums of the days of the period: every total but the visitors."""
+
+    page_views: int
+    stations_opened: int
+    analyses_run: int
+    downloads: int
+
+
+class StatsResponse(BaseModel):
+    """The days of a period and their sums (Nogat DEV-15.13)."""
+
+    days: list[StatsDay] = Field(
+        description="The days of the file in the period, in date order; the current "
+        "day as counted so far"
+    )
+    totals: StatsTotals
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def daily_stats(
+    request: Request,
+    first: datetime.date | None = Query(
+        None, alias="from", description="First UTC day; default 29 days before `to`"
+    ),
+    last: datetime.date | None = Query(
+        None, alias="to", description="Last UTC day; default today"
+    ),
+) -> StatsResponse:
+    """Return the daily totals between two UTC days, both included, and their sums.
+
+    The lines of `<data_dir>/hydrograf/stats.jsonl` (Nogat DEV-15.11); the current day
+    is what earlier processes stored of it plus what this one has counted so far.
+    Runs in the event loop, like the middleware that counts, so it reads the totals
+    of this process between two of its requests.
+    """
+    last = last or utc_today()
+    first = first or last - datetime.timedelta(days=STATS_DAYS - 1)
+    if first > last:
+        raise InvalidRequestError(
+            "stats_period_reversed",
+            reason="stats_period_reversed",
+            first=first.isoformat(),
+            last=last.isoformat(),
+        )
+    traffic: Traffic = request.app.state.traffic
+    days = traffic.stats.days(first, last, traffic.usage.day, traffic.usage.totals())
+    totals = {
+        name: sum(day[name] for day in days) for name in TOTALS if name != "visitors"
+    }
+    return StatsResponse(
+        days=[StatsDay.model_validate(day) for day in days],
+        totals=StatsTotals.model_validate(totals),
     )
 
 
 # ---------------------------------------------------------------------------
-# Resources
+# Resources: the section „Zasoby” of the panel
 # ---------------------------------------------------------------------------
+# DB_TABLES imported from scripts.clean — single source of truth
+
+
 class ResourcesResponse(BaseModel):
     """System resource usage response."""
 
-    process: dict = Field(description="Process CPU/memory info")
-    db_pool: dict = Field(description="Database connection pool stats")
-    catchment_graph: dict = Field(description="Catchment graph status")
+    process: dict[str, Any] = Field(description="Process CPU/memory info")
+    db_pool: dict[str, Any] = Field(description="Database connection pool stats")
+    catchment_graph: dict[str, Any] = Field(description="Catchment graph status")
     db_size_mb: float = Field(description="Database size in MB")
+    tables: dict[str, int] = Field(description="Row counts per table")
+    disk: dict[str, float] = Field(description="Disk usage in MB")
 
 
 @router.get("/resources", response_model=ResourcesResponse)
 def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
-    """System resource usage."""
+    """System resource usage, the rows of the tables and the size of the data."""
     # Process info
     proc = psutil.Process(os.getpid())
     mem_info = proc.memory_info()
@@ -156,7 +326,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
     # DB pool info
     try:
         engine = get_db_engine()
-        pool = engine.pool
+        pool = cast(QueuePool, engine.pool)
         db_pool_info = {
             "pool_size": pool.size(),
             "checked_out": pool.checkedout(),
@@ -173,7 +343,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 
     # Catchment graph info
     cg = get_catchment_graph()
-    cg_info: dict = {"loaded": cg.loaded, "nodes": 0, "threshold_m2": []}
+    cg_info: dict[str, Any] = {"loaded": cg.loaded, "nodes": 0, "threshold_m2": []}
     if cg.loaded:
         cg_info["nodes"] = cg._n
         if cg._threshold_m2 is not None:
@@ -185,113 +355,95 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 
     # Database size
     try:
-        result = db.execute(
-            text("SELECT pg_database_size(current_database())")
-        )
+        result = db.execute(text("SELECT pg_database_size(current_database())"))
         db_size_bytes = result.scalar() or 0
         db_size_mb = round(db_size_bytes / (1024 * 1024), 2)
     except Exception:
         db_size_mb = 0.0
+
+    # Table row counts; a failed count aborts the transaction, which is rolled back so
+    # that the next counts run
+    tables: dict[str, int] = {}
+    for table in DB_TABLES:
+        try:
+            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
+            tables[table] = result.scalar() or 0
+        except Exception:
+            db.rollback()
+            tables[table] = 0
+
+    # Disk usage
+    frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
+    frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
+    nmt_data_mb = _dir_size_mb(DATA_NMT)
+    cache_mb = _dir_size_mb(CACHE_DIR)
 
     return ResourcesResponse(
         process=process_info,
         db_pool=db_pool_info,
         catchment_graph=cg_info,
         db_size_mb=db_size_mb,
+        tables=tables,
+        disk={
+            "frontend_data_mb": frontend_data_mb,
+            "frontend_tiles_mb": frontend_tiles_mb,
+            "nmt_data_mb": nmt_data_mb,
+            "cache_mb": cache_mb,
+            "total_mb": round(
+                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
+                2,
+            ),
+        },
     )
 
 
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
-def _file_size_mb(path: Path) -> float:
-    """Return single file size in MB, or 0 if not found."""
-    if path.is_file():
-        return round(path.stat().st_size / (1024 * 1024), 2)
-    return 0.0
 
 
-CLEANUP_TARGETS: dict[str, dict] = {
-    "tiles": {
-        "label": "MVT tiles",
-        "path": FRONTEND_TILES,
-        "type": "dir",
-    },
-    "overlays": {
-        "label": "Overlay PNG + JSON + GeoJSON",
-        "path": FRONTEND_DATA,
-        "type": "glob",
-        "patterns": ["*.png", "*.json", "*.geojson"],
-    },
-    "dem_tiles": {
-        "label": "DEM raster tiles",
-        "path": FRONTEND_DATA / "dem_tiles",
-        "type": "dir",
-    },
-    "dem_mosaic": {
-        "label": "DEM mosaic VRT",
-        "path": DATA_NMT / "dem_mosaic.vrt",
-        "type": "file",
-    },
-    "processed_data": {
-        "label": "Processed rasters + hydro",
-        "path": [DATA_NMT, DATA_HYDRO],
-        "type": "multi_dir",
-    },
-    "db_tables": {
-        "label": "Database tables (TRUNCATE)",
-        "type": "db",
+class _CleanupTarget(TypedDict):
+    label: str
+    components: list[str]
+    exclude_from_all: NotRequired[bool]
+
+
+# Cleanup components — maps admin UI keys to scripts.clean component names.
+# "all" runs every component except cache; "cache" is opt-in.
+_CLEANUP_COMPONENTS: dict[str, _CleanupTarget] = {
+    "all": {
+        "label": "Dane przetwarzania (bez pamięci podręcznej)",
+        "components": [
+            "rasters",
+            "hydro",
+            "boundary",
+            "overlays",
+            "geojson",
+            "tiles",
+            "db",
+        ],
     },
     "cache": {
-        "label": "Download cache (NMT, BDOT10k, HSG)",
-        "path": CACHE_DIR,
-        "type": "cache",
+        "label": "Pamięć podręczna pobrań (NMT, BDOT10k)",
+        "components": ["cache"],
         "exclude_from_all": True,
     },
 }
 
-# Targets included when the frontend sends "all" — cache requires explicit opt-in
-# because re-downloading is expensive.
-ALL_CLEANUP_TARGETS = [
-    k for k, v in CLEANUP_TARGETS.items() if not v.get("exclude_from_all")
-]
-
-
-def _estimate_target(target_key: str, db: Session | None = None) -> float:
-    """Estimate size in MB for a cleanup target."""
-    target = CLEANUP_TARGETS[target_key]
-    ttype = target["type"]
-
-    if ttype in ("dir", "cache"):
-        return _dir_size_mb(target["path"])
-    elif ttype == "multi_dir":
-        return round(sum(_dir_size_mb(p) for p in target["path"]), 2)
-    elif ttype == "file":
-        return _file_size_mb(target["path"])
-    elif ttype == "glob":
-        base = target["path"]
-        if not base.exists():
-            return 0.0
-        total = 0
-        for pattern in target["patterns"]:
-            for f in base.glob(pattern):
-                total += f.stat().st_size
-        return round(total / (1024 * 1024), 2)
-    elif ttype == "db" and db is not None:
-        try:
-            result = db.execute(
-                text("SELECT pg_database_size(current_database())")
-            )
-            return round((result.scalar() or 0) / (1024 * 1024), 2)
-        except Exception:
-            return 0.0
-    return 0.0
+# Estimate helpers — reuse path constants
+_ESTIMATE_DIRS = {
+    "rasters": DATA_NMT,
+    "hydro": DATA_HYDRO,
+    "overlays": FRONTEND_DATA,
+    "tiles": FRONTEND_TILES,
+    "cache": CACHE_DIR,
+}
 
 
 class CleanupEstimateResponse(BaseModel):
     """Cleanup estimate response."""
 
-    targets: list[dict] = Field(description="List of targets with size_mb")
+    targets: list[dict[str, Any]] = Field(description="List of targets with size_mb")
 
 
 class CleanupRequest(BaseModel):
@@ -303,7 +455,7 @@ class CleanupRequest(BaseModel):
 class CleanupResponse(BaseModel):
     """Cleanup execution response."""
 
-    results: list[dict] = Field(description="Results per target")
+    results: list[dict[str, Any]] = Field(description="Results per target")
 
 
 @router.get("/cleanup/estimate", response_model=CleanupEstimateResponse)
@@ -311,84 +463,25 @@ def cleanup_estimate(
     db: Session = Depends(get_db),
 ) -> CleanupEstimateResponse:
     """Estimate cleanup sizes for all targets."""
+    # Aggregate disk sizes per cleanup target
     targets = []
-    for key, info in CLEANUP_TARGETS.items():
+    for key, info in _CLEANUP_COMPONENTS.items():
+        size_mb = 0.0
+        for comp in info["components"]:
+            if comp in _ESTIMATE_DIRS:
+                size_mb += _dir_size_mb(_ESTIMATE_DIRS[comp])
+            elif comp == "db":
+                try:
+                    result = db.execute(
+                        text("SELECT pg_database_size(current_database())")
+                    )
+                    size_mb += round((result.scalar() or 0) / (1024 * 1024), 2)
+                except Exception:
+                    pass
         targets.append(
-            {
-                "key": key,
-                "label": info["label"],
-                "size_mb": _estimate_target(key, db),
-            }
+            {"key": key, "label": info["label"], "size_mb": round(size_mb, 2)}
         )
     return CleanupEstimateResponse(targets=targets)
-
-
-def _execute_cleanup_target(
-    target_key: str, db: Session
-) -> dict:
-    """Execute cleanup for a single target, return result dict."""
-    target = CLEANUP_TARGETS[target_key]
-    ttype = target["type"]
-
-    try:
-        if ttype == "dir":
-            path = target["path"]
-            if path.exists():
-                for child in path.iterdir():
-                    if child.is_dir():
-                        shutil.rmtree(child)
-                    else:
-                        child.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "multi_dir":
-            for path in target["path"]:
-                if path.exists():
-                    for child in path.iterdir():
-                        if child.is_dir():
-                            shutil.rmtree(child)
-                        else:
-                            child.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "file":
-            path = target["path"]
-            if path.is_file():
-                path.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "glob":
-            base = target["path"]
-            if base.exists():
-                for pattern in target["patterns"]:
-                    for f in base.glob(pattern):
-                        f.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "cache":
-            path = target["path"]
-            if path.exists():
-                for subdir in path.iterdir():
-                    if subdir.is_dir():
-                        for child in subdir.iterdir():
-                            if child.is_dir():
-                                shutil.rmtree(child)
-                            else:
-                                child.unlink()
-                    elif subdir.is_file():
-                        subdir.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "db":
-            table_list = ", ".join(_TABLE_NAMES)
-            db.execute(text(f"TRUNCATE TABLE {table_list} CASCADE"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
-            db.commit()
-            return {"key": target_key, "status": "ok"}
-
-        return {"key": target_key, "status": "error", "detail": "unknown type"}
-
-    except Exception as e:
-        return {"key": target_key, "status": "error", "detail": str(e)}
 
 
 @router.post("/cleanup", response_model=CleanupResponse)
@@ -396,21 +489,110 @@ def cleanup_execute(
     request: CleanupRequest,
     db: Session = Depends(get_db),
 ) -> CleanupResponse:
-    """Execute cleanup for selected targets."""
-    # Validate targets
-    for target_key in request.targets:
-        if target_key not in CLEANUP_TARGETS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown cleanup target: {target_key}",
-            )
+    """Execute cleanup by delegating to scripts.clean.execute_clean().
 
+    Uses the same logic as ``python -m scripts.clean`` CLI — single source
+    of truth for table lists, directory paths, and cleanup order.
+    """
     results = []
     for target_key in request.targets:
-        result = _execute_cleanup_target(target_key, db)
-        results.append(result)
+        if target_key not in _CLEANUP_COMPONENTS:
+            raise InvalidRequestError(
+                "unknown_cleanup_target",
+                reason="unknown_cleanup_target",
+                target=target_key,
+                allowed=sorted(_CLEANUP_COMPONENTS),
+            )
+        components = _CLEANUP_COMPONENTS[target_key]["components"]
+        try:
+            summary = execute_clean(
+                components=components,
+                data_dir=PROJECT_ROOT / "data",
+                cache_dir=CACHE_DIR,
+                dry_run=False,
+            )
+            results.append(
+                {
+                    "key": target_key,
+                    "status": "ok",
+                    "total_files": summary["total_files"],
+                    "total_size": summary["total_size"],
+                }
+            )
+        except Exception as e:
+            results.append({"key": target_key, "status": "error", "detail": str(e)})
 
     return CleanupResponse(results=results)
+
+
+# ---------------------------------------------------------------------------
+# Boundary file upload
+# ---------------------------------------------------------------------------
+BOUNDARY_DIR = PROJECT_ROOT / "data" / "boundary"
+ALLOWED_BOUNDARY_EXTENSIONS = {".gpkg", ".geojson", ".json", ".zip"}
+MAX_UPLOAD_SIZE_MB = 50
+
+
+@router.post("/bootstrap/upload-boundary")
+async def upload_boundary(
+    file: UploadFile = File(...),
+    _admin: None = Depends(verify_admin_key),
+) -> dict[str, Any]:
+    """Upload and validate a boundary file. Returns metadata + filename."""
+    if not file.filename:
+        raise InvalidRequestError("filename_missing", reason="filename_missing")
+
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_BOUNDARY_EXTENSIONS:
+        raise InvalidRequestError(
+            "invalid_file_type",
+            reason="invalid_file_type",
+            suffix=suffix,
+            allowed=sorted(ALLOWED_BOUNDARY_EXTENSIONS),
+        )
+
+    # Read file with size limit
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_UPLOAD_SIZE_MB:
+        raise InvalidRequestError(
+            "file_too_large",
+            reason="file_too_large",
+            size_mb=round(size_mb, 1),
+            max_mb=MAX_UPLOAD_SIZE_MB,
+        )
+
+    # Sanitize filename
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    BOUNDARY_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = BOUNDARY_DIR / safe_name
+
+    # Verify path is within boundary dir (prevent traversal)
+    if not save_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
+        raise InvalidRequestError("invalid_filename", reason="invalid_filename")
+
+    # Save file
+    save_path.write_bytes(content)
+
+    try:
+        from core.boundary import validate_boundary_file
+
+        metadata = validate_boundary_file(save_path)
+    except (ValueError, Exception) as e:
+        # Clean up on validation failure
+        save_path.unlink(missing_ok=True)
+        raise InvalidRequestError(
+            "invalid_boundary_file", reason="invalid_boundary_file", cause=str(e)
+        ) from e
+
+    return {
+        "filename": safe_name,
+        "bbox_wgs84": metadata["bbox_wgs84"],
+        "area_km2": metadata["area_km2"],
+        "n_features": metadata["n_features"],
+        "crs": metadata["crs"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -421,11 +603,11 @@ VENV_PYTHON = sys.executable  # works in both venv and Docker container
 
 # SECURITY: Sheet codes should match patterns like "N-34-12-D-a-1".
 # Validate before passing to subprocess to prevent command injection.
-SHEET_CODE_PATTERN = re.compile(r'^[A-Za-z0-9\-]{3,30}$')
+SHEET_CODE_PATTERN = re.compile(r"^[A-Za-z0-9\-]{3,30}$")
 
 _HISTORY_MAX = 10
 
-_bootstrap_state: dict = {
+_bootstrap_state: dict[str, Any] = {
     "process": None,
     "status": "idle",
     "log_lines": [],
@@ -454,10 +636,11 @@ def _validate_bbox(bbox_str: str) -> tuple[float, float, float, float]:
     return min_lon, min_lat, max_lon, max_lat
 
 
-def _read_process_output(process: subprocess.Popen, state: dict) -> None:
+def _read_process_output(process: subprocess.Popen[str], state: dict[str, Any]) -> None:
     """Background thread: read stdout lines into state."""
+    stdout = process.stdout
     try:
-        for line in process.stdout:
+        for line in stdout or ():
             stripped = line.rstrip("\n")
             state["log_lines"].append(stripped)
     except Exception:
@@ -467,6 +650,45 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
         state["process"] = None
         if process.returncode == 0:
             state["status"] = "completed"
+            # Load the new network into the catchment graph now rather than at
+            # the next request (requests reload it themselves once the network
+            # in the database changed). Retries handle transient pool exhaustion
+            # from concurrent admin-panel polling while bootstrap is winding down.
+            from core.database import get_db_session
+
+            backoffs_s = (1, 5, 15)
+            for attempt, wait_s in enumerate(backoffs_s, start=1):
+                try:
+                    with get_db_session() as db:
+                        if loaded_catchment_graph(db) is None:
+                            raise RuntimeError("catchment graph not loaded")
+                    state["log_lines"].append("[INFO] CatchmentGraph reloaded")
+                    logger.info("CatchmentGraph reloaded after bootstrap")
+                    break
+                except Exception as e:
+                    is_last = attempt == len(backoffs_s)
+                    if is_last:
+                        state["log_lines"].append(
+                            f"[WARN] CatchmentGraph reload failed after "
+                            f"{attempt} attempts: {e}"
+                        )
+                        logger.exception(
+                            "CatchmentGraph reload failed after %d attempts",
+                            attempt,
+                        )
+                    else:
+                        state["log_lines"].append(
+                            f"[WARN] CatchmentGraph reload attempt {attempt} "
+                            f"failed: {e}; retrying in {wait_s}s"
+                        )
+                        logger.warning(
+                            "CatchmentGraph reload attempt %d failed: %s; "
+                            "retrying in %ds",
+                            attempt,
+                            e,
+                            wait_s,
+                        )
+                        time.sleep(wait_s)
         else:
             state["status"] = "failed"
         # Save to history
@@ -489,7 +711,7 @@ class BootstrapStatusResponse(BaseModel):
     status: str = Field(description="idle/running/completed/failed")
     log_lines: int = Field(description="Number of log lines")
     started_at: float | None = Field(description="Start timestamp")
-    params: dict | None = Field(description="Parameters used")
+    params: dict[str, Any] | None = Field(description="Parameters used")
     pid: int | None = Field(default=None, description="Process PID")
 
 
@@ -498,11 +720,27 @@ class BootstrapStartRequest(BaseModel):
 
     bbox: str | None = Field(default=None, description="Bounding box")
     sheets: list[str] | None = Field(default=None, description="Sheet codes")
+    boundary_file: str | None = Field(
+        default=None, description="Filename from upload-boundary endpoint"
+    )
+    boundary_layer: str | None = Field(
+        default=None, description="Layer name for GPKG files"
+    )
     skip_precipitation: bool = Field(default=False)
     skip_tiles: bool = Field(default=False)
     skip_overlays: bool = Field(default=False)
-    waterbody_mode: str | None = Field(
-        default=None, description="drain or keep"
+    waterbody_mode: str | None = Field(default=None, description="drain or keep")
+    resolution: str = Field(
+        default="5m",
+        pattern=r"^(1m|5m)$",
+        description="NMT resolution: 1m (high detail, slow) or 5m (default, fast)",
+    )
+    sewer_enabled: bool = Field(default=False, description="Enable sewer integration")
+    sewer_source: str | None = Field(
+        default=None, description="Path to sewer data file"
+    )
+    sewer_layer: str | None = Field(
+        default=None, description="Layer name for multi-layer files"
     )
 
 
@@ -526,28 +764,56 @@ def bootstrap_status() -> BootstrapStatusResponse:
     )
 
 
-@router.post("/bootstrap/start", response_model=BootstrapStartResponse)
+@router.post(
+    "/bootstrap/start",
+    response_model=BootstrapStartResponse,
+    responses=problem_responses(
+        (
+            "forbidden",
+            "shared_store_read_only",
+            {"reason": "shared_store_read_only", "root": "/data/kartograf"},
+        ),
+        (
+            "not_found",
+            "boundary_file_missing",
+            {"reason": "boundary_file_missing", "filename": "zlewnia.gpkg"},
+        ),
+        409,
+    ),
+)
 def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
-    """Start bootstrap subprocess."""
-    if _bootstrap_state["status"] == "running":
-        raise HTTPException(
-            status_code=409, detail="Bootstrap is already running"
-        )
+    """Start bootstrap subprocess.
 
-    # Validate input
-    if not request.bbox and not request.sheets:
-        raise HTTPException(
-            status_code=400,
-            detail="Either bbox or sheets must be provided",
+    Refused with 403 (``forbidden``, ``shared_store_read_only``) before any process
+    starts while ``HYDROGRAF_KARTOGRAF_ROOT`` names a shared store: the panel's
+    bootstrap downloads by area, and a bootstrap from a set runs from the command
+    line (ADR-067).
+    """
+    refuse_shared_store()
+    if _bootstrap_state["status"] == "running":
+        raise ConflictError("bootstrap_running", reason="bootstrap_running")
+
+    # Validate input: exactly one of bbox, sheets, boundary_file
+    sources = sum(
+        [
+            request.bbox is not None,
+            request.sheets is not None,
+            request.boundary_file is not None,
+        ]
+    )
+    if sources != 1:
+        raise InvalidRequestError(
+            "bootstrap_source_required",
+            reason="bootstrap_source_required",
+            options=["bbox", "sheets", "boundary_file"],
         )
 
     # Validate sheet codes before passing to subprocess
     if request.sheets:
         for sheet in request.sheets:
             if not SHEET_CODE_PATTERN.match(sheet):
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid sheet code: {sheet}",
+                raise InvalidRequestError(
+                    "invalid_sheet_code", reason="invalid_sheet_code", sheet=sheet
                 )
 
     # Build command
@@ -557,10 +823,25 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         try:
             _validate_bbox(request.bbox)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise InvalidRequestError(
+                "invalid_bbox", reason="invalid_bbox", cause=str(e)
+            ) from e
         cmd.extend(["--bbox", request.bbox])
     elif request.sheets:
         cmd.extend(["--sheets"] + request.sheets)
+    elif request.boundary_file:
+        boundary_path = BOUNDARY_DIR / request.boundary_file
+        if not boundary_path.exists():
+            raise NotFoundError(
+                "boundary_file_missing",
+                reason="boundary_file_missing",
+                filename=request.boundary_file,
+            )
+        if not boundary_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
+            raise InvalidRequestError("invalid_filename", reason="invalid_filename")
+        cmd.extend(["--boundary-file", str(boundary_path)])
+        if request.boundary_layer:
+            cmd.extend(["--boundary-layer", request.boundary_layer])
 
     cmd.extend(["--skip-infra", "--skip-serve"])
 
@@ -572,6 +853,16 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         cmd.append("--skip-overlays")
     if request.waterbody_mode:
         cmd.extend(["--waterbody-mode", request.waterbody_mode])
+    if request.resolution and request.resolution != "5m":
+        cmd.extend(["--resolution", request.resolution])
+    if request.sewer_enabled:
+        cmd.append("--sewer-enabled")
+        if request.sewer_source:
+            # Resolve to absolute path (relative paths are relative to PROJECT_ROOT)
+            sewer_abs = (PROJECT_ROOT / request.sewer_source).resolve()
+            cmd.extend(["--sewer-source", str(sewer_abs)])
+        if request.sewer_layer:
+            cmd.extend(["--sewer-layer", request.sewer_layer])
 
     # Reset state
     _bootstrap_state["log_lines"] = []
@@ -592,8 +883,8 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     except (FileNotFoundError, OSError) as e:
         _bootstrap_state["status"] = "failed"
         _bootstrap_state["log_lines"].append(f"[ERROR] Failed to start: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Cannot start bootstrap: {e}"
+        raise FileOperationError(
+            "bootstrap_start_failed", reason="bootstrap_start_failed", cause=str(e)
         ) from e
 
     _bootstrap_state["process"] = process
@@ -609,14 +900,17 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     return BootstrapStartResponse(status="running", pid=process.pid)
 
 
-@router.post("/bootstrap/cancel")
-def bootstrap_cancel() -> dict:
+@router.post(
+    "/bootstrap/cancel",
+    responses=problem_responses(
+        ("conflict", "bootstrap_not_running", {"reason": "bootstrap_not_running"})
+    ),
+)
+def bootstrap_cancel() -> dict[str, Any]:
     """Cancel running bootstrap process."""
     proc = _bootstrap_state["process"]
     if proc is None or _bootstrap_state["status"] != "running":
-        raise HTTPException(
-            status_code=409, detail="No bootstrap process running"
-        )
+        raise ConflictError("bootstrap_not_running", reason="bootstrap_not_running")
 
     proc.send_signal(signal.SIGTERM)
     _bootstrap_state["status"] = "failed"
@@ -629,7 +923,7 @@ def bootstrap_cancel() -> dict:
 async def bootstrap_stream() -> StreamingResponse:
     """SSE stream of bootstrap log lines."""
 
-    async def _event_generator():
+    async def _event_generator() -> AsyncIterator[str]:
         sent = 0
         while True:
             lines = _bootstrap_state["log_lines"]
@@ -653,3 +947,256 @@ async def bootstrap_stream() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Sewer management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sewer/status")
+def sewer_status(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Get status of sewer data in the database and config."""
+    try:
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
+        node_count = result.scalar() or 0
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_network"))
+        edge_count = result.scalar() or 0
+
+        type_counts = {}
+        if node_count > 0:
+            rows = db.execute(
+                text("SELECT node_type, COUNT(*) FROM sewer_nodes GROUP BY node_type")
+            )
+            type_counts = {r[0]: r[1] for r in rows}
+
+        # Read current config
+        config = _load_sewer_config()
+
+        return {
+            "loaded": node_count > 0,
+            "nodes": node_count,
+            "edges": edge_count,
+            "node_types": type_counts,
+            "config": {
+                "enabled": config.get("enabled", False),
+                "source_path": config.get("source", {}).get("path"),
+                "source_type": config.get("source", {}).get("type", "file"),
+            },
+        }
+    except Exception:
+        return {
+            "loaded": False,
+            "nodes": 0,
+            "edges": 0,
+            "node_types": {},
+            "config": {"enabled": False, "source_path": None, "source_type": "file"},
+        }
+
+
+class SewerConfigUpdate(BaseModel):
+    """Request body for sewer config update."""
+
+    enabled: bool = Field(..., description="Enable/disable sewer processing")
+    source_path: str | None = Field(default=None, description="Path to sewer data file")
+    lines_layer: str | None = Field(default=None, description="Layer name for lines")
+    points_layer: str | None = Field(default=None, description="Layer name for points")
+    field_mapping: dict[str, Any] | None = Field(
+        default=None, description="Column name mapping"
+    )
+    role_mapping: dict[str, Any] | None = Field(
+        default=None, description="Value mapping for roles"
+    )
+
+
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+
+
+def _load_sewer_config() -> dict[str, Any]:
+    """Read sewer section from config.yaml merged with defaults."""
+    from core.config import load_config
+
+    sewer: dict[str, Any] = load_config(str(CONFIG_PATH)).get("sewer", {})
+    return sewer
+
+
+def _save_sewer_config(sewer: dict[str, Any]) -> None:
+    """Deep-merge sewer settings into config.yaml (create if needed)."""
+    import yaml
+
+    from core.config import _deep_merge
+
+    data: dict[str, Any] = {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as f:
+            data = yaml.safe_load(f) or {}
+
+    data["sewer"] = _deep_merge(data.get("sewer", {}), sewer)
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+
+
+@router.put(
+    "/sewer/config",
+    responses=problem_responses(
+        403,
+        (
+            "not_found",
+            "source_file_missing",
+            {"reason": "source_file_missing", "path": "data/sewer/siec.gpkg"},
+        ),
+    ),
+)
+def sewer_config_update(body: SewerConfigUpdate) -> dict[str, Any]:
+    """Toggle sewer processing and set source file path.
+
+    Updates config.yaml so the next pipeline run picks up the settings.
+    """
+    updates: dict[str, Any] = {"enabled": body.enabled}
+
+    if body.source_path is not None:
+        source_file = Path(body.source_path)
+        abs_path = (PROJECT_ROOT / source_file).resolve()
+        if not abs_path.is_relative_to(PROJECT_ROOT.resolve()):
+            raise ForbiddenError("path_outside_project", reason="path_outside_project")
+        if not abs_path.exists():
+            raise NotFoundError(
+                "source_file_missing",
+                reason="source_file_missing",
+                path=body.source_path,
+            )
+        updates["source"] = {
+            "type": "file",
+            "path": body.source_path,
+        }
+        if body.lines_layer:
+            updates["source"]["lines_layer"] = body.lines_layer
+        if body.points_layer:
+            updates["source"]["points_layer"] = body.points_layer
+
+    if body.field_mapping:
+        updates.setdefault("field_mapping", {}).update(body.field_mapping)
+    if body.role_mapping:
+        updates.setdefault("role_mapping", {}).update(body.role_mapping)
+
+    _save_sewer_config(updates)
+    logger.info("Sewer config updated: enabled=%s", body.enabled)
+
+    return {
+        "message": f"Sewer {'enabled' if body.enabled else 'disabled'}",
+        "config": updates,
+        "next_step": (
+            "Run pipeline (bootstrap) to process sewer data" if body.enabled else None
+        ),
+    }
+
+
+@router.post("/sewer/upload")
+async def sewer_upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Upload sewer network file (SHP/GPKG/GeoJSON)."""
+    if not file.filename:
+        raise InvalidRequestError("filename_missing", reason="filename_missing")
+
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_SEWER_EXTENSIONS:
+        raise InvalidRequestError(
+            "invalid_file_type",
+            reason="invalid_file_type",
+            suffix=suffix,
+            allowed=sorted(ALLOWED_SEWER_EXTENSIONS),
+        )
+
+    # Read file with size limit
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_SEWER_UPLOAD_MB:
+        raise InvalidRequestError(
+            "file_too_large",
+            reason="file_too_large",
+            size_mb=round(size_mb, 1),
+            max_mb=MAX_SEWER_UPLOAD_MB,
+        )
+
+    # Sanitize filename
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    DATA_SEWER.mkdir(parents=True, exist_ok=True)
+    dest = DATA_SEWER / safe_name
+
+    # Verify path is within sewer dir (prevent traversal)
+    if not dest.resolve().is_relative_to(DATA_SEWER.resolve()):
+        raise InvalidRequestError("invalid_filename", reason="invalid_filename")
+
+    # Save file
+    dest.write_bytes(content)
+
+    # Validate file can be read as geodata
+    try:
+        import geopandas as gpd
+
+        gdf = gpd.read_file(str(dest))
+        n_features = len(gdf)
+        geom_types = gdf.geometry.geom_type.unique().tolist()
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        logger.error(f"Sewer upload geodata validation failed: {e}")
+        raise InvalidRequestError("invalid_geodata", reason="invalid_geodata") from e
+
+    # Auto-detect format from layers and geometry types
+    import fiona
+
+    detected_format = "unknown"
+    layers_detected: list[str] = []
+    try:
+        layers = fiona.listlayers(str(dest))
+        layers_detected = layers
+        geom_types_per_layer: dict[str, str] = {}
+        for layer_name in layers:
+            import geopandas as gpd
+
+            layer_gdf = gpd.read_file(dest, layer=layer_name, rows=1)
+            if not layer_gdf.empty:
+                geom_types_per_layer[layer_name] = layer_gdf.geometry.iloc[0].geom_type
+
+        has_points = any("Point" in gt for gt in geom_types_per_layer.values())
+        has_lines = any("Line" in gt for gt in geom_types_per_layer.values())
+
+        if has_points and has_lines:
+            detected_format = "points_and_lines"
+        elif has_points:
+            detected_format = "points_only"
+        elif has_lines:
+            detected_format = "lines_only"
+    except Exception:
+        pass
+
+    return {
+        "filename": safe_name,
+        "features": n_features,
+        "geometry_types": geom_types,
+        "detected_format": detected_format,
+        "layers": layers_detected,
+        "message": "Plik wgrany. Uruchom analizę, aby przetworzyć dane kanalizacyjne.",
+    }
+
+
+@router.delete("/sewer")
+def sewer_delete(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Delete all sewer data from database and disk."""
+    db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
+    db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
+    db.execute(
+        text(
+            "UPDATE stream_network SET is_sewer_augmented = FALSE "
+            "WHERE is_sewer_augmented = TRUE"
+        )
+    )
+    db.commit()
+
+    if DATA_SEWER.exists():
+        force_rmtree(DATA_SEWER)
+
+    return {"message": "Sewer data deleted", "pipeline_dirty": True}

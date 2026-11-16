@@ -1,43 +1,77 @@
 """
 Watershed delineation endpoint.
 
-Provides API endpoint for delineating watershed boundaries
-based on a clicked point location. Uses CatchmentGraph (~11k nodes,
-~0.5 MB) for BFS traversal and pre-computed stat aggregation.
-Zero raster operations in runtime.
+Unified endpoint with two modes:
+- Precomputed (threshold_m2 given): BFS on pre-computed catchment graph,
+  ST_Union boundary
+- Precise (no threshold): BFS at the finest threshold (DEFAULT_THRESHOLD_M2,
+  10 000 m²) + on-the-fly raster boundary via pyflwdir
+
+Preview endpoint: the sub-catchments precomputed mode will merge, without
+the slow merge, for a progress animation in the GUI.
 """
 
 import logging
+import math
+from dataclasses import asdict, dataclass
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+import numpy as np
+from fastapi import APIRouter, Depends, Response
+from shapely import wkb
+from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry.base import BaseGeometry
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.catchment_graph import get_catchment_graph
-from core.constants import (
-    DEFAULT_THRESHOLD_M2,
-    DELINEATION_MAX_AREA_M2,
-    HYDROGRAPH_AREA_LIMIT_KM2,
-    M2_PER_KM2,
-)
+from core.attribution import DRAINAGE, ProviderLines, instance_lines
+from core.catchment_graph import CatchmentGraph, loaded_catchment_graph
+from core.config import get_settings
+from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
-from core.land_cover import get_land_cover_for_boundary
+from core.divide_flow_path import NO_FLOW_PATHS
+from core.errors import (
+    CalculationError,
+    HydrografError,
+    InternalError,
+    InvalidRequestError,
+    NotFoundError,
+    StoreUnavailableError,
+)
+from core.handoff import (
+    build_handoff,
+    delineated_origin,
+    watershed_name,
+    watershed_parameters,
+)
+from core.precipitation import thiessen_cells
 from core.watershed_service import (
     boundary_to_polygon,
+    build_hsg_stats,
+    build_land_cover_stats,
     build_morph_dict_from_graph,
+    cascade_escalate,
+    catchments_bounds,
     ensure_outlet_within_boundary,
+    flow_path_geojson,
+    get_catchment_levels_feature_collection,
+    get_main_channel_feature_collection,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
+    watershed_lines,
 )
 from models.schemas import (
+    DelineatePreviewRequest,
+    DelineatePreviewResponse,
     DelineateRequest,
     DelineateResponse,
     HypsometricPoint,
-    LandCoverCategory,
-    LandCoverStats,
     MorphometricParameters,
     OutletInfo,
+    PmaxtpGridCell,
+    StreamInfo,
     WatershedResponse,
 )
 from utils.geometry import (
@@ -51,6 +85,500 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _smooth_polygon_sql(polygon: BaseGeometry, db: Session) -> BaseGeometry:
+    """Apply PostGIS smoothing pipeline to a raw polygon.
+
+    Same pipeline as merge_catchment_boundaries: SimplifyPreserveTopology(5.0) +
+    ChaikinSmoothing(3).
+    """
+    query = text("""
+        SELECT ST_AsBinary(
+            ST_Multi(ST_Buffer(
+                ST_ChaikinSmoothing(
+                    ST_SimplifyPreserveTopology(
+                        ST_GeomFromWKB(:wkb, 2180),
+                    5.0),
+                3),
+            0))
+        ) as geom
+    """)
+    result = db.execute(query, {"wkb": polygon.wkb}).fetchone()
+    if result and result.geom:
+        return wkb.loads(bytes(result.geom))
+    return polygon
+
+
+def _build_watershed_response(
+    cg: CatchmentGraph,
+    point_2180: Point,
+    boundary_2180: BaseGeometry,
+    boundary_poly: Polygon,
+    upstream_indices_for_stats: np.ndarray,
+    outlet_idx_for_stats: int,
+    segment_idx: int,
+    threshold: int,
+    merge_threshold: int,
+    area_km2: float,
+    stats: dict[str, Any],
+    include_hypsometric_curve: bool,
+    db: Session,
+) -> WatershedResponse:
+    """Build WatershedResponse from computed data (shared by both modes)."""
+    # Outlet
+    outlet_info = get_segment_outlet(segment_idx, threshold, db)
+    if outlet_info is None:
+        segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
+        if segment:
+            outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+        else:
+            outlet_x, outlet_y = point_2180.x, point_2180.y
+    else:
+        outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
+
+    outlet_x, outlet_y = ensure_outlet_within_boundary(
+        outlet_x, outlet_y, boundary_2180
+    )
+    outlet_elevation = stats.get("elevation_min_m") or 0.0
+    outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
+
+    # Morphometry
+    morph_dict = build_morph_dict_from_graph(
+        cg,
+        upstream_indices_for_stats,
+        boundary_2180,
+        outlet_x,
+        outlet_y,
+        segment_idx,
+        merge_threshold,
+        db=db,
+        outlet_idx=outlet_idx_for_stats,
+    )
+
+    # Override area from precise raster stats if different
+    morph_dict["area_km2"] = round(area_km2, 4)
+
+    # Hypsometric curve
+    hypso_curve = None
+    if include_hypsometric_curve:
+        hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
+        if hypso_data:
+            hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
+
+    # Main channel
+    main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
+    flow_paths = morph_dict.pop("_flow_paths", NO_FLOW_PATHS)
+    main_stream_geojson = get_main_channel_feature_collection(
+        cg,
+        main_channel_nodes,
+        merge_threshold,
+        db,
+    )
+    if main_stream_geojson is None:
+        # The outlet segment of the merged threshold, not the clicked one
+        main_stream_geojson = get_main_stream_geojson(
+            cg.get_segment_idx(outlet_idx_for_stats), merge_threshold, db
+        )
+
+    # Hydrograph
+    hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
+
+    # Land cover (simplify boundary for large watersheds)
+    lc_simplify = 20.0 if area_km2 > 5 else None
+    lc_stats = build_land_cover_stats(boundary_poly, db, simplify_tolerance=lc_simplify)
+
+    # HSG
+    lc_boundary = boundary_poly.simplify(20.0) if area_km2 > 5 else boundary_poly
+    hsg_stats_data = build_hsg_stats(lc_boundary, db)
+
+    # Inject CN and Lutz's shares of forest and urbanised land
+    if lc_stats is not None:
+        morph_dict["cn"] = lc_stats.weighted_cn
+        morph_dict["imperviousness"] = round(lc_stats.weighted_imperviousness, 3)
+        morph_dict["forest_pct"] = lc_stats.forest_pct
+        morph_dict["urban_pct"] = lc_stats.urban_pct
+
+    # Build WGS84 boundary
+    boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
+    boundary_geojson = polygon_to_geojson_feature(
+        boundary_wgs84,
+        properties={"area_km2": round(area_km2, 2)},
+    )
+
+    # Weights of the PMAXTP grid for the design depth of the hydrograph (ADR-069)
+    pmaxtp_cells = thiessen_cells(boundary_poly, db)
+
+    return WatershedResponse(
+        boundary_geojson=boundary_geojson,
+        outlet=OutletInfo(
+            latitude=outlet_lat,
+            longitude=outlet_lon,
+            elevation_m=outlet_elevation,
+        ),
+        area_km2=round(area_km2, 2),
+        hydrograph_available=hydrograph_available,
+        morphometry=MorphometricParameters(**morph_dict),
+        hypsometric_curve=hypso_curve,
+        land_cover_stats=lc_stats,
+        hsg_stats=hsg_stats_data,
+        main_stream_geojson=main_stream_geojson,
+        longest_flow_path_geojson=flow_path_geojson(
+            flow_paths.longest, "longest_flow_path"
+        ),
+        divide_flow_path_geojson=flow_path_geojson(
+            flow_paths.divide, "divide_flow_path"
+        ),
+        pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
+    )
+
+
+# Above this many sub-catchments the boundary is merged from a coarser
+# threshold (cascade_escalate).
+_MAX_MERGE = 300
+
+# Preview polygons are simplified to about one screen pixel once the map is
+# fitted to the watershed: its extent is ~sqrt(area), drawn ~500 px across.
+_PREVIEW_PX_ACROSS = 500
+_PREVIEW_MIN_TOLERANCE_M = 1.0
+
+# The preview carries at most this many sub-catchments, the ones nearest the
+# outlet in BFS order (the largest watershed of the current data has ~4400).
+_PREVIEW_MAX_CATCHMENTS = 5000
+
+
+@dataclass(frozen=True)
+class _Selection:
+    """Sub-catchments a precomputed delineation selects for a click."""
+
+    threshold: int  # of the clicked sub-catchment, after the ADR-026 floor
+    clicked_idx: int
+    bfs_segment_idxs: list[int]  # BFS at `threshold` (MVT highlighting)
+    merge_idxs: list[int]  # merged into the boundary
+    merge_threshold: int  # coarser than `threshold` after a cascade
+    upstream_indices: np.ndarray  # graph nodes of merge_idxs (stats)
+    outlet_idx: int  # graph node of the outlet at merge_threshold
+    stats: dict[str, Any]
+    area_km2: float
+
+
+def _loaded_catchment_graph(db: Session) -> CatchmentGraph:
+    """Return the catchment graph of the network in the database.
+
+    Parameters
+    ----------
+    db : Session
+        Database session the graph is loaded from.
+
+    Returns
+    -------
+    CatchmentGraph
+        The loaded graph (``loaded_catchment_graph``: reloaded first when the
+        network in the database changed).
+
+    Raises
+    ------
+    StoreUnavailableError
+        ``store_unavailable`` (503) when the graph cannot be loaded.
+    """
+    cg = loaded_catchment_graph(db)
+    if cg is None:
+        raise StoreUnavailableError(
+            "catchment_graph_unavailable", reason="catchment_graph_unavailable"
+        )
+    return cg
+
+
+def _select_precomputed(
+    threshold_m2: int,
+    point_2180: Point,
+    cg: CatchmentGraph,
+    db: Session,
+) -> _Selection:
+    """Sub-catchments merged for a click in precomputed mode.
+
+    Shared by the delineation and its preview, so both cover the same area:
+    threshold floor, sub-catchment at the point (404 if none), BFS upstream
+    and the cascade to a coarser threshold above _MAX_MERGE segments.
+    """
+    threshold = threshold_m2
+
+    # ADR-026: catchments only for threshold >= DEFAULT_THRESHOLD_M2
+    if threshold < DEFAULT_THRESHOLD_M2:
+        threshold = DEFAULT_THRESHOLD_M2
+        logger.info(
+            f"Threshold {threshold_m2} escalated to {threshold} "
+            f"(no catchments below {DEFAULT_THRESHOLD_M2})"
+        )
+
+    try:
+        clicked_idx = cg.find_catchment_at_point(
+            point_2180.x,
+            point_2180.y,
+            threshold,
+            db,
+        )
+    except ValueError as e:
+        raise NotFoundError(
+            "no_catchment_at_point",
+            reason="no_catchment_at_point",
+            threshold_m2=threshold,
+        ) from e
+
+    upstream_indices = cg.traverse_upstream(clicked_idx)
+    bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
+    stats = cg.aggregate_stats(upstream_indices, outlet_idx=clicked_idx)
+
+    escalation = cascade_escalate(
+        cg,
+        point_2180.x,
+        point_2180.y,
+        threshold,
+        bfs_segment_idxs,
+        _MAX_MERGE,
+        db,
+    )
+    if escalation is None:
+        return _Selection(
+            threshold=threshold,
+            clicked_idx=clicked_idx,
+            bfs_segment_idxs=bfs_segment_idxs,
+            merge_idxs=bfs_segment_idxs,
+            merge_threshold=threshold,
+            upstream_indices=upstream_indices,
+            outlet_idx=clicked_idx,
+            stats=stats,
+            area_km2=stats["area_km2"],
+        )
+
+    merge_idxs, merge_threshold, merge_upstream, outlet_idx, stats, area_km2 = (
+        escalation
+    )
+    logger.info(
+        "Cascade: %d -> %d (%d -> %d segments)",
+        threshold,
+        merge_threshold,
+        len(bfs_segment_idxs),
+        len(merge_idxs),
+    )
+    return _Selection(
+        threshold=threshold,
+        clicked_idx=clicked_idx,
+        bfs_segment_idxs=bfs_segment_idxs,
+        merge_idxs=merge_idxs,
+        merge_threshold=merge_threshold,
+        upstream_indices=merge_upstream,
+        outlet_idx=outlet_idx,
+        stats=stats,
+        area_km2=area_km2,
+    )
+
+
+def _preview_tolerance_m(area_km2: float) -> float:
+    """Simplification tolerance of preview polygons for a watershed area."""
+    return max(
+        math.sqrt(area_km2 * 1_000_000) / _PREVIEW_PX_ACROSS,
+        _PREVIEW_MIN_TOLERANCE_M,
+    )
+
+
+def _delineate_precomputed(
+    request: DelineateRequest,
+    point_2180: Point,
+    cg: CatchmentGraph,
+    db: Session,
+    include_hypsometric_curve: bool,
+) -> dict[str, Any]:
+    """Precomputed mode: BFS on graph + ST_Union boundary."""
+    if request.threshold_m2 is None:
+        raise ValueError("Precomputed mode needs threshold_m2")
+    selection = _select_precomputed(request.threshold_m2, point_2180, cg, db)
+    threshold = selection.threshold
+
+    segment_idx = cg.get_segment_idx(selection.clicked_idx)
+    segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
+
+    # Boundary
+    boundary_2180 = merge_catchment_boundaries(
+        selection.merge_idxs,
+        selection.merge_threshold,
+        db,
+    )
+    if boundary_2180 is None:
+        raise CalculationError("boundary_build_failed", reason="boundary_build_failed")
+
+    boundary_poly = boundary_to_polygon(boundary_2180)
+
+    # Build shared response
+    watershed_response = _build_watershed_response(
+        cg,
+        point_2180,
+        boundary_2180,
+        boundary_poly,
+        selection.upstream_indices,
+        selection.outlet_idx,
+        segment_idx,
+        threshold,
+        selection.merge_threshold,
+        selection.area_km2,
+        selection.stats,
+        include_hypsometric_curve,
+        db,
+    )
+
+    # Stream info
+    stream_info = StreamInfo(
+        segment_idx=segment_idx,
+        strahler_order=segment["strahler_order"] if segment else None,
+        length_m=segment["length_m"] if segment else None,
+        upstream_area_km2=segment["upstream_area_km2"] if segment else None,
+    )
+
+    info_message = (
+        (
+            f"Zlewnie cząstkowe niedostępne dla progu {request.threshold_m2} m². "
+            f"Zaznaczono z progu {threshold} m²."
+        )
+        if threshold != request.threshold_m2
+        else None
+    )
+
+    logger.info(
+        "Precomputed delineation: %.2f km2, %d segments at %d m2, %d merged at %d m2",
+        selection.area_km2,
+        len(selection.bfs_segment_idxs),
+        threshold,
+        len(selection.merge_idxs),
+        selection.merge_threshold,
+    )
+
+    return {
+        "watershed_response": watershed_response,
+        "stream_info": stream_info,
+        "upstream_segment_indices": selection.bfs_segment_idxs,
+        "display_threshold_m2": threshold,
+        "info_message": info_message,
+    }
+
+
+def _delineate_precise(
+    request: DelineateRequest,
+    point_2180: Point,
+    cg: CatchmentGraph,
+    db: Session,
+    include_hypsometric_curve: bool,
+) -> dict[str, Any]:
+    """Precise mode: BFS at the finest threshold + raster boundary.
+
+    The raster delineation reads a window around the watershed of that BFS,
+    which holds the watershed of the point (core.raster_service).
+    """
+    from core.raster_service import delineate_from_point
+
+    threshold = DEFAULT_THRESHOLD_M2
+
+    # Find catchment at finest threshold
+    try:
+        clicked_idx = cg.find_catchment_at_point(
+            point_2180.x,
+            point_2180.y,
+            threshold,
+            db,
+        )
+    except ValueError as e:
+        raise NotFoundError(
+            "no_catchment_at_point",
+            reason="no_catchment_at_point",
+            threshold_m2=threshold,
+        ) from e
+
+    segment_idx = cg.get_segment_idx(clicked_idx)
+
+    # BFS at the finest threshold (for graph-based network stats)
+    upstream_indices = cg.traverse_upstream(clicked_idx)
+    upstream_indices_for_stats = upstream_indices
+    outlet_idx_for_stats = clicked_idx
+    stats = cg.aggregate_stats(
+        upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats
+    )
+
+    # Raster delineation for precise boundary, in a window around the
+    # precomputed watershed of the point
+    x, y = point_2180.x, point_2180.y
+    bounds = catchments_bounds(
+        cg.get_segment_indices(upstream_indices, threshold), threshold, db
+    )
+    raster_result = delineate_from_point(x, y, bounds or (x, y, x, y))
+
+    # Override area from raster (more precise)
+    area_km2 = raster_result["stats"]["area_m2"] / 1_000_000
+
+    # Boundary from raster + smoothing
+    boundary_raw = raster_result["polygon"]
+    boundary_2180 = _smooth_polygon_sql(boundary_raw, db)
+
+    # Ensure it's a MultiPolygon for consistency
+    if isinstance(boundary_2180, Polygon):
+        boundary_2180 = MultiPolygon([boundary_2180])
+
+    boundary_poly = boundary_to_polygon(boundary_2180)
+
+    # Build shared response
+    merge_threshold = threshold
+    watershed_response = _build_watershed_response(
+        cg,
+        point_2180,
+        boundary_2180,
+        boundary_poly,
+        upstream_indices_for_stats,
+        outlet_idx_for_stats,
+        segment_idx,
+        threshold,
+        merge_threshold,
+        area_km2,
+        stats,
+        include_hypsometric_curve,
+        db,
+    )
+
+    logger.info(f"Precise delineation: {area_km2:.2f} km2")
+
+    # No cascade, no stream info, no upstream_segment_indices
+    return {
+        "watershed_response": watershed_response,
+    }
+
+
+def _watershed_handoff(
+    watershed: WatershedResponse, lines: ProviderLines
+) -> dict[str, Any] | None:
+    """Return the hand-off of a delineated watershed, without rainfall and result.
+
+    Parameters
+    ----------
+    watershed : WatershedResponse
+        The delineated watershed.
+    lines : ProviderLines
+        The lines of its data (``watershed_lines``).
+
+    Returns
+    -------
+    dict[str, Any] or None
+        ``nogat-handoff/1`` of the watershed named after its outlet (ADR-068), None
+        without morphometry.
+    """
+    if watershed.morphometry is None:
+        return None
+    outlet = watershed.outlet
+    name = watershed_name(outlet.latitude, outlet.longitude)
+    return build_handoff(
+        name=name,
+        watershed=watershed_parameters(
+            watershed.morphometry.model_dump(exclude_none=True), name
+        ),
+        watershed_origin=delineated_origin(outlet.latitude, outlet.longitude),
+        lines=lines,
+    )
+
+
 @router.post("/delineate-watershed", response_model=DelineateResponse)
 def delineate_watershed(
     request: DelineateRequest,
@@ -58,297 +586,140 @@ def delineate_watershed(
     include_hypsometric_curve: bool = False,
     db: Session = Depends(get_db),
 ) -> DelineateResponse:
-    """
-    Delineate watershed boundary for a given point.
+    """Delineate watershed boundary for a given point.
 
-    Uses the in-memory catchment graph (~87k nodes) for BFS traversal
-    and pre-computed stat aggregation. Zero raster operations.
+    Two modes:
+    - **Precomputed** (threshold_m2 provided): uses pre-computed catchment graph
+      and ST_Union boundary. Fast (~0.5-2s).
+    - **Precise** (no threshold): BFS at the finest threshold + raster-based
+      boundary via pyflwdir, precise to the exact click point, in a window of
+      the rasters around the precomputed watershed (422 when it is too large).
+    """
+    try:
+        # ---- Shared: transform + graph ----
+        point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
+
+        cg = _loaded_catchment_graph(db)
+
+        # ---- Determine mode ----
+        if request.threshold_m2 is not None:
+            mode = "precomputed"
+            # Precomputed mode always includes hypsometric curve
+            # (needed for GUI — precomputed mode always includes hypsometric curve)
+            result = _delineate_precomputed(
+                request,
+                point_2180,
+                cg,
+                db,
+                True,
+            )
+        else:
+            mode = "precise"
+            result = _delineate_precise(
+                request,
+                point_2180,
+                cg,
+                db,
+                include_hypsometric_curve,
+            )
+
+        response.headers["Cache-Control"] = "public, max-age=3600"
+
+        watershed = result["watershed_response"]
+        lines = watershed_lines(watershed, get_settings().frontend_data_dir)
+        return DelineateResponse(
+            mode=mode,
+            watershed=watershed,
+            stream=result.get("stream_info"),
+            upstream_segment_indices=result.get("upstream_segment_indices"),
+            display_threshold_m2=result.get("display_threshold_m2"),
+            info_message=result.get("info_message"),
+            handoff=_watershed_handoff(watershed, lines),
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
+        )
+
+    except HydrografError:
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        raise InvalidRequestError(
+            "invalid_parameters", reason="invalid_parameters", cause=str(e)
+        ) from e
+    except Exception as e:
+        logger.error(f"Error delineating watershed: {e}", exc_info=True)
+        raise InternalError("delineation_failed", reason="delineation_failed") from e
+
+
+@router.post(
+    "/delineate-watershed/preview",
+    response_model=DelineatePreviewResponse,
+)
+def delineate_watershed_preview(
+    request: DelineatePreviewRequest,
+    db: Session = Depends(get_db),
+) -> DelineatePreviewResponse:
+    """Sub-catchments the precomputed delineation will merge, for animation.
+
+    Same selection as POST /delineate-watershed in precomputed mode (threshold
+    floor, sub-catchment at the point, BFS, cascade) without the merge and
+    statistics: simplified polygons in BFS order from the outlet, each with
+    its depth. Precise mode has no preview: its raster boundary starts at the
+    exact click point, not at a sub-catchment.
 
     Parameters
     ----------
-    request : DelineateRequest
-        Point coordinates in WGS84 (latitude, longitude)
-    response : Response
-        FastAPI response for setting headers
-    include_hypsometric_curve : bool
-        Whether to include hypsometric curve data
+    request : DelineatePreviewRequest
+        Click point (WGS84) and the threshold of the precomputed mode.
     db : Session
-        Database session (injected by FastAPI)
+        Database session (injected by FastAPI).
 
     Returns
     -------
-    DelineateResponse
-        Watershed boundary as GeoJSON with metadata
+    DelineatePreviewResponse
+        Merge threshold, number of sub-catchments and their polygons by BFS depth.
 
     Raises
     ------
-    HTTPException 404
-        When no stream found near the point
-    HTTPException 400
-        When watershed is too large or invalid
-    HTTPException 503
-        When catchment graph is not loaded
-    HTTPException 500
-        On internal server error
+    NotFoundError
+        ``not_found`` (404) when no catchment lies at the point.
+    InvalidRequestError
+        ``validation_error`` (400) for invalid parameters.
+    StoreUnavailableError
+        ``store_unavailable`` (503) when the catchment graph is not loaded.
+    InternalError
+        ``internal_error`` (500) on an unexpected failure.
     """
     try:
-        logger.info(
-            "Delineating watershed for "
-            f"({request.latitude:.6f}, {request.longitude:.6f})"
-        )
-
-        # 1. Transform WGS84 -> PL-1992
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
-        logger.debug(
-            f"Transformed to PL-1992: ({point_2180.x:.1f}, {point_2180.y:.1f})"
-        )
-
-        # 2. Get CatchmentGraph instance, check if loaded
-        cg = get_catchment_graph()
-        if not cg.loaded:
-            raise HTTPException(
-                status_code=503,
-                detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
-            )
-
-        # 3. Find catchment at click point (direct ST_Contains)
-        try:
-            clicked_idx = cg.find_catchment_at_point(
-                point_2180.x,
-                point_2180.y,
-                DEFAULT_THRESHOLD_M2,
-                db,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
-            ) from e
-
-        # 4. Get segment info for outlet
-        segment_idx = cg.get_segment_idx(clicked_idx)
-        segment = get_stream_info_by_segment_idx(segment_idx, DEFAULT_THRESHOLD_M2, db)
-
-        # 5. Traverse upstream via catchment graph BFS
-        upstream_indices = cg.traverse_upstream(clicked_idx)
-        segment_idxs = cg.get_segment_indices(
-            upstream_indices,
-            DEFAULT_THRESHOLD_M2,
-        )
-
-        # 6. Aggregate pre-computed stats (zero raster ops)
-        # upstream_indices_for_stats tracks which indices to use for stats;
-        # updated together with merge_idxs during cascade escalation (CR9).
-        upstream_indices_for_stats = upstream_indices
-        stats = cg.aggregate_stats(upstream_indices_for_stats)
-        area_km2 = stats["area_km2"]
-        logger.debug(f"Watershed area: {area_km2:.2f} km2")
-
-        # 6a. Auto-selection check: area > limit → selection display
-        auto_selected = area_km2 > DELINEATION_MAX_AREA_M2 / M2_PER_KM2
-
-        # 7. Check if hydrograph generation is available (SCS-CN limit)
-        hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
-
-        # 8. Build boundary from ST_Union of catchment polygons.
-        # For large catchments (500+ segments), cascade to coarser
-        # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
-        _MAX_MERGE = 500
-        merge_idxs = segment_idxs
-        merge_threshold = DEFAULT_THRESHOLD_M2
-
-        if len(segment_idxs) > _MAX_MERGE:
-            for t in [1000, 10000, 100000]:
-                if t <= DEFAULT_THRESHOLD_M2:
-                    continue
-                try:
-                    t_node = cg.find_catchment_at_point(
-                        point_2180.x, point_2180.y, t, db
-                    )
-                except ValueError:
-                    continue
-                t_up = cg.traverse_upstream(t_node)
-                t_segs = cg.get_segment_indices(t_up, t)
-                if len(t_segs) <= _MAX_MERGE or t == 100000:
-                    merge_idxs = t_segs
-                    merge_threshold = t
-                    # CR9: re-aggregate stats from escalated threshold
-                    # so stats match the boundary polygon
-                    upstream_indices_for_stats = t_up
-                    stats = cg.aggregate_stats(upstream_indices_for_stats)
-                    area_km2 = stats["area_km2"]
-                    logger.info(
-                        "Cascade: threshold escalated from %d to %d "
-                        "(%d -> %d segments)",
-                        DEFAULT_THRESHOLD_M2,
-                        merge_threshold,
-                        len(segment_idxs),
-                        len(merge_idxs),
-                    )
-                    break
-
-        boundary_2180 = merge_catchment_boundaries(
-            merge_idxs,
-            merge_threshold,
+        cg = _loaded_catchment_graph(db)
+        selection = _select_precomputed(request.threshold_m2, point_2180, cg, db)
+        segment_idxs, depths = cg.upstream_segments_by_depth(selection.outlet_idx)
+        catchments = get_catchment_levels_feature_collection(
+            segment_idxs[:_PREVIEW_MAX_CATCHMENTS],
+            depths[:_PREVIEW_MAX_CATCHMENTS],
+            selection.merge_threshold,
+            _preview_tolerance_m(selection.area_km2),
             db,
         )
-        if boundary_2180 is None:
-            raise HTTPException(
-                status_code=500,
-                detail="Nie udało się zbudować granicy zlewni.",
-            )
-
-        # 9. Extract largest polygon from MultiPolygon
-        boundary_poly = boundary_to_polygon(boundary_2180)
-
-        # 10. Transform boundary to WGS84 + GeoJSON
-        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
-        boundary_geojson = polygon_to_geojson_feature(
-            boundary_wgs84,
-            properties={"area_km2": round(area_km2, 2)},
+        lines = instance_lines(DRAINAGE, get_settings().frontend_data_dir)
+        return DelineatePreviewResponse(
+            threshold_m2=selection.merge_threshold,
+            segment_count=len(segment_idxs),
+            catchments=catchments,
+            attribution=list(lines.attribution),
+            terms_notice=list(lines.terms_notice),
         )
 
-        # 11. Get outlet from segment downstream endpoint
-        outlet_info = get_segment_outlet(
-            segment_idx,
-            DEFAULT_THRESHOLD_M2,
-            db,
-        )
-        if outlet_info is None:
-            if segment:
-                outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
-            else:
-                outlet_x, outlet_y = point_2180.x, point_2180.y
-        else:
-            outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
-
-        # E4: Snap outlet to boundary if it fell outside (cascade threshold mismatch)
-        outlet_x, outlet_y = ensure_outlet_within_boundary(
-            outlet_x, outlet_y, boundary_2180
-        )
-
-        # 12. Outlet elevation from CatchmentGraph stats (elevation_min_m of outlet)
-        outlet_elevation = stats.get("elevation_min_m") or 0.0
-
-        # 13. Transform outlet coords to WGS84
-        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
-
-        # 14. Build morphometric parameters from graph
-        morph_dict = build_morph_dict_from_graph(
-            cg,
-            upstream_indices_for_stats,
-            boundary_2180,
-            outlet_x,
-            outlet_y,
-            segment_idx,
-            DEFAULT_THRESHOLD_M2,
-        )
-
-        # 15. Hypsometric curve
-        hypso_curve = None
-        if include_hypsometric_curve:
-            hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
-            if hypso_data:
-                hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
-
-        # 16. Main stream GeoJSON
-        main_stream_geojson = get_main_stream_geojson(
-            segment_idx,
-            DEFAULT_THRESHOLD_M2,
-            db,
-        )
-
-        # 17. Land cover statistics
-        lc_stats = None
-        try:
-            lc_data = get_land_cover_for_boundary(boundary_2180, db)
-            if lc_data:
-                lc_stats = LandCoverStats(
-                    categories=[
-                        LandCoverCategory(
-                            category=cat["category"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                            cn_value=cat["cn_value"],
-                        )
-                        for cat in lc_data["categories"]
-                    ],
-                    weighted_cn=lc_data["weighted_cn"],
-                    weighted_imperviousness=lc_data["weighted_imperviousness"],
-                )
-        except Exception as e:
-            logger.debug(f"Land cover stats not available: {e}")
-
-        # 17a. HSG soil statistics
-        hsg_stats_data = None
-        try:
-            from core.soil_hsg import get_hsg_for_boundary
-            from models.schemas import HsgCategory, HsgStats
-
-            hsg_data = get_hsg_for_boundary(boundary_2180.wkb_hex, db)
-            if hsg_data:
-                hsg_stats_data = HsgStats(
-                    categories=[
-                        HsgCategory(
-                            group=cat["group"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                        )
-                        for cat in hsg_data["categories"]
-                    ],
-                    dominant_group=hsg_data["dominant_group"],
-                )
-        except Exception as e:
-            logger.debug(f"HSG stats not available: {e}")
-
-        # 18. Build response
-        result = DelineateResponse(
-            watershed=WatershedResponse(
-                boundary_geojson=boundary_geojson,
-                outlet=OutletInfo(
-                    latitude=outlet_lat,
-                    longitude=outlet_lon,
-                    elevation_m=outlet_elevation,
-                ),
-                area_km2=round(area_km2, 2),
-                hydrograph_available=hydrograph_available,
-                morphometry=MorphometricParameters(**morph_dict),
-                hypsometric_curve=hypso_curve,
-                land_cover_stats=lc_stats,
-                hsg_stats=hsg_stats_data,
-                main_stream_geojson=main_stream_geojson,
-            ),
-            auto_selected=auto_selected,
-            upstream_segment_indices=segment_idxs if auto_selected else None,
-            display_threshold_m2=DEFAULT_THRESHOLD_M2 if auto_selected else None,
-            info_message=(
-                "Zlewnia przekracza 10 000 m² — wyświetlono "
-                "pre-obliczone zlewnie cząstkowe."
-                if auto_selected
-                else None
-            ),
-        )
-
-        logger.info(
-            f"Watershed delineated: {area_km2:.2f} km2, "
-            f"{len(segment_idxs)} segments, "
-            f"hydrograph={'available' if hydrograph_available else 'unavailable'}"
-        )
-
-        response.headers["Cache-Control"] = "public, max-age=3600"
-        return result
-
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
+    except HydrografError:
         raise
     except ValueError as e:
-        # Handle validation errors (e.g., watershed too large)
-        logger.error(f"Validation error in watershed delineation: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        logger.error(f"Validation error: {e}")
+        raise InvalidRequestError(
+            "invalid_parameters", reason="invalid_parameters", cause=str(e)
+        ) from e
     except Exception as e:
-        # Handle unexpected errors
-        logger.error(f"Error delineating watershed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error during watershed delineation",
+        logger.error(f"Error previewing watershed: {e}", exc_info=True)
+        raise InternalError(
+            "delineation_preview_failed", reason="delineation_preview_failed"
         ) from e

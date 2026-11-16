@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.version import get_version
 
 router = APIRouter()
 
@@ -44,5 +45,5 @@ def health_check(db: Session = Depends(get_db)) -> HealthResponse:
     return HealthResponse(
         status=status,
         database=db_status,
-        version="1.0.0",
+        version=get_version(),
     )

@@ -1,6 +1,4 @@
-"""
-Pydantic models for API schemas.
-"""
+"""Pydantic models for API schemas."""
 
 from models.schemas import (
     DelineateRequest,

@@ -1,144 +1,76 @@
-"""Tests for download_landcover: TERYT discovery and hydro merge."""
+"""Tests for download_landcover: fetch_landcover (real Kartograf), hydro merge."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import fiona
 import geopandas as gpd
 import pytest
 from shapely.geometry import LineString, Point
 
-from scripts.download_landcover import (
-    _generate_sample_coords,
-    discover_teryts_for_bbox,
-    merge_hydro_gpkgs,
-)
+from scripts.download_landcover import fetch_landcover, merge_hydro_gpkgs
+from tests.kartograf_offline import Counties, bdot10k_counties
+from tests.kartograf_offline import offline as offline  # noqa: F401
+
+LANDCOVER = "landcover/pl_bdot10k_gpkg/teryt"
 
 
-class TestGenerateSampleCoords:
-    """Tests for _generate_sample_coords helper."""
+@pytest.mark.usefixtures("offline")
+class TestFetchLandcover:
+    """The request goes to Kartograf and the file lands in the store (ADR-061)."""
 
-    def test_start_equals_end(self):
-        result = _generate_sample_coords(100.0, 100.0, 5000.0)
-        assert result == [100.0]
+    def test_teryt_lands_at_the_standard_path_of_the_store(self, tmp_path):
+        root = tmp_path / "kartograf"
+        with bdot10k_counties(Counties(["1465"])):
+            report = fetch_landcover(root, teryt="1465")
 
-    def test_small_range_returns_three_points(self):
-        result = _generate_sample_coords(0.0, 3000.0, 5000.0)
-        assert len(result) == 3
-        assert result[0] == 0.0
-        assert result[1] == 1500.0
-        assert result[2] == 3000.0
+        assert report.ok
+        assert [item.file.path for item in report.files] == [
+            root / LANDCOVER / "1465.gpkg"
+        ]
+        assert (root / "kartograf-store.json").is_file()
 
-    def test_large_range_includes_endpoints(self):
-        result = _generate_sample_coords(0.0, 10000.0, 5000.0)
-        assert result[0] == 0.0
-        assert result[-1] == 10000.0
+    def test_point_covers_every_county_of_the_square_around_it(self, tmp_path):
+        counties = Counties(["1401", "1465"])
+        with bdot10k_counties(counties):
+            report = fetch_landcover(
+                tmp_path / "k", lat=52.23, lon=21.01, buffer_km=5.0
+            )
 
-    def test_large_range_even_spacing(self):
-        result = _generate_sample_coords(0.0, 10000.0, 5000.0)
-        assert len(result) == 3  # 0, 5000, 10000
-        assert result == [0.0, 5000.0, 10000.0]
+        assert sorted(item.unit for item in report.files) == ["1401", "1465"]
+        (area,) = counties.areas
+        assert area.crs == "EPSG:2180"
+        assert area.max_x - area.min_x == pytest.approx(10000)
+        assert area.max_y - area.min_y == pytest.approx(10000)
 
-    def test_reversed_range(self):
-        """Start > end should still work (lo/hi normalization)."""
-        result = _generate_sample_coords(10000.0, 0.0, 5000.0)
-        assert result[0] == 0.0
-        assert result[-1] == 10000.0
+    def test_second_run_uses_the_local_version(self, tmp_path):
+        counties = Counties(["1465"])
+        with bdot10k_counties(counties):
+            fetch_landcover(tmp_path / "k", teryt="1465")
+            again = fetch_landcover(tmp_path / "k", teryt="1465")
 
-    def test_spacing_larger_than_range(self):
-        result = _generate_sample_coords(100.0, 200.0, 5000.0)
-        assert len(result) == 3
-        assert result[0] == 100.0
-        assert result[1] == 150.0
-        assert result[2] == 200.0
+        assert counties.packages == ["1465"]
+        assert [item.file.status for item in again.files] == ["local"]
 
-    def test_exact_multiple_spacing(self):
-        result = _generate_sample_coords(0.0, 15000.0, 5000.0)
-        assert len(result) == 4  # 0, 5000, 10000, 15000
-        assert result[0] == 0.0
-        assert result[-1] == 15000.0
+    def test_no_skip_existing_fetches_the_county_again(self, tmp_path):
+        counties = Counties(["1465"])
+        with bdot10k_counties(counties):
+            fetch_landcover(tmp_path / "k", teryt="1465")
+            fetch_landcover(tmp_path / "k", teryt="1465", skip_existing=False)
 
+        assert counties.packages == ["1465", "1465"]
 
-class TestDiscoverTerytsForBbox:
-    """Tests for discover_teryts_for_bbox with mocked Bdot10kProvider."""
+    def test_a_failed_county_does_not_stop_the_others(self, tmp_path):
+        counties = Counties(["1401", "1465"], failing=["1401"])
+        with bdot10k_counties(counties):
+            report = fetch_landcover(tmp_path / "k", lat=52.23, lon=21.01)
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
-    def test_single_teryt(self, mock_cls):
-        """All sample points return the same TERYT."""
-        provider = MagicMock()
-        provider._get_teryt_for_point.return_value = "1465"
-        mock_cls.return_value = provider
+        assert not report.ok
+        assert [item.unit for item in report.files] == ["1465"]
+        assert [failure.unit for failure in report.failed] == ["1401"]
 
-        bbox = (400000.0, 500000.0, 402000.0, 502000.0)
-        result = discover_teryts_for_bbox(bbox, spacing_m=5000.0)
-
-        assert result == ["1465"]
-        assert provider._get_teryt_for_point.call_count > 0
-
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
-    def test_two_teryts_on_boundary(self, mock_cls):
-        """Bbox spanning two counties returns both TERYTs."""
-        provider = MagicMock()
-
-        def side_effect(x, y):
-            if x < 405000:
-                return "1465"
-            return "3064"
-
-        provider._get_teryt_for_point.side_effect = side_effect
-        mock_cls.return_value = provider
-
-        bbox = (400000.0, 500000.0, 410000.0, 510000.0)
-        result = discover_teryts_for_bbox(bbox, spacing_m=5000.0)
-
-        assert result == ["1465", "3064"]
-
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
-    def test_water_point_skipped(self, mock_cls):
-        """Points on water (exception) are skipped, rest OK."""
-        provider = MagicMock()
-        call_count = 0
-
-        def side_effect(x, y):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise Exception("Water body — no TERYT")
-            return "1465"
-
-        provider._get_teryt_for_point.side_effect = side_effect
-        mock_cls.return_value = provider
-
-        bbox = (400000.0, 500000.0, 402000.0, 502000.0)
-        result = discover_teryts_for_bbox(bbox, spacing_m=5000.0)
-
-        assert result == ["1465"]
-
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
-    def test_all_points_fail(self, mock_cls):
-        """If all points fail, return empty list."""
-        provider = MagicMock()
-        provider._get_teryt_for_point.side_effect = Exception("WMS error")
-        mock_cls.return_value = provider
-
-        bbox = (400000.0, 500000.0, 402000.0, 502000.0)
-        result = discover_teryts_for_bbox(bbox, spacing_m=5000.0)
-
-        assert result == []
-
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
-    def test_results_sorted_and_unique(self, mock_cls):
-        """Duplicate TERYTs are deduplicated and sorted."""
-        provider = MagicMock()
-        cycle = ["3064", "1465", "3064", "1465", "1465", "3064", "0202", "0202", "3064"]
-        provider._get_teryt_for_point.side_effect = cycle
-        mock_cls.return_value = provider
-
-        bbox = (400000.0, 500000.0, 402000.0, 502000.0)
-        result = discover_teryts_for_bbox(bbox, spacing_m=1000.0)
-
-        assert result == sorted(set(cycle))
-        assert result == ["0202", "1465", "3064"]
+    def test_no_area_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="--teryt"):
+            fetch_landcover(tmp_path / "k")
 
 
 class TestMergeHydroGpkgs:
@@ -152,7 +84,7 @@ class TestMergeHydroGpkgs:
             path = tmp_path / name
             for layer_name, gdf in layers.items():
                 gdf.to_file(path, layer=layer_name, driver="GPKG")
-            return path
+            return Path(path)
 
         return _factory
 
@@ -191,8 +123,6 @@ class TestMergeHydroGpkgs:
         assert result == out
         assert out.exists()
 
-        import fiona
-
         layers = fiona.listlayers(str(out))
         assert "OT_SWRS_L" in layers
 
@@ -218,15 +148,12 @@ class TestMergeHydroGpkgs:
 
         assert result == out
 
-        import fiona
-
         layers = fiona.listlayers(str(out))
         assert "OT_SWRS_L" in layers
         assert "OT_PTWP_A" in layers
 
     def test_all_empty_files_returns_none(self, tmp_path):
-        """GeoPackages with no readable layers → None."""
-        # Create empty files (not valid GeoPackage)
+        """GeoPackages with no readable layers -> None."""
         p1 = tmp_path / "empty1.gpkg"
         p2 = tmp_path / "empty2.gpkg"
         p1.write_bytes(b"")
@@ -238,10 +165,7 @@ class TestMergeHydroGpkgs:
 
     def test_merge_filters_only_hydro_layers(self, tmp_path):
         """Verify that merge_hydro_gpkgs filters out non-hydro (PT) layers."""
-        from shapely.geometry import LineString
-
         gpkg_path = tmp_path / "mixed.gpkg"
-        # Create a GPKG with both hydro (SWRS) and non-hydro (PTLZ) layers
         hydro_gdf = gpd.GeoDataFrame(
             {"geometry": [LineString([(0, 0), (1, 1)])]},
             crs="EPSG:2180",
@@ -253,7 +177,6 @@ class TestMergeHydroGpkgs:
         hydro_gdf.to_file(gpkg_path, layer="OT_SWRS_L", driver="GPKG")
         non_hydro_gdf.to_file(gpkg_path, layer="OT_PTLZ_A", driver="GPKG")
 
-        # Second GPKG to force merge path (single-file returns early)
         gpkg_path2 = tmp_path / "mixed2.gpkg"
         hydro_gdf2 = gpd.GeoDataFrame(
             {"geometry": [LineString([(4, 4), (5, 5)])]},
@@ -266,6 +189,5 @@ class TestMergeHydroGpkgs:
 
         assert result is not None
         layers = fiona.listlayers(result)
-        # Only hydro layers should remain
         assert "OT_SWRS_L" in layers
         assert "OT_PTLZ_A" not in layers

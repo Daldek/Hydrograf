@@ -1,0 +1,176 @@
+/*
+ * Nogat GUI kit: the providers' lines on screen (DEV-20.5). Tokens of design/tokens.css
+ * with fallbacks, so a GUI that has not adopted the tokens yet shows it too. Copy byte for
+ * byte (DEV-15.6).
+ */
+
+nogat-sources {
+  display: block;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+nogat-sources[hidden] {
+  display: none;
+}
+
+/* The strip: 12 px, muted, the lines in one flowing paragraph. */
+.nogat-sources-strip {
+  margin: 0;
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+  line-height: var(--line-height, 1.4);
+  overflow-wrap: anywhere;
+}
+
+.nogat-sources-line + .nogat-sources-line::before {
+  content: "· ";
+}
+
+.nogat-sources-strip a,
+.nogat-sources-content a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-2, #d4cfcf);
+  text-underline-offset: 2px;
+}
+
+.nogat-sources-content a {
+  color: var(--accent, #284b63);
+  text-decoration-color: currentColor;
+}
+
+.nogat-sources-strip a:hover {
+  color: var(--text, #2b2b2b);
+}
+
+.nogat-sources-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, #284b63);
+  font: inherit;
+  font-weight: var(--weight-medium, 500);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nogat-sources-more:hover {
+  color: var(--accent-hover, #1a3a50);
+}
+
+.nogat-sources-strip a:focus-visible,
+.nogat-sources-more:focus-visible,
+.nogat-sources-dialog :focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+/* The dialog: header and content cover it, so a click on the dialog itself is the backdrop. */
+.nogat-sources-dialog {
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.16));
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-base, 13px);
+  line-height: var(--line-height, 1.4);
+}
+
+.nogat-sources-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.nogat-sources-dialog::backdrop {
+  background: rgba(1, 4, 9, 0.5);
+}
+
+.nogat-sources-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border-bottom: 1px solid var(--line, #e5e5e5);
+}
+
+.nogat-sources-dialog h2 {
+  margin: 0;
+  font-size: var(--text-md, 15px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: -0.01em;
+}
+
+.nogat-sources-close {
+  flex: none;
+  height: var(--control-sm, 26px);
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid var(--line-2, #d4cfcf);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  font: var(--weight-medium, 500) var(--text-sm, 12px) / 1 var(--font-sans, system-ui, sans-serif);
+  cursor: pointer;
+}
+
+.nogat-sources-close:hover {
+  background: var(--surface-2, #f4f1f1);
+}
+
+.nogat-sources-dialog > .nogat-sources-content {
+  overflow-y: auto;
+  padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-4, 16px);
+}
+
+/* The full content, in the dialog and in a GUI's own welcome window. */
+.nogat-sources-content {
+  overflow-wrap: anywhere;
+}
+
+.nogat-sources-content > :first-child {
+  margin-top: 0;
+}
+
+.nogat-sources-intro {
+  margin: var(--space-2, 8px) 0;
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-sources-content h3 {
+  margin: var(--space-4, 16px) 0 var(--space-2, 8px);
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+  font-weight: var(--weight-bold, 700);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nogat-sources-content ul {
+  margin: 0;
+  padding-left: var(--space-4, 16px);
+}
+
+.nogat-sources-content li + li {
+  margin-top: var(--space-2, 8px);
+}
+
+.nogat-sources-regulamin {
+  margin: var(--space-4, 16px) 0 0;
+}
+
+@media (pointer: coarse) {
+  .nogat-sources-more {
+    padding-block: var(--space-2, 8px);
+  }
+
+  .nogat-sources-close {
+    height: var(--control-touch, 44px);
+  }
+}

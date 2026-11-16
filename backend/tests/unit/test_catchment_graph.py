@@ -1,12 +1,20 @@
 """Unit tests for core.catchment_graph module."""
 
+import threading
+import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 from scipy import sparse
 
-from core.catchment_graph import CatchmentGraph
+import core.catchment_graph as cg_module
+from core.catchment_graph import (
+    CatchmentGraph,
+    get_catchment_graph,
+    loaded_catchment_graph,
+)
 
 
 @pytest.fixture
@@ -38,9 +46,28 @@ def small_graph():
     cg._elev_max = np.array([200.0, 210.0, 195.0, 180.0], dtype=np.float32)
     cg._elev_mean = np.array([175.0, 185.0, 167.5, 150.0], dtype=np.float32)
     cg._slope_mean = np.array([5.0, 6.0, 4.0, 3.0], dtype=np.float32)
-    cg._perimeter_km = np.array([10.0, 8.0, 15.0, 20.0], dtype=np.float32)
     cg._stream_length_km = np.array([2.0, 1.5, 3.0, 4.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
+    # Flow distance of the most remote cell of each sub-catchment to the global
+    # outlet [m]: node 0 (headwater, far upstream) 12.5 km, node 1 (headwater,
+    # tributary) 10.0 km, node 2 (mid-basin) 8.0 km, node 3 (outlet) 5.0 km
+    cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0], dtype=np.float64)
+
+    # Odleglosc spływu w PUNKCIE ujscia kazdej podzlewni (baza dla
+    # hydraulic_length). Lancuch: node3 (globalne ujscie) -> 0 m;
+    # node2 wpada do node3 -> 4000 m; nodes 0/1 wpadaja do node2 -> 7500 m.
+    cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64)
+
+    # Head of each node's longest flow path and its overland segment; the
+    # upstream end of each node's stream segment (below the node's elev_max)
+    cg._flow_path_head_elev_m = np.array([199.0, 208.0, 190.0, 178.0], np.float32)
+    cg._overland_length_m = np.array([300.0, 250.0, 200.0, 150.0], np.float32)
+    cg._overland_drop_m = np.array([30.0, 25.0, 10.0, 0.0], np.float32)
+    cg._stream_head_elev_m = np.array([180.0, 190.0, 150.0, 140.0], np.float32)
+
+    # BDOT stream matching: nodes 0 and 2 are real streams
+    cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
+    cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5], dtype=np.float64)
 
     # Histograms
     cg._histograms = [
@@ -94,11 +121,104 @@ class TestCatchmentGraphTraversal:
         indices = small_graph.traverse_upstream(0)
         assert set(indices) == {0}
 
+    def test_upstream_tree_gives_each_node_the_node_below_it(self, small_graph):
+        """Each node after the node it drains into; -1 below the start."""
+        order, below = small_graph.upstream_tree(3)
+        nodes = order.tolist()
+        below_of = dict(zip(nodes, below.tolist(), strict=True))
+        assert nodes[0] == 3
+        assert sorted(nodes) == sorted(small_graph.traverse_upstream(3).tolist())
+        assert below_of == {3: -1, 2: 3, 0: 2, 1: 2}
+        position = {node: i for i, node in enumerate(nodes)}
+        assert all(position[b] < position[n] for n, b in below_of.items() if b >= 0)
+
     def test_traverse_not_loaded_raises(self):
         """Traversal on unloaded graph should raise RuntimeError."""
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.traverse_upstream(0)
+
+
+def _branched_graph() -> CatchmentGraph:
+    """
+    Outlet 6 with a long and a short branch (segment_idx = node + 1):
+        2 → 4 → 5 → 6   (node 1 → 3 → 4 → 5)
+        1 → 3 → 6       (node 0 → 2 → 5)
+    """
+    cg = CatchmentGraph()
+    n = 6
+    cg._n = n
+    cg._loaded = True
+    cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
+    # adj[downstream, upstream] = 1
+    row = np.array([5, 4, 3, 5, 2], dtype=np.int32)
+    col = np.array([4, 3, 1, 2, 0], dtype=np.int32)
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(len(row), dtype=np.int8), (row, col)),
+        shape=(n, n),
+        dtype=np.int8,
+    )
+    return cg
+
+
+class TestUpstreamSegmentsByDepth:
+    """Tests for upstream_segments_by_depth (preview order)."""
+
+    def test_outlet_first_then_depths(self, small_graph):
+        """From the outlet: outlet at depth 0, each link upstream adds one."""
+        segments, depths = small_graph.upstream_segments_by_depth(3)
+        assert segments[0] == 4
+        assert dict(zip(segments, depths, strict=True)) == {4: 0, 3: 1, 1: 2, 2: 2}
+
+    def test_covers_traverse_upstream(self, small_graph):
+        """Same sub-catchments as traverse_upstream from a mid-basin node."""
+        segments, _ = small_graph.upstream_segments_by_depth(2)
+        expected = small_graph.get_segment_indices(
+            small_graph.traverse_upstream(2),
+            10000,
+        )
+        assert sorted(segments) == sorted(expected)
+
+    def test_depth_counts_links_on_each_branch(self):
+        """Depth follows the links of each branch, not the BFS position."""
+        segments, depths = _branched_graph().upstream_segments_by_depth(5)
+        assert dict(zip(segments, depths, strict=True)) == {
+            6: 0,
+            5: 1,
+            3: 1,
+            4: 2,
+            1: 2,
+            2: 3,
+        }
+        assert depths == sorted(depths)
+
+    def test_headwater_alone(self, small_graph):
+        """A headwater sub-catchment is its own outlet at depth 0."""
+        assert small_graph.upstream_segments_by_depth(0) == ([1], [0])
+
+    def test_not_loaded_raises(self):
+        """Unloaded graph should raise RuntimeError."""
+        with pytest.raises(RuntimeError, match="not loaded"):
+            CatchmentGraph().upstream_segments_by_depth(0)
+
+
+class TestTraceDownstream:
+    """Tests for trace_downstream (the path to the outlet of the network)."""
+
+    def test_path_in_flow_order_ends_at_the_outlet(self):
+        """Each node below the start once, in the order of the flow."""
+        cg = _branched_graph()
+        assert cg.trace_downstream(1).tolist() == [1, 3, 4, 5]
+        assert cg.trace_downstream(0).tolist() == [0, 2, 5]
+
+    def test_outlet_alone(self):
+        """The outlet of the network drains into no other node."""
+        assert _branched_graph().trace_downstream(5).tolist() == [5]
+
+    def test_not_loaded_raises(self):
+        """Unloaded graph should raise RuntimeError."""
+        with pytest.raises(RuntimeError, match="not loaded"):
+            CatchmentGraph().trace_downstream(0)
 
 
 class TestCatchmentGraphSegmentIndices:
@@ -142,10 +262,19 @@ class TestCatchmentGraphAggregateStats:
         assert stats["elevation_mean_m"] == pytest.approx(expected, abs=0.5)
 
     def test_max_strahler(self, small_graph):
-        """Max Strahler should be the maximum value."""
+        """Max Strahler should be max from BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        assert stats["max_strahler_order"] == 3
+        # Real streams: node 0 (strahler=1) and node 2 (strahler=2)
+        # Node 3 (strahler=3) is NOT real → excluded
+        assert stats["max_strahler_order"] == 2
+
+    def test_max_strahler_no_bdot(self, small_graph):
+        """Max Strahler is None when no BDOT real streams in subset."""
+        # Nodes 1 and 3 have is_real_stream=False
+        indices = np.array([1, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["max_strahler_order"] is None
 
     def test_stream_length_sum(self, small_graph):
         """Stream length should be sum."""
@@ -153,15 +282,67 @@ class TestCatchmentGraphAggregateStats:
         stats = small_graph.aggregate_stats(indices)
         assert stats["stream_length_km"] == pytest.approx(10.5, abs=0.01)
 
-    def test_drainage_density(self, small_graph):
-        """Drainage density = total_stream_length / total_area."""
+    def test_drainage_density_bdot(self, small_graph):
+        """Drainage density is based on BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        expected_dd = 10.5 / 26.0
+        # Real streams: nodes 0 (1.8 km) and 2 (2.5 km) = 4.3 km
+        # Area: 26.0 km2
+        expected_dd = 4.3 / 26.0
         assert stats["drainage_density_km_per_km2"] == pytest.approx(
             expected_dd,
             abs=0.01,
         )
+
+    def test_stream_frequency_bdot(self, small_graph):
+        """Stream frequency is based on BDOT real stream count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        # Real streams: 2 segments, area: 26.0 km2
+        expected_fs = 2 / 26.0
+        assert stats["stream_frequency_per_km2"] == pytest.approx(
+            expected_fs,
+            abs=0.01,
+        )
+
+    def test_bdot_stream_fields(self, small_graph):
+        """aggregate_stats returns bdot_stream_length_km and bdot_stream_count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["bdot_stream_length_km"] == pytest.approx(4.3, abs=0.01)
+        assert stats["bdot_stream_count"] == 2
+
+    def test_no_bdot_streams_returns_none(self):
+        """Without real stream segments, drainage_density and frequency are None."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.array([150.0, 160.0], dtype=np.float32)
+        cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
+        cg._elev_mean = np.array([175.0, 185.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 6.0], dtype=np.float32)
+        cg._stream_length_km = np.array([2.0, 1.5], dtype=np.float32)
+        cg._strahler = np.array([1, 1], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([12500.0, 10000.0], dtype=np.float64)
+        cg._histograms = [None, None]
+        cg._lookup = {(10000, 1): 0, (10000, 2): 1}
+        cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+        # No real streams
+        cg._is_real_stream = np.array([False, False], dtype=np.bool_)
+        cg._segment_length_km = np.array([1.5, 1.0], dtype=np.float64)
+
+        indices = np.array([0, 1])
+        stats = cg.aggregate_stats(indices)
+        # bdot_stream_km = 0, so density = 0/8 = 0 (not None — area > 0)
+        assert stats["drainage_density_km_per_km2"] == pytest.approx(0.0)
+        assert stats["stream_frequency_per_km2"] == pytest.approx(0.0)
+        assert stats["bdot_stream_length_km"] == pytest.approx(0.0)
+        assert stats["bdot_stream_count"] == 0
+        assert stats["max_strahler_order"] is None
 
     def test_partial_traversal_stats(self, small_graph):
         """Stats for partial traversal (only headwaters)."""
@@ -241,80 +422,6 @@ class TestCatchmentGraphFindAtPoint:
             cg.find_catchment_at_point(0, 0, 10000, MagicMock())
 
 
-class TestTraverseToConfluence:
-    """Tests for traverse_to_confluence."""
-
-    def test_traverse_to_confluence_linear(self):
-        """Linear chain A→B→C: traverse from C returns all [C, B, A]."""
-        cg = CatchmentGraph()
-        n = 3
-        cg._n = n
-        cg._loaded = True
-        cg._segment_idx = np.array([1, 2, 3], dtype=np.int32)
-        cg._threshold_m2 = np.array([10000, 10000, 10000], dtype=np.int32)
-
-        # A(0)→B(1)→C(2): upstream adj[1,0]=1, adj[2,1]=1
-        row = np.array([1, 2], dtype=np.int32)
-        col = np.array([0, 1], dtype=np.int32)
-        data = np.ones(2, dtype=np.int8)
-        cg._upstream_adj = sparse.csr_matrix(
-            (data, (row, col)),
-            shape=(n, n),
-            dtype=np.int8,
-        )
-
-        result = cg.traverse_to_confluence(2)
-        assert set(result) == {0, 1, 2}
-
-    def test_traverse_to_confluence_stops_at_junction(self):
-        """A→C, B→C, C→D: traverse from D returns [D, C], stops at confluence C."""
-        cg = CatchmentGraph()
-        n = 4
-        cg._n = n
-        cg._loaded = True
-        cg._segment_idx = np.array([1, 2, 3, 4], dtype=np.int32)
-        cg._threshold_m2 = np.array([10000, 10000, 10000, 10000], dtype=np.int32)
-
-        # A(0)→C(2), B(1)→C(2), C(2)→D(3)
-        # upstream adj: adj[2,0]=1, adj[2,1]=1, adj[3,2]=1
-        row = np.array([2, 2, 3], dtype=np.int32)
-        col = np.array([0, 1, 2], dtype=np.int32)
-        data = np.ones(3, dtype=np.int8)
-        cg._upstream_adj = sparse.csr_matrix(
-            (data, (row, col)),
-            shape=(n, n),
-            dtype=np.int8,
-        )
-
-        result = cg.traverse_to_confluence(3)
-        # C has 2 upstream neighbors → confluence → include but don't continue past
-        assert set(result) == {2, 3}
-        assert 0 not in result
-        assert 1 not in result
-
-    def test_traverse_to_confluence_single_node(self):
-        """Headwater with no upstream: returns just [start]."""
-        cg = CatchmentGraph()
-        n = 2
-        cg._n = n
-        cg._loaded = True
-        cg._segment_idx = np.array([1, 2], dtype=np.int32)
-        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
-
-        # Only edge: 0→1 (upstream adj[1,0]=1)
-        row = np.array([1], dtype=np.int32)
-        col = np.array([0], dtype=np.int32)
-        data = np.ones(1, dtype=np.int8)
-        cg._upstream_adj = sparse.csr_matrix(
-            (data, (row, col)),
-            shape=(n, n),
-            dtype=np.int8,
-        )
-
-        result = cg.traverse_to_confluence(0)
-        assert list(result) == [0]
-
-
 class TestLookupBySegmentIdx:
     """Tests for lookup_by_segment_idx."""
 
@@ -358,10 +465,11 @@ class TestTraceMainChannel:
 
         assert result["main_channel_nodes"] == [3, 2, 0]
         assert result["main_channel_length_km"] == pytest.approx(9.0, abs=0.01)
-        # Slope = (elev_max[0] - elev_min[3]) / (9.0 * 1000) = (200-120)/9000
-        expected_slope = (200.0 - 120.0) / (9.0 * 1000)
+        # Slope from the source of node 0 (180 m), not its elev_max (200 m):
+        # (180 - elev_min[3]) / (9.0 * 1000)
+        expected_slope = (180.0 - 120.0) / (9.0 * 1000)
         assert result["main_channel_slope_m_per_m"] == pytest.approx(
-            expected_slope, abs=1e-5
+            expected_slope, abs=1e-6
         )
 
     def test_main_channel_shorter_than_total(self, small_graph):
@@ -387,11 +495,29 @@ class TestTraceMainChannel:
 
         assert result["main_channel_nodes"] == [2, 0]
         assert result["main_channel_length_km"] == pytest.approx(5.0, abs=0.01)
-        # Slope = (elev_max[0] - elev_min[2]) / (5.0 * 1000) = (200-140)/5000
-        expected_slope = (200.0 - 140.0) / (5.0 * 1000)
+        # Slope = (source of node 0 - elev_min[2]) / (5.0 * 1000) = (180-140)/5000
+        expected_slope = (180.0 - 140.0) / (5.0 * 1000)
         assert result["main_channel_slope_m_per_m"] == pytest.approx(
-            expected_slope, abs=1e-5
+            expected_slope, abs=1e-6
         )
+
+    def test_no_source_elevation_gives_no_slope(self, small_graph):
+        """A head node without the elevation of its source has no slope (not 0)."""
+        small_graph._stream_head_elev_m[0] = np.nan
+        upstream = small_graph.traverse_upstream(3)
+
+        result = small_graph.trace_main_channel(3, upstream)
+
+        assert result["main_channel_length_km"] == pytest.approx(9.0, abs=0.01)
+        assert result["main_channel_slope_m_per_m"] is None
+
+    def test_a_source_not_above_the_outlet_gives_no_slope(self, small_graph):
+        small_graph._stream_head_elev_m[0] = 120.0  # the outlet's elevation
+        upstream = small_graph.traverse_upstream(3)
+
+        result = small_graph.trace_main_channel(3, upstream)
+
+        assert result["main_channel_slope_m_per_m"] is None
 
     def test_main_channel_not_loaded_raises(self):
         """RuntimeError if graph not loaded."""
@@ -399,16 +525,210 @@ class TestTraceMainChannel:
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.trace_main_channel(0, np.array([0]))
 
+    def test_prefers_real_stream_branch_at_same_strahler(self):
+        """At equal Strahler, should prefer is_real_stream=True branch."""
+        # Graph: node 0 (real) and node 1 (not real) both upstream of node 2 (outlet)
+        # Both have same Strahler=1 and same stream_length.
+        # Branch selection should prefer node 0 (real).
+        cg = CatchmentGraph()
+        n = 3
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2, 3], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([2.0, 2.0, 5.0], dtype=np.float32)
+        cg._elev_min = np.array([200.0, 200.0, 100.0], dtype=np.float32)
+        cg._elev_max = np.array([250.0, 250.0, 150.0], dtype=np.float32)
+        cg._elev_mean = np.array([225.0, 225.0, 125.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 5.0, 3.0], dtype=np.float32)
+        cg._stream_length_km = np.array([2.0, 2.0, 3.0], dtype=np.float32)
+        cg._strahler = np.array([1, 1, 2], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([10000.0, 10000.0, 5000.0], dtype=np.float64)
+        cg._histograms = [None] * n
+        cg._is_real_stream = np.array([True, False, True], dtype=np.bool_)
+        cg._segment_length_km = np.array([2.0, 2.0, 3.0], dtype=np.float64)
+        cg._lookup = {(10000, 1): 0, (10000, 2): 1, (10000, 3): 2}
+
+        # Upstream adjacency: 0->2, 1->2
+        row = np.array([2, 2], dtype=np.int32)
+        col = np.array([0, 1], dtype=np.int32)
+        data = np.ones(2, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)), shape=(n, n), dtype=np.int8
+        )
+
+        upstream = cg.traverse_upstream(2)
+        result = cg.trace_main_channel(2, upstream)
+
+        # Should choose node 0 (real) over node 1 (not real) at same Strahler
+        assert result["main_channel_nodes"] == [2, 0]
+
+
+class TestContiguousRealChannel:
+    """real_channel_length_km counts the contiguous real channel from the outlet.
+
+    A gap tolerance applies.
+
+    The DEM flow-path can run between two parallel BDOT channels (e.g. drainage
+    ditches) whose buffers alternate coverage, producing a fragmented pattern:
+    real -> not-real -> real -> not-real -> real.
+
+    The model allows up to MAX_GAP=2 consecutive non-real segments before breaking
+    the contiguous chain.  This accounts for bends/meanders where the DEM flow-path
+    briefly deviates from the BDOT channel.
+    """
+
+    @staticmethod
+    def _build_linear_graph(n, is_real, seg_lengths_km):
+        """Build a linear chain graph: 0 <- 1 <- 2 <- ... <- n-1.
+
+        Node 0 is the outlet.  Returns (cg, upstream_indices).
+        """
+        cg = CatchmentGraph()
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
+        cg._threshold_m2 = np.full(n, 10000, dtype=np.int32)
+        cg._area_km2 = np.full(n, 1.0, dtype=np.float32)
+        cg._elev_min = np.arange(100, 100 + n * 10, 10, dtype=np.float32)[::-1]
+        cg._elev_max = cg._elev_min + 10.0
+        cg._elev_mean = cg._elev_min + 5.0
+        cg._slope_mean = np.full(n, 3.0, dtype=np.float32)
+        cg._stream_length_km = np.array(seg_lengths_km, dtype=np.float32)
+        cg._strahler = np.ones(n, dtype=np.int8)
+        cg._histograms = [None] * n
+
+        cg._is_real_stream = np.array(is_real, dtype=np.bool_)
+        cg._segment_length_km = np.array(seg_lengths_km, dtype=np.float64)
+
+        cg._lookup = {(10000, i + 1): i for i in range(n)}
+
+        # Linear chain: node i+1 drains into node i
+        if n > 1:
+            rows = np.arange(0, n - 1, dtype=np.int32)
+            cols = np.arange(1, n, dtype=np.int32)
+            data = np.ones(n - 1, dtype=np.int8)
+            cg._upstream_adj = sparse.csr_matrix(
+                (data, (rows, cols)), shape=(n, n), dtype=np.int8
+            )
+        else:
+            cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+
+        upstream = cg.traverse_upstream(0)
+        return cg, upstream
+
+    def test_single_gap_tolerated(self):
+        """Pattern real-real-FALSE-real: all 4 counted (1 gap <= MAX_GAP=2)."""
+        #                  outlet                     head
+        # Node:              0      1      2      3
+        # is_real:          True   True   False  True
+        # seg_length_km:    0.5    0.3    0.4    0.6
+        cg, upstream = self._build_linear_graph(
+            n=4,
+            is_real=[True, True, False, True],
+            seg_lengths_km=[0.5, 0.3, 0.4, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # 1 gap tolerated: 0.5 + 0.3 + 0.4 + 0.6 = 1.8
+        assert result["real_channel_length_km"] == pytest.approx(1.8, abs=0.001)
+
+    def test_three_consecutive_gaps_stops(self):
+        """Pattern real-real-FALSE-FALSE-FALSE-real: stops at 3rd gap (> MAX_GAP=2)."""
+        #                  outlet                                 head
+        # Node:              0      1      2      3      4      5
+        # is_real:          True   True   False  False  False  True
+        # seg_length_km:    0.5    0.3    0.4    0.2    0.3    0.6
+        cg, upstream = self._build_linear_graph(
+            n=6,
+            is_real=[True, True, False, False, False, True],
+            seg_lengths_km=[0.5, 0.3, 0.4, 0.2, 0.3, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # 3 gaps > MAX_GAP=2: stop after node 1. Only 0.5 + 0.3 = 0.8
+        assert result["real_channel_length_km"] == pytest.approx(0.8, abs=0.001)
+
+    def test_two_consecutive_gaps_tolerated(self):
+        """Pattern real-FALSE-FALSE-real-real: all 5 counted (2 gaps = MAX_GAP)."""
+        #                  outlet                          head
+        # Node:              0      1      2      3      4
+        # is_real:          True   False  False  True   True
+        # seg_length_km:    0.5    0.2    0.3    0.4    0.6
+        cg, upstream = self._build_linear_graph(
+            n=5,
+            is_real=[True, False, False, True, True],
+            seg_lengths_km=[0.5, 0.2, 0.3, 0.4, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # 2 gaps = MAX_GAP, tolerated: 0.5 + 0.2 + 0.3 + 0.4 + 0.6 = 2.0
+        assert result["real_channel_length_km"] == pytest.approx(2.0, abs=0.001)
+
+    def test_all_real_gives_full_length(self):
+        """All segments real -> real_channel = full channel length."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[True, True, True],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(2.2, abs=0.001)
+
+    def test_first_segment_not_real_gives_zero(self):
+        """If outlet segment is not real -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[False, True, True],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
+    def test_alternating_pattern_bridges_single_gaps(self):
+        """Pattern real-FALSE-real-FALSE-real counts all (each gap 1 <= MAX_GAP=2)."""
+        cg, upstream = self._build_linear_graph(
+            n=5,
+            is_real=[True, False, True, False, True],
+            seg_lengths_km=[0.3, 0.2, 0.4, 0.1, 0.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # Each gap is only 1 segment, reset by next real: 0.3+0.2+0.4+0.1+0.5 = 1.5
+        assert result["real_channel_length_km"] == pytest.approx(1.5, abs=0.001)
+
+    def test_all_not_real_gives_zero(self):
+        """All segments not real -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[False, False, False],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
+    def test_single_node_real(self):
+        """Single real node -> real_channel = its length."""
+        cg, upstream = self._build_linear_graph(
+            n=1,
+            is_real=[True],
+            seg_lengths_km=[1.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(1.5, abs=0.001)
+
+    def test_single_node_not_real(self):
+        """Single non-real node -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=1,
+            is_real=[False],
+            seg_lengths_km=[1.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
 
 class TestGetCatchmentGraphThreadSafety:
     """Tests for get_catchment_graph() singleton thread safety (CR7)."""
 
     def test_returns_same_instance(self):
         """Concurrent calls return the same CatchmentGraph instance."""
-        import threading
-
-        import core.catchment_graph as cg_module
-
         cg_module._catchment_graph = None
         instances = []
 
@@ -425,31 +745,80 @@ class TestGetCatchmentGraphThreadSafety:
         assert all(inst is instances[0] for inst in instances)
         cg_module._catchment_graph = None
 
-    def test_lock_exists(self):
-        """Module-level lock exists for singleton protection."""
-        import threading
 
-        from core.catchment_graph import _catchment_graph_lock
-        assert isinstance(_catchment_graph_lock, threading.Lock)
+class TestLoadedCatchmentGraph:
+    """A new graph once the network in the database changed (network_version)."""
 
-
-class TestTraverseToConfluenceDeque:
-    """Verify traverse_to_confluence uses collections.deque (CR4)."""
-
-    def test_uses_deque_not_list(self):
-        """Implementation must use deque for O(1) popleft."""
-        import inspect
-
-        from core.catchment_graph import CatchmentGraph
-        source = inspect.getsource(
-            CatchmentGraph.traverse_to_confluence,
+    @pytest.fixture
+    def network(self, monkeypatch):
+        """The version the database reports and the loads of CatchmentGraph.load."""
+        state = SimpleNamespace(
+            version=(1, 10, 2, 20), loads=[], fail=False, empty=False, delay_s=0.0
         )
-        assert "deque" in source, (
-            "traverse_to_confluence should use collections.deque"
-        )
-        assert ".pop(0)" not in source, (
-            "traverse_to_confluence should not use list.pop(0)"
-        )
+
+        def load(graph, db):
+            time.sleep(state.delay_s)
+            if state.fail:
+                raise RuntimeError("stream_catchments changed during the load")
+            state.loads.append(graph)
+            graph._loaded = not state.empty
+
+        monkeypatch.setattr(cg_module, "_catchment_graph", None)
+        monkeypatch.setattr(cg_module, "network_version", lambda db: state.version)
+        monkeypatch.setattr(CatchmentGraph, "load", load)
+        return state
+
+    def test_unchanged_network_keeps_the_graph(self, network):
+        first = loaded_catchment_graph(MagicMock())
+
+        assert loaded_catchment_graph(MagicMock()) is first
+        assert network.loads == [first]
+
+    def test_changed_network_loads_a_new_graph(self, network):
+        old = loaded_catchment_graph(MagicMock())
+        network.version = (1, 99, 2, 20)  # a run published new sub-catchments
+
+        new = loaded_catchment_graph(MagicMock())
+
+        assert new is not old
+        assert new.loaded and new.network_version == (1, 99, 2, 20)
+        assert get_catchment_graph() is new
+        # A request that took the old graph keeps it whole
+        assert old.loaded
+
+    def test_failed_load_drops_the_previous_graph_and_retries(self, network):
+        loaded_catchment_graph(MagicMock())
+        network.version = (3, 0, 4, 0)
+        network.fail = True
+
+        assert loaded_catchment_graph(MagicMock()) is None
+        assert not get_catchment_graph().loaded
+
+        network.fail = False
+        assert loaded_catchment_graph(MagicMock()).network_version == (3, 0, 4, 0)
+
+    def test_empty_network_has_no_graph(self, network):
+        network.empty = True
+
+        assert loaded_catchment_graph(MagicMock()) is None
+
+    def test_concurrent_requests_wait_for_one_load(self, network):
+        network.delay_s = 0.1
+        start = threading.Barrier(8)
+        graphs = []
+
+        def request():
+            start.wait()
+            graphs.append(loaded_catchment_graph(MagicMock()))
+
+        threads = [threading.Thread(target=request) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(network.loads) == 1
+        assert graphs == [network.loads[0]] * 8
 
 
 class TestGetSegmentIdx:
@@ -469,6 +838,176 @@ class TestGetSegmentIdx:
         import pytest
 
         from core.catchment_graph import CatchmentGraph
+
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.get_segment_idx(0)
+
+
+class TestCoarserAtOutlets:
+    """A sub-catchment of a coarser threshold ends where one of the finer ends."""
+
+    @staticmethod
+    def two_thresholds(fine_keys, coarse_keys):
+        """Nodes of 1 ha, then of 10 ha, by their (outlet flow distance, area)."""
+        keys = list(fine_keys) + list(coarse_keys)
+        cg = CatchmentGraph()
+        cg._n = len(keys)
+        cg._threshold_m2 = np.array(
+            [10000] * len(fine_keys) + [100000] * len(coarse_keys), dtype=np.int32
+        )
+        cg._outlet_flow_dist_m = np.array([k[0] for k in keys], dtype=np.float64)
+        cg._upstream_area_km2 = np.array([k[1] for k in keys], dtype=np.float64)
+        cg._loaded = True
+        return cg
+
+    def test_each_coarser_node_is_found_at_the_node_that_ends_at_its_outlet(self):
+        cg = self.two_thresholds(
+            [(7500.0, 5.0), (7500.0, 3.0), (4000.0, 16.0), (0.0, 26.0)],
+            [(4000.0, 16.0), (0.0, 26.0)],
+        )
+
+        at_outlets = cg.coarser_at_outlets(10000)
+
+        assert list(at_outlets) == [100000]
+        assert at_outlets[100000].tolist() == [-1, -1, 4, 5, -1, -1]
+
+    def test_values_that_two_nodes_share_match_neither(self):
+        cg = self.two_thresholds(
+            [(7500.0, 5.0), (7500.0, 5.0), (0.0, 26.0)],
+            [(7500.0, 5.0), (0.0, 26.0)],
+        )
+
+        assert cg.coarser_at_outlets(10000)[100000].tolist() == [-1, -1, 4, -1, -1]
+
+    def test_a_node_without_its_flow_distance_matches_nothing(self):
+        cg = self.two_thresholds([(np.nan, 5.0), (0.0, 26.0)], [(np.nan, 5.0)])
+
+        assert cg.coarser_at_outlets(10000)[100000].tolist() == [-1, -1, -1]
+
+
+class TestHydraulicLength:
+    """Tests for hydraulic_length_km in aggregate_stats.
+
+    Semantyka po naprawie (feedback #11): dlugosc hydrauliczna zlewni =
+    (max(max_flow_dist_m) - outlet_flow_dist_m[wezel ujsciowy]) / 1000.
+    """
+
+    def test_full_watershed(self, small_graph):
+        """Pelna zlewnia: max(12500) - outlet_dist node3 (0 m) = 12.5 km."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=3)
+        assert stats["hydraulic_length_km"] == pytest.approx(12.5, abs=0.01)
+
+    def test_partial_watershed_mid_basin(self, small_graph):
+        """Zlewnia do wezla 2: max(12500) - outlet_dist node2 (4000 m) = 8.5 km."""
+        indices = np.array([0, 1, 2])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=2)
+        assert stats["hydraulic_length_km"] == pytest.approx(8.5, abs=0.01)
+
+    def test_single_outlet_subcatchment(self, small_graph):
+        """Podzlewnia ujsciowa: 5000 - 0 = 5.0 km."""
+        indices = np.array([3])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=3)
+        assert stats["hydraulic_length_km"] == pytest.approx(5.0, abs=0.01)
+
+    def test_single_headwater_uses_own_outlet(self, small_graph):
+        """REGRESJA feedback #11: zlewnia zrodliskowa (n_upstream == 1).
+
+        Stary kod zwracal absolutne 12.5 km (fallback); poprawnie:
+        (12500 - 7500) / 1000 = 5.0 km wewnatrz podzlewni.
+        """
+        indices = np.array([0])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=0)
+        assert stats["hydraulic_length_km"] == pytest.approx(5.0, abs=0.01)
+
+    def test_all_single_nodes_positive(self, small_graph):
+        """Kazdy wezel osobno: dodatnia dlugosc wewnetrzna."""
+        expected = {0: 5.0, 1: 2.5, 2: 4.0, 3: 5.0}
+        for node_idx, exp in expected.items():
+            stats = small_graph.aggregate_stats(
+                np.array([node_idx]), outlet_idx=node_idx
+            )
+            assert stats["hydraulic_length_km"] == pytest.approx(exp, abs=0.01)
+            assert stats["hydraulic_length_km"] > 0
+
+    def test_missing_outlet_dist_falls_back_without_inflation(self, small_graph):
+        """NaN baseline -> fallback max_flow_dist_m[outlet] (nigdy nie zawyza)."""
+        small_graph._outlet_flow_dist_m = np.full(4, np.nan, dtype=np.float64)
+        stats = small_graph.aggregate_stats(np.array([0]), outlet_idx=0)
+        assert stats["hydraulic_length_km"] == pytest.approx(0.0, abs=0.01)
+
+    def test_no_outlet_idx_returns_none(self, small_graph):
+        """Bez outlet_idx nie da sie policzyc poprawnie -> None."""
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]))
+        assert stats["hydraulic_length_km"] is None
+
+    def test_hydraulic_length_ge_channel_length(self, small_graph):
+        """Hydraulic length >= main channel length (includes overland flow)."""
+        upstream = small_graph.traverse_upstream(3)
+        stats = small_graph.aggregate_stats(upstream, outlet_idx=3)
+        main_ch = small_graph.trace_main_channel(3, upstream)
+        assert stats["hydraulic_length_km"] >= main_ch["main_channel_length_km"]
+
+    def test_nan_handling(self):
+        """Without max_flow_dist_m loaded and without outlet_idx, return None."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.full(n, np.nan, dtype=np.float32)
+        cg._elev_max = np.full(n, np.nan, dtype=np.float32)
+        cg._elev_mean = np.full(n, np.nan, dtype=np.float32)
+        cg._slope_mean = np.full(n, np.nan, dtype=np.float32)
+        cg._stream_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._strahler = np.zeros(n, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+
+        stats = cg.aggregate_stats(np.array([0, 1]))
+        assert stats["hydraulic_length_km"] is None
+        assert stats["flow_path_head_elevation_m"] is None
+        assert stats["overland_length_km"] is None
+        assert stats["overland_slope_m_per_m"] is None
+
+
+class TestFlowPathHead:
+    """The head of the longest flow path and its overland segment in aggregate_stats.
+
+    They belong to the node of the largest max_flow_dist_m, the node whose
+    farthest cell starts hydraulic_length_km.
+    """
+
+    def test_full_watershed_takes_the_farthest_node(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]), outlet_idx=3)
+
+        # Node 0: max_flow_dist 12500 m, head 199 m, 300 m overland dropping 30 m
+        assert stats["flow_path_head_elevation_m"] == pytest.approx(199.0)
+        assert stats["overland_length_km"] == pytest.approx(0.3)
+        assert stats["overland_slope_m_per_m"] == pytest.approx(0.1)
+
+    def test_partial_watershed_takes_its_own_farthest_node(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([1, 2]), outlet_idx=2)
+
+        assert stats["flow_path_head_elevation_m"] == pytest.approx(208.0)
+        assert stats["overland_length_km"] == pytest.approx(0.25)
+        assert stats["overland_slope_m_per_m"] == pytest.approx(0.1)
+
+    def test_no_drop_gives_a_length_without_a_slope(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([3]), outlet_idx=3)
+
+        assert stats["overland_length_km"] == pytest.approx(0.15)
+        assert stats["overland_slope_m_per_m"] is None
+
+    def test_unmeasured_values_stay_empty(self, small_graph):
+        small_graph._flow_path_head_elev_m[0] = np.nan
+        small_graph._overland_length_m[0] = np.nan
+
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]), outlet_idx=3)
+
+        # Node 0 stays the head: the values of another node are no substitute
+        assert stats["flow_path_head_elevation_m"] is None
+        assert stats["overland_length_km"] is None
+        assert stats["overland_slope_m_per_m"] is None

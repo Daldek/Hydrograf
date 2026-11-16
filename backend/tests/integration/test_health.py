@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from core.database import get_db
+from core.version import get_version
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def test_health_endpoint_database_connected(client, mock_db_session):
 
     assert data["status"] == "healthy"
     assert data["database"] == "connected"
-    assert data["version"] == "1.0.0"
+    assert data["version"] == get_version()
     app.dependency_overrides.clear()
 
 

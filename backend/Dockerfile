@@ -5,20 +5,41 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Build-time system dependencies (gcc, git for git+https:// pip deps)
+# Build-time system dependencies (gcc for source builds, git for the git+https://
+# dependencies of the lock)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgeos-dev \
     libproj-dev \
+    libgdal-dev \
     gcc \
+    g++ \
+    make \
     git \
+    libsqlite3-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Build tippecanoe (MVT tile generator) — pinned version for reproducible builds
+RUN git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && \
+    cd /tmp/tippecanoe && make -j$(nproc) && make install && \
+    rm -rf /tmp/tippecanoe
 
-RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+# uv installs the locked environment (DEV-6.2, DEV-6.3); the version is pinned.
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
+
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+COPY pyproject.toml uv.lock ./
+
+# The application code is copied in the runtime stage, so the project itself is not
+# installed. GDAL's Python binding must equal the system library (gdal-config), so
+# it is installed after the lock (a deviation of DEV-6.3, listed in CLAUDE.md).
+RUN uv sync --locked --no-dev --no-install-project && \
+    uv pip install --python /opt/venv/bin/python --no-cache "GDAL==$(gdal-config --version)"
 
 # ============================================================
 # Stage 2: runtime — lean production image
@@ -32,12 +53,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libgeos-c1t64 \
     libproj25 \
+    libgdal36 \
+    gdal-bin \
     libexpat1 \
+    libsqlite3-0 \
+    zlib1g \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for running the application
-RUN groupadd -r hydro && useradd -r -g hydro -d /app -s /sbin/nologin hydro
+# Copy tippecanoe binary from builder
+COPY --from=builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
+
+# Create non-root user with pinned UID/GID (stable across rebuilds for bind mount ownership)
+RUN groupadd -r -g 999 hydro && useradd -r -u 999 -g hydro -d /app -s /sbin/nologin hydro
 
 # Copy pre-built virtualenv from builder
 COPY --from=builder /opt/venv /opt/venv
@@ -54,4 +82,6 @@ USER hydro
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# uvicorn prints no access line (it would name the client) and nothing below a warning;
+# api.main writes the logs of Nogat DEV-12.4 to DEV-12.8
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "warning"]

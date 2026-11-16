@@ -2,10 +2,8 @@
 
 import numpy as np
 
+from core.hydrology import D8_COL_OFFSET, D8_ROW_OFFSET, D8_VALID
 from core.stream_extraction import (
-    _DC,
-    _DR,
-    _VALID,
     _count_upstream_and_find_headwaters,
     vectorize_streams,
 )
@@ -23,9 +21,9 @@ class TestCountUpstreamAndFindHeadwaters:
             fdir,
             stream_mask,
             nodata_mask,
-            _DR,
-            _DC,
-            _VALID,
+            D8_ROW_OFFSET,
+            D8_COL_OFFSET,
+            D8_VALID,
         )
         # Cell 0 has no upstream → headwater
         assert upstream_count[0, 0] == 0
@@ -43,9 +41,9 @@ class TestCountUpstreamAndFindHeadwaters:
             fdir,
             stream_mask,
             nodata_mask,
-            _DR,
-            _DC,
-            _VALID,
+            D8_ROW_OFFSET,
+            D8_COL_OFFSET,
+            D8_VALID,
         )
         assert len(hw_rows) == 0
 
@@ -75,9 +73,9 @@ class TestCountUpstreamAndFindHeadwaters:
             fdir,
             stream_mask,
             nodata_mask,
-            _DR,
-            _DC,
-            _VALID,
+            D8_ROW_OFFSET,
+            D8_COL_OFFSET,
+            D8_VALID,
         )
         assert upstream_count[1, 1] == 4  # 4 corners flow to center
         assert len(hw_rows) == 4  # 4 headwaters

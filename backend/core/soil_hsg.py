@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -10,15 +11,20 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
-def get_hsg_for_boundary(boundary_wkb_hex: str, db: Session) -> dict | None:
+def get_hsg_for_boundary(boundary_wkb_hex: str, db: Session) -> dict[str, Any] | None:
     """Get HSG statistics for a watershed boundary.
 
-    Args:
-        boundary_wkb_hex: Watershed boundary as WKB hex string (EPSG:2180).
-        db: Database session.
+    Parameters
+    ----------
+    boundary_wkb_hex : str
+        Watershed boundary as WKB hex string (EPSG:2180).
+    db : Session
+        Database session.
 
-    Returns:
-        Dict with categories and dominant_group, or None if no data.
+    Returns
+    -------
+    dict or None
+        Categories and dominant_group, or None if no data.
     """
     sql = text("""
         WITH watershed AS (

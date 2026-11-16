@@ -8,25 +8,28 @@ and shape index computation.
 """
 
 import math
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from scipy import sparse
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
 
+from core.catchment_graph import CatchmentGraph
+from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
-    _compute_shape_indices,
     boundary_to_polygon,
     build_morph_dict_from_graph,
+    cascade_escalate,
     compute_watershed_length,
     ensure_outlet_within_boundary,
-    find_nearest_stream_segment,
-    find_nearest_stream_segment_hybrid,
     get_main_stream_geojson,
     get_segment_outlet,
     merge_catchment_boundaries,
 )
+from models.schemas import MorphometricParameters
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -100,44 +103,6 @@ def mock_catchment_graph():
 
 
 # ---------------------------------------------------------------------------
-# find_nearest_stream_segment
-# ---------------------------------------------------------------------------
-
-
-class TestFindNearestStreamSegment:
-    """Tests for find_nearest_stream_segment."""
-
-    def test_returns_dict_when_found(self, mock_db):
-        """When DB returns a row, function returns a dict with all expected keys."""
-        row = MagicMock()
-        row.segment_idx = 42
-        row.strahler_order = 3
-        row.length_m = 1234.5
-        row.upstream_area_km2 = 12.3
-        row.downstream_x = 500100.0
-        row.downstream_y = 600200.0
-        mock_db.execute.return_value.fetchone.return_value = row
-
-        result = find_nearest_stream_segment(500050.0, 600050.0, 100, mock_db)
-
-        assert result is not None
-        assert result["segment_idx"] == 42
-        assert result["strahler_order"] == 3
-        assert result["length_m"] == 1234.5
-        assert result["upstream_area_km2"] == 12.3
-        assert result["downstream_x"] == 500100.0
-        assert result["downstream_y"] == 600200.0
-
-    def test_returns_none_when_not_found(self, mock_db):
-        """When DB returns None, function returns None."""
-        mock_db.execute.return_value.fetchone.return_value = None
-
-        result = find_nearest_stream_segment(500050.0, 600050.0, 100, mock_db)
-
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
 # merge_catchment_boundaries
 # ---------------------------------------------------------------------------
 
@@ -186,13 +151,28 @@ class TestMergeCatchmentBoundaries:
         assert result is None
         mock_db.execute.assert_not_called()
 
-    def test_merge_sql_no_snap_to_grid(self):
-        """merge_catchment_boundaries SQL should not use ST_SnapToGrid."""
+    def test_merge_direct_no_snap_to_grid(self):
+        """_merge_direct should not use ST_SnapToGrid (small sets
+        don't need pre-union vertex reduction)."""
         import inspect
 
-        source = inspect.getsource(merge_catchment_boundaries)
+        from core.watershed_service import _SMOOTH_SQL, _merge_direct
+
+        source = inspect.getsource(_merge_direct)
         assert "ST_SnapToGrid" not in source
-        assert "ST_Buffer" in source  # buffer-debuffer pattern
+        # buffer-debuffer pattern is in shared _SMOOTH_SQL constant
+        assert "_SMOOTH_SQL" in source
+        assert "ST_Buffer" in _SMOOTH_SQL
+
+    def test_merge_batched_uses_snap_to_grid(self):
+        """_merge_batched should use ST_SnapToGrid for pre-union vertex
+        reduction (preserves shared edges, unlike simplify)."""
+        import inspect
+
+        from core.watershed_service import _merge_batched
+
+        source = inspect.getsource(_merge_batched)
+        assert "ST_SnapToGrid" in source
 
 
 # ---------------------------------------------------------------------------
@@ -530,14 +510,138 @@ class TestBuildMorphDictFromGraph:
         expected_slope = round((350.0 - 120.0) / (8.5 * 1000), 6)
         assert result["channel_slope_m_per_m"] == expected_slope
 
+    def test_zero_hydraulic_length_uses_geometric_fallback(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        """hydraulic_length_km == 0.0 (single-cell catchment) must not be
+        accepted as-is: it should route to the geometric fallback instead
+        of producing a degenerate length_km == 0.0 (unverified downstream
+        tc behaviour)."""
+        mock_catchment_graph.aggregate_stats.return_value = {
+            **mock_catchment_graph.aggregate_stats.return_value,
+            "hydraulic_length_km": 0.0,
+        }
+        upstream = np.array([0])
+
+        result = build_morph_dict_from_graph(
+            cg=mock_catchment_graph,
+            upstream_indices=upstream,
+            boundary_2180=simple_polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=1000,
+        )
+
+        expected = round(
+            compute_watershed_length(simple_polygon, 500095.0, 600095.0), 4
+        )
+        assert result["length_km"] == expected
+        assert result["length_km"] > 0
+
+    def test_positive_hydraulic_length_is_used_directly(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        """A positive hydraulic_length_km is used as-is (no fallback)."""
+        mock_catchment_graph.aggregate_stats.return_value = {
+            **mock_catchment_graph.aggregate_stats.return_value,
+            "hydraulic_length_km": 3.4567,
+        }
+        upstream = np.array([0])
+
+        result = build_morph_dict_from_graph(
+            cg=mock_catchment_graph,
+            upstream_indices=upstream,
+            boundary_2180=simple_polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=1000,
+        )
+
+        assert result["length_km"] == 3.4567
+
+    @staticmethod
+    def _morph(cg, polygon, **stats):
+        cg.aggregate_stats.return_value = {
+            **cg.aggregate_stats.return_value,
+            **stats,
+        }
+        return build_morph_dict_from_graph(
+            cg=cg,
+            upstream_indices=np.array([0, 1, 2]),
+            boundary_2180=polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=10000,
+        )
+
+    def test_flow_path_from_the_divide_with_the_slope_of_its_head(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=320.0,
+            overland_length_km=0.3,
+            overland_slope_m_per_m=0.1,
+        )
+
+        assert result["flow_path_length_km"] == 12.5
+        # (head 320 m - outlet 120 m) / 12 500 m
+        assert result["flow_path_slope_m_per_m"] == pytest.approx(0.016)
+        assert result["overland_length_km"] == 0.3
+        assert result["overland_slope_m_per_m"] == 0.1
+        assert MorphometricParameters(**result).flow_path_length_km == 12.5
+
+    def test_no_head_elevation_gives_no_flow_path_slope(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=None,
+        )
+
+        assert result["flow_path_length_km"] == 12.5
+        assert result["flow_path_slope_m_per_m"] is None
+
+    def test_a_head_not_above_the_outlet_gives_no_flow_path_slope(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=120.0,
+        )
+
+        assert result["flow_path_slope_m_per_m"] is None
+
+    def test_a_zero_hydraulic_length_is_no_flow_path(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=0.0,
+            flow_path_head_elevation_m=320.0,
+        )
+
+        assert result["flow_path_length_km"] is None
+        assert result["flow_path_slope_m_per_m"] is None
+
 
 # ---------------------------------------------------------------------------
-# _compute_shape_indices
+# calculate_shape_indices
 # ---------------------------------------------------------------------------
 
 
 class TestComputeShapeIndices:
-    """Tests for _compute_shape_indices."""
+    """Tests for calculate_shape_indices."""
 
     def test_valid_inputs(self):
         """Shape indices are computed correctly for valid inputs."""
@@ -545,7 +649,7 @@ class TestComputeShapeIndices:
         perimeter = 30.0
         length = 12.0
 
-        result = _compute_shape_indices(area, perimeter, length)
+        result = calculate_shape_indices(area, perimeter, length)
 
         # Compactness coefficient: P / (2 * sqrt(pi * A))
         expected_kc = perimeter / (2 * math.sqrt(math.pi * area))
@@ -575,7 +679,7 @@ class TestComputeShapeIndices:
 
     def test_zero_area_returns_nones(self):
         """When area is zero, all indices should be None."""
-        result = _compute_shape_indices(0.0, 10.0, 5.0)
+        result = calculate_shape_indices(0.0, 10.0, 5.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None
@@ -585,7 +689,7 @@ class TestComputeShapeIndices:
 
     def test_zero_perimeter_returns_nones(self):
         """When perimeter is zero, all indices should be None."""
-        result = _compute_shape_indices(10.0, 0.0, 5.0)
+        result = calculate_shape_indices(10.0, 0.0, 5.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None
@@ -595,7 +699,7 @@ class TestComputeShapeIndices:
 
     def test_zero_length_returns_nones(self):
         """When length is zero, all indices should be None."""
-        result = _compute_shape_indices(10.0, 20.0, 0.0)
+        result = calculate_shape_indices(10.0, 20.0, 0.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None
@@ -653,28 +757,201 @@ class TestEnsureOutletWithinBoundary:
 
 
 # ---------------------------------------------------------------------------
-# find_nearest_stream_segment_hybrid (F2)
+# cascade_escalate
 # ---------------------------------------------------------------------------
 
+# The thresholds of the pipeline, core.constants.PIPELINE_THRESHOLDS_M2
+PIPELINE_COUNTS = {10_000: 12, 100_000: 6, 1_000_000: 3, 10_000_000: 1}
 
-class TestFindNearestStreamSegmentHybrid:
-    """Tests for find_nearest_stream_segment_hybrid."""
 
-    def test_point_inside_catchment_returns_catchment_stream(self):
-        """When point is inside a catchment, return that catchment's stream."""
-        import inspect
+def _chains(counts):
+    """One watershed of 12 km², split at each threshold into a chain.
 
-        sig = inspect.signature(find_nearest_stream_segment_hybrid)
-        assert "x" in sig.parameters
-        assert "y" in sig.parameters
-        assert "threshold_m2" in sig.parameters
-        assert "db" in sig.parameters
+    At threshold t segment 1 drains into 2 and so on to segment counts[t], the
+    sub-catchment at the click, so the BFS from it selects counts[t] segments.
+    """
+    thresholds, segments, rows, cols = [], [], [], []
+    for threshold, count in counts.items():
+        first = len(segments)
+        for segment in range(1, count + 1):
+            thresholds.append(threshold)
+            segments.append(segment)
+            if segment < count:
+                # adj[downstream, upstream] = 1
+                rows.append(first + segment)
+                cols.append(first + segment - 1)
+    n = len(segments)
+    cg = CatchmentGraph()
+    cg._n = n
+    cg._loaded = True
+    cg._segment_idx = np.array(segments, dtype=np.int32)
+    cg._threshold_m2 = np.array(thresholds, dtype=np.int32)
+    cg._lookup = {
+        key: i for i, key in enumerate(zip(thresholds, segments, strict=True))
+    }
+    cg._area_km2 = np.array([12.0 / counts[t] for t in thresholds], dtype=np.float32)
+    for name in (
+        "_elev_min",
+        "_elev_max",
+        "_elev_mean",
+        "_slope_mean",
+        "_stream_length_km",
+        "_flow_path_head_elev_m",
+        "_overland_length_m",
+        "_overland_drop_m",
+    ):
+        setattr(cg, name, np.full(n, np.nan, dtype=np.float32))
+    cg._strahler = np.ones(n, dtype=np.int8)
+    cg._max_flow_dist_m = np.zeros(n)
+    cg._outlet_flow_dist_m = np.zeros(n)
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(len(rows), dtype=np.int8), (rows, cols)), shape=(n, n)
+    )
+    return cg
 
-    def test_hybrid_has_catchment_query(self):
-        """Hybrid function uses ST_Contains on stream_catchments."""
-        import inspect
 
-        source = inspect.getsource(find_nearest_stream_segment_hybrid)
-        assert "ST_Contains" in source
-        assert "stream_catchments" in source
-        assert "find_nearest_stream_segment" in source  # fallback
+def _session_at_click(counts):
+    """Session whose point query finds the outlet segment of each threshold."""
+
+    def execute(query, params):
+        result = MagicMock()
+        count = counts.get(params["threshold"])
+        result.fetchone.return_value = (
+            None if count is None else SimpleNamespace(segment_idx=count)
+        )
+        return result
+
+    db = MagicMock()
+    db.execute.side_effect = execute
+    return db
+
+
+def _escalate(cg, base_threshold, max_merge, at_click=PIPELINE_COUNTS):
+    base = list(range(1, PIPELINE_COUNTS[base_threshold] + 1))
+    return cascade_escalate(
+        cg, 0.0, 0.0, base_threshold, base, max_merge, _session_at_click(at_click)
+    )
+
+
+class TestCascadeEscalate:
+    """The cascade over the thresholds of the graph (PIPELINE_THRESHOLDS_M2)."""
+
+    def test_threshold_of_0_1_km2_escalates_to_1_km2(self):
+        """Above the cap at 100 000 m² the merge takes the next threshold.
+
+        The regression of the Wełna: the cascade tried only 1000, 10 000 and
+        100 000 m², so a request at 100 000 m² merged its 2752 segments.
+        """
+        cg = _chains(PIPELINE_COUNTS)
+
+        idxs, threshold, upstream, outlet, stats, area_km2 = _escalate(
+            cg, 100_000, max_merge=3
+        )
+
+        assert threshold == 1_000_000
+        assert sorted(idxs) == [1, 2, 3]
+        assert outlet == cg.lookup_by_segment_idx(1_000_000, 3)
+        assert sorted(upstream.tolist()) == sorted(
+            cg.lookup_by_segment_idx(1_000_000, s) for s in (1, 2, 3)
+        )
+        assert area_km2 == pytest.approx(12.0)
+        assert stats["area_km2"] == area_km2
+
+    def test_skips_coarser_thresholds_still_above_the_cap(self):
+        """From 10 000 m² past 100 000 and 1 000 000 m² (6 and 3 segments)."""
+        cg = _chains(PIPELINE_COUNTS)
+
+        idxs, threshold, *_ = _escalate(cg, 10_000, max_merge=2)
+
+        assert (threshold, idxs) == (10_000_000, [1])
+
+    def test_coarsest_threshold_when_every_one_is_above_the_cap(self):
+        cg = _chains({10_000: 12, 100_000: 6, 1_000_000: 3})
+
+        idxs, threshold, *_ = _escalate(cg, 10_000, max_merge=2)
+
+        assert (threshold, sorted(idxs)) == (1_000_000, [1, 2, 3])
+
+    def test_threshold_without_a_subcatchment_at_the_point_is_skipped(self):
+        cg = _chains(PIPELINE_COUNTS)
+        at_click = {t: c for t, c in PIPELINE_COUNTS.items() if t != 1_000_000}
+
+        idxs, threshold, *_ = _escalate(cg, 100_000, max_merge=3, at_click=at_click)
+
+        assert (threshold, idxs) == (10_000_000, [1])
+
+    def test_no_escalation_at_the_cap(self):
+        cg = _chains(PIPELINE_COUNTS)
+
+        assert _escalate(cg, 100_000, max_merge=6) is None
+
+    def test_no_escalation_without_a_coarser_subcatchment(self):
+        cg = _chains(PIPELINE_COUNTS)
+        at_click = {10_000: 12, 100_000: 6}
+
+        assert _escalate(cg, 100_000, max_merge=3, at_click=at_click) is None
+
+    def test_the_main_channel_of_an_escalated_merge_starts_at_its_outlet(self):
+        """The main channel of a merge on a coarser threshold is traced from its outlet.
+
+        The regression of the Kaczawa at the Nysa Szalona (747.92 km², escalated
+        from 100 000 m² to 10 km² on 2026-11-11): the morphometry looked up the
+        clicked segment of the request's threshold in the coarser one, found no
+        node and left the main channel out of the map and of the parameters.
+        """
+        cg = _chains(PIPELINE_COUNTS)
+        # The click lies in segment 6 at 100 000 m²; 10 km² has segment 1 only
+        _, threshold, upstream, outlet, *_ = _escalate(cg, 100_000, max_merge=1)
+        assert threshold == 10_000_000
+        assert cg.lookup_by_segment_idx(threshold, 6) is None
+
+        result = build_morph_dict_from_graph(
+            cg=cg,
+            upstream_indices=upstream,
+            boundary_2180=Polygon([(0, 0), (100, 0), (100, 100), (0, 100)]),
+            outlet_x=50.0,
+            outlet_y=0.0,
+            segment_idx=6,
+            threshold_m2=threshold,
+            outlet_idx=outlet,
+        )
+
+        assert result["_main_channel_nodes"] == [outlet]
+
+
+class TestLcAlongTheChannel:
+    """Lc is measured along the main channel from the outlet (Snyder)."""
+
+    def test_from_the_outlet_on_lines_stored_from_upstream(self):
+        """The stored stream lines run from their upstream end down.
+
+        A channel of 10 km from (0, 10 000) down to the outlet at (0, 0), in two
+        segments; the centroid lies beside it 3 km above the outlet, so Lc is
+        3 km, not the 7 km from the source.
+        """
+        from shapely.geometry import LineString, Point
+
+        from core.watershed_service import _compute_lc_along_channel
+
+        upper = LineString([(0, 10_000), (0, 5_000)])
+        lower = LineString([(0, 5_000), (0, 0)])
+        rows = [
+            SimpleNamespace(segment_idx=1, geom=wkb.dumps(upper)),
+            SimpleNamespace(segment_idx=2, geom=wkb.dumps(lower)),
+        ]
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = rows
+        cg = MagicMock()
+        cg.get_segment_idx.side_effect = lambda node: node
+
+        lc_km = _compute_lc_along_channel(
+            db,
+            cg,
+            {"main_channel_nodes": [2, 1]},
+            100_000,
+            Point(400, 3_000),
+            0.0,
+            0.0,
+        )
+
+        assert lc_km == pytest.approx(3.0)

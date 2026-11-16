@@ -1,0 +1,114 @@
+"""Contract: the OpenAPI document of the API (AGI-6.2, AGI-6.3, AGI-6.6)."""
+
+import pytest
+
+from api.errors import PROBLEM_MEDIA_TYPE
+from api.main import app
+
+DOCUMENT = app.openapi()
+OPERATIONS = [
+    (path, method, operation)
+    for path, item in DOCUMENT["paths"].items()
+    for method, operation in item.items()
+]
+
+
+def test_document_is_openapi_3_1():
+    assert DOCUMENT["openapi"].startswith("3.1")
+    assert DOCUMENT["info"]["version"]
+
+
+def test_operation_ids_are_unique_function_names():
+    ids = [operation["operationId"] for _, _, operation in OPERATIONS]
+
+    assert len(ids) == len(set(ids))
+    assert not [i for i in ids if "__" in i or i.endswith(("_get", "_post"))], ids
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "operation"),
+    OPERATIONS,
+    ids=[f"{m} {p}" for p, m, _ in OPERATIONS],
+)
+def test_operation_documents_its_problems(path, method, operation):
+    responses = operation["responses"]
+
+    assert "HTTPValidationError" not in str(responses), "invalid values are 400"
+    assert "500" in responses
+    for status, response in responses.items():
+        if int(status) >= 400:
+            content = response["content"][PROBLEM_MEDIA_TYPE]
+            assert content["schema"]["$ref"] == "#/components/schemas/Problem"
+            assert content["example"]["status"] == int(status)
+            assert content["example"]["type"].endswith(f"#{content['example']['code']}")
+
+
+def test_problem_schema_replaces_the_validation_schemas():
+    schemas = DOCUMENT["components"]["schemas"]
+
+    assert "Problem" in schemas
+    assert "ProblemError" in schemas
+    assert "HTTPValidationError" not in schemas
+    assert {"type", "title", "status", "detail", "instance", "code", "details"} <= set(
+        schemas["Problem"]["required"]
+    )
+
+
+def test_operations_with_a_body_or_parameters_document_400():
+    for path, method, operation in OPERATIONS:
+        if operation.get("requestBody") or operation.get("parameters"):
+            assert "400" in operation["responses"], f"{method} {path}"
+
+
+def test_delineate_network_documents_the_problems_of_its_route():
+    (operation,) = [
+        op for _, _, op in OPERATIONS if op["operationId"] == "delineate_network"
+    ]
+
+    assert {"400", "404", "422", "500", "503"} <= set(operation["responses"])
+
+
+def test_delineate_network_preview_documents_the_problems_of_its_route():
+    (operation,) = [
+        op
+        for _, _, op in OPERATIONS
+        if op["operationId"] == "delineate_network_preview"
+    ]
+
+    # The preview reads no window of the rasters, so no 422 for a large one
+    assert {"400", "404", "500", "503"} <= set(operation["responses"])
+    assert "422" not in operation["responses"]
+
+
+@pytest.mark.parametrize(
+    ("operation_id", "reasons"),
+    [
+        (
+            "bootstrap_start",
+            {
+                "403": "shared_store_read_only",
+                "404": "boundary_file_missing",
+                "409": "bootstrap_running",
+            },
+        ),
+        ("bootstrap_cancel", {"409": "bootstrap_not_running"}),
+        ("update_feedback", {"404": "feedback_not_found"}),
+        ("delete_feedback", {"404": "feedback_not_found"}),
+        (
+            "sewer_config_update",
+            {"403": "path_outside_project", "404": "source_file_missing"},
+        ),
+    ],
+)
+def test_admin_operations_document_the_problems_of_their_route(operation_id, reasons):
+    (operation,) = [op for _, _, op in OPERATIONS if op["operationId"] == operation_id]
+
+    documented = {
+        status: operation["responses"][status]["content"][PROBLEM_MEDIA_TYPE][
+            "example"
+        ]["details"]["reason"]
+        for status in reasons
+        if status in operation["responses"]
+    }
+    assert documented == reasons
+    assert "401" in operation["responses"]

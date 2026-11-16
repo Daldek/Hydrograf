@@ -20,15 +20,22 @@ flow is:
 """
 
 import contextlib
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import rasterio
 from fastapi.testclient import TestClient
+from rasterio.transform import from_origin
 from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
+from core.config import Settings
+from core.constants import DEFAULT_THRESHOLD_M2
+from core.raster_service import MAX_WINDOW_CELLS
+from utils.geometry import transform_wgs84_to_pl1992
 
 
 @pytest.fixture
@@ -43,6 +50,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     cg.loaded = True
     cg._segment_idx = np.array([10, 11, 12], dtype=np.int32)
     cg.find_catchment_at_point.return_value = 0  # internal idx
+    cg.get_segment_idx.return_value = 12  # segment_idx for internal idx 0
     cg.traverse_upstream.return_value = np.array([0, 1, 2])
     cg.get_segment_indices.return_value = [10, 11, 12]
     cg.aggregate_stats.return_value = {
@@ -60,7 +68,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     return cg
 
 
-def _make_segment() -> dict:
+def _make_segment() -> dict[str, Any]:
     """Create a mock stream segment dict as returned by find_nearest_stream_segment."""
     return {
         "segment_idx": 12,
@@ -86,7 +94,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(area_km2: float = 10.0) -> dict:
+def _make_morph_dict(area_km2: float = 10.0) -> dict[str, Any]:
     """Create a morphometric parameter dict matching MorphometricParameters schema."""
     return {
         "area_km2": area_km2,
@@ -157,7 +165,7 @@ class TestDelineateWatershedEndpoint:
             morph = _make_morph_dict()
 
         return [
-            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
             patch(f"{_WS}.get_stream_info_by_segment_idx", return_value=segment),
             patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
             patch(
@@ -166,7 +174,11 @@ class TestDelineateWatershedEndpoint:
             ),
             patch(f"{_WS}.build_morph_dict_from_graph", return_value=morph),
             patch(f"{_WS}.get_main_stream_geojson", return_value=None),
-            patch(f"{_WS}.get_land_cover_for_boundary", return_value=None),
+            patch(f"{_WS}.get_main_channel_feature_collection", return_value=None),
+            patch(f"{_WS}.build_land_cover_stats", return_value=None),
+            patch(f"{_WS}.build_hsg_stats", return_value=None),
+            patch(f"{_WS}.cascade_escalate", return_value=None),
+            patch(f"{_WS}.thiessen_cells", return_value=[]),
         ]
 
     def test_success_returns_200(self, client):
@@ -177,7 +189,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         assert response.status_code == 200
@@ -190,7 +202,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -208,7 +220,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -226,7 +238,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -246,7 +258,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -255,14 +267,14 @@ class TestDelineateWatershedEndpoint:
         assert "area_km2" in geojson["properties"]
 
     def test_no_stream_returns_404(self, client):
-        """Test that missing catchment returns 404 with Polish error message."""
+        """Test that a missing catchment returns 404 ``not_found``."""
         cg = _make_mock_cg()
         cg.find_catchment_at_point.side_effect = ValueError(
             "Nie znaleziono zlewni cząstkowej"
         )
 
         patches = [
-            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
         ]
 
         with contextlib.ExitStack() as stack:
@@ -271,74 +283,75 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.0, "longitude": 21.0},
+                json={"latitude": 52.0, "longitude": 21.0, "threshold_m2": 10000},
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.json()["code"] == "not_found"
+        assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
-    def test_invalid_latitude_too_high_returns_422(self, client):
-        """Test that latitude > 90 returns 422."""
+    def test_invalid_latitude_too_high_returns_400(self, client):
+        """Test that latitude > 90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_latitude_too_low_returns_422(self, client):
-        """Test that latitude < -90 returns 422."""
+    def test_invalid_latitude_too_low_returns_400(self, client):
+        """Test that latitude < -90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": -100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_high_returns_422(self, client):
-        """Test that longitude > 180 returns 422."""
+    def test_invalid_longitude_too_high_returns_400(self, client):
+        """Test that longitude > 180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": 200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_low_returns_422(self, client):
-        """Test that longitude < -180 returns 422."""
+    def test_invalid_longitude_too_low_returns_400(self, client):
+        """Test that longitude < -180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": -200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_latitude_returns_422(self, client):
-        """Test that missing latitude returns 422."""
+    def test_missing_latitude_returns_400(self, client):
+        """Test that missing latitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_longitude_returns_422(self, client):
-        """Test that missing longitude returns 422."""
+    def test_missing_longitude_returns_400(self, client):
+        """Test that missing longitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_empty_body_returns_422(self, client):
-        """Test that empty request body returns 422."""
+    def test_empty_body_returns_400(self, client):
+        """Test that empty request body returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_small_watershed_hydrograph_available(self, client):
         """Test small watershed has hydrograph_available=True."""
@@ -348,7 +361,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -366,7 +379,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -385,58 +398,36 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
         assert data["watershed"]["area_km2"] == 45.67
 
-    def test_small_area_not_auto_selected(self, client):
-        """Test area ≤ 10000 m² (0.005 km²) is not auto-selected."""
-        area_km2 = 0.005  # 5000 m² — below limit
-        cg = _make_mock_cg(area_km2=area_km2)
-        morph = _make_morph_dict(area_km2=area_km2)
-
+    def test_precomputed_mode_has_segments(self, client):
+        """Test precomputed mode (threshold_m2 provided) returns upstream segments."""
         with contextlib.ExitStack() as stack:
-            for p in self._patch_all(cg=cg, morph=morph):
+            for p in self._patch_all():
                 stack.enter_context(p)
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
             )
 
         data = response.json()
-        assert data["auto_selected"] is False
-        assert data["upstream_segment_indices"] is None
-        assert data["display_threshold_m2"] is None
-        assert data["info_message"] is None
-
-    def test_large_area_auto_selected(self, client):
-        """Test area > 10000 m² (0.05 km²) triggers auto-selection."""
-        area_km2 = 0.05  # 50000 m² — above limit
-        cg = _make_mock_cg(area_km2=area_km2)
-        morph = _make_morph_dict(area_km2=area_km2)
-
-        with contextlib.ExitStack() as stack:
-            for p in self._patch_all(cg=cg, morph=morph):
-                stack.enter_context(p)
-
-            response = client.post(
-                "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
-            )
-
-        data = response.json()
-        assert data["auto_selected"] is True
+        assert data["mode"] == "precomputed"
         assert data["upstream_segment_indices"] is not None
         assert len(data["upstream_segment_indices"]) > 0
         assert data["display_threshold_m2"] is not None
-        assert data["info_message"] is not None
 
-    def test_threshold_boundary_not_auto_selected(self, client):
-        """Test area exactly at 10000 m² (0.01 km²) is NOT auto-selected (≤ not <)."""
-        area_km2 = 0.01  # exactly 10000 m²
+    def test_precomputed_mode_small_area(self, client):
+        """Test precomputed mode with small area still returns mode='precomputed'."""
+        area_km2 = 0.005  # 5000 m²
         cg = _make_mock_cg(area_km2=area_km2)
         morph = _make_morph_dict(area_km2=area_km2)
 
@@ -446,9 +437,181 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
             )
 
         data = response.json()
-        assert data["auto_selected"] is False
-        assert data["upstream_segment_indices"] is None
+        assert data["mode"] == "precomputed"
+        assert data["upstream_segment_indices"] is not None
+
+    def test_precise_mode_refuses_a_watershed_too_large_for_its_window(
+        self, client, tmp_path
+    ):
+        """The window of the precomputed watershed of the point, 80 km across,
+        holds more than MAX_WINDOW_CELLS cells of the rasters: 422."""
+        point = transform_wgs84_to_pl1992(52.23, 21.01)
+        x, y = point.x, point.y
+        transform = from_origin(x - 100.0, y + 100.0, 10.0, 10.0)
+        for name, values, nodata in (
+            ("dem_mosaic_03_flowdir.tif", np.zeros((20, 20), np.int16), 0),
+            ("dem_mosaic_01_dem.tif", np.full((20, 20), 100.0, np.float32), -9999.0),
+        ):
+            with rasterio.open(
+                tmp_path / name,
+                "w",
+                driver="GTiff",
+                height=20,
+                width=20,
+                count=1,
+                dtype=values.dtype,
+                crs="EPSG:2180",
+                transform=transform,
+                nodata=nodata,
+            ) as dst:
+                dst.write(values, 1)
+        settings = Settings(dem_dir=str(tmp_path), dem_path="")
+        extent = (x - 40_000.0, y - 40_000.0, x + 40_000.0, y + 40_000.0)
+
+        with (
+            patch(f"{_WS}.loaded_catchment_graph", return_value=_make_mock_cg()),
+            patch(f"{_WS}.catchments_bounds", return_value=extent),
+            patch("core.raster_service.get_settings", return_value=settings),
+        ):
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+                headers={"Accept-Language": "pl"},
+            )
+
+        assert response.status_code == 422
+        problem = response.json()
+        assert problem["code"] == "unsupported"
+        assert problem["details"]["reason"] == "window_too_large"
+        assert problem["details"]["max_cells"] == MAX_WINDOW_CELLS
+        assert problem["detail"].startswith("Zlewnia tego punktu jest za duża")
+
+
+class TestDelineateWatershedPreview:
+    """Tests for POST /api/delineate-watershed/preview.
+
+    The preview must show the sub-catchments the delineation merges: same
+    threshold floor, clicked sub-catchment and cascade, then one geometry
+    request for the merged set in BFS order with depths.
+    """
+
+    _URL = "/api/delineate-watershed/preview"
+    _LEVELS = {"type": "FeatureCollection", "features": []}
+
+    def _post(self, client, cg, threshold_m2=10000, escalation=None):
+        """POST a preview with the graph, cascade and geometry query mocked."""
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch(f"{_WS}.loaded_catchment_graph", return_value=cg))
+            stack.enter_context(
+                patch(f"{_WS}.cascade_escalate", return_value=escalation)
+            )
+            levels = stack.enter_context(
+                patch(
+                    f"{_WS}.get_catchment_levels_feature_collection",
+                    return_value=self._LEVELS,
+                )
+            )
+            response = client.post(
+                self._URL,
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": threshold_m2,
+                },
+            )
+        return response, levels
+
+    def test_levels_of_the_clicked_subcatchment(self, client):
+        """Without cascade the preview starts at the clicked sub-catchment."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12, 10, 11], [0, 1, 1])
+
+        response, levels = self._post(client, cg)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threshold_m2"] == 10000
+        assert data["segment_count"] == 3
+        assert data["catchments"] == self._LEVELS
+        cg.upstream_segments_by_depth.assert_called_once_with(0)
+        segment_idxs, depths, threshold = levels.call_args[0][:3]
+        assert (segment_idxs, depths, threshold) == ([12, 10, 11], [0, 1, 1], 10000)
+
+    def test_cascade_previews_the_merged_threshold(self, client):
+        """After a cascade the preview shows the coarser sub-catchments merged."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([6, 5], [0, 1])
+        escalation = ([5, 6], 100000, np.array([7, 8]), 7, {"area_km2": 12.0}, 12.0)
+
+        response, levels = self._post(client, cg, escalation=escalation)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threshold_m2"] == 100000
+        assert data["segment_count"] == 2
+        cg.upstream_segments_by_depth.assert_called_once_with(7)
+        assert levels.call_args[0][2] == 100000
+
+    def test_threshold_below_floor_uses_default(self, client):
+        """Thresholds below the default floor select at the default, as delineation."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12], [0])
+
+        response, _ = self._post(client, cg, threshold_m2=1000)
+
+        assert response.status_code == 200
+        assert response.json()["threshold_m2"] == DEFAULT_THRESHOLD_M2
+        assert cg.find_catchment_at_point.call_args[0][2] == DEFAULT_THRESHOLD_M2
+
+    def test_caps_subcatchments_nearest_outlet(self, client):
+        """Above the cap only the sub-catchments nearest the outlet are drawn."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12, 10, 11], [0, 1, 2])
+
+        with patch(f"{_WS}._PREVIEW_MAX_CATCHMENTS", 2):
+            response, levels = self._post(client, cg)
+
+        assert response.status_code == 200
+        assert response.json()["segment_count"] == 3
+        segment_idxs, depths = levels.call_args[0][:2]
+        assert (segment_idxs, depths) == ([12, 10], [0, 1])
+
+    def test_missing_threshold_returns_400(self, client):
+        """Precise mode (no threshold) has no preview."""
+        response = client.post(self._URL, json={"latitude": 52.23, "longitude": 21.01})
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/threshold_m2"]
+
+    def test_no_subcatchment_returns_404(self, client):
+        """A point outside the sub-catchments fails like the delineation."""
+        cg = _make_mock_cg()
+        cg.find_catchment_at_point.side_effect = ValueError(
+            "Nie znaleziono zlewni cząstkowej"
+        )
+
+        response, levels = self._post(client, cg)
+
+        assert response.status_code == 404
+        assert response.headers["content-type"] == "application/problem+json"
+        problem = response.json()
+        assert problem["code"] == "not_found"
+        assert problem["details"]["reason"] == "no_catchment_at_point"
+        levels.assert_not_called()
+
+    def test_graph_not_loaded_returns_503(self, client):
+        """No catchment graph (empty tables or a failed load) returns 503."""
+        response, _ = self._post(client, None)
+
+        assert response.status_code == 503
+        assert response.json()["code"] == "store_unavailable"

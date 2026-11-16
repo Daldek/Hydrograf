@@ -5,6 +5,8 @@ All functions operate on numpy arrays representing raster grids.
 """
 
 import logging
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 
@@ -54,6 +56,47 @@ def _compute_gradients(
     return dx, dy
 
 
+def gradient_strips(
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
+    strip_rows: int = 512,
+) -> Iterator[tuple[slice, np.ndarray, np.ndarray]]:
+    """
+    Yield the Sobel gradients of the DEM strip by strip.
+
+    Each strip of ``strip_rows`` rows (the last one may be shorter) is computed
+    with the row of the DEM above it and the one below it, which the 3 x 3 Sobel
+    kernel reads, so its gradients equal those rows of _compute_gradients over the
+    whole DEM bit for bit, with the memory of one strip.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    cellsize : float
+        Cell size in meters
+    nodata : float
+        NoData value
+    strip_rows : int
+        Rows of a strip (at least 1)
+
+    Yields
+    ------
+    tuple[slice, np.ndarray, np.ndarray]
+        The rows of the strip and its gradients (dx, dy)
+    """
+    if strip_rows < 1:
+        raise ValueError(f"strip_rows must be at least 1, not {strip_rows}")
+    nrows = dem.shape[0]
+    for start in range(0, nrows, strip_rows):
+        stop = min(start + strip_rows, nrows)
+        top = max(start - 1, 0)
+        dx, dy = _compute_gradients(dem[top : min(stop + 1, nrows)], cellsize, nodata)
+        inner = slice(start - top, stop - top)
+        yield slice(start, stop), dx[inner], dy[inner]
+
+
 def compute_slope_from_gradients(
     dx: np.ndarray,
     dy: np.ndarray,
@@ -74,7 +117,7 @@ def compute_slope_from_gradients(
         Slope array in percent
     """
     slope = np.sqrt(dx**2 + dy**2) * 100
-    return np.nan_to_num(slope, nan=0.0)
+    return np.asarray(np.nan_to_num(slope, nan=0.0))
 
 
 def compute_aspect_from_gradients(
@@ -107,185 +150,30 @@ def compute_aspect_from_gradients(
     aspect_deg[flat_mask] = -1.0
     aspect_deg = np.nan_to_num(aspect_deg, nan=-1.0)
 
-    return aspect_deg
-
-
-def compute_slope(
-    dem: np.ndarray,
-    cellsize: float,
-    nodata: float,
-) -> np.ndarray:
-    """
-    Compute slope in percent.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        DEM array
-    cellsize : float
-        Cell size in meters
-    nodata : float
-        NoData value
-
-    Returns
-    -------
-    np.ndarray
-        Slope array in percent
-    """
-    logger.info("Computing slope...")
-    dx, dy = _compute_gradients(dem, cellsize, nodata)
-    slope = compute_slope_from_gradients(dx, dy)
-    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
-    return slope
-
-
-def compute_aspect(
-    dem: np.ndarray,
-    cellsize: float,
-    nodata: float,
-) -> np.ndarray:
-    """
-    Compute aspect (slope direction) in degrees.
-
-    Convention: 0=North, 90=East, 180=South, 270=West
-    (clockwise from North). Flat areas get value -1.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        DEM array
-    cellsize : float
-        Cell size in meters
-    nodata : float
-        NoData value
-
-    Returns
-    -------
-    np.ndarray
-        Aspect array in degrees (0-360, -1 for flat areas)
-    """
-    logger.info("Computing aspect...")
-    dx, dy = _compute_gradients(dem, cellsize, nodata)
-    aspect_deg = compute_aspect_from_gradients(dx, dy)
-
-    valid = aspect_deg[aspect_deg >= 0]
-    if len(valid) > 0:
-        logger.info(f"Aspect computed (range: {valid.min():.1f}° - {valid.max():.1f}°)")
-    else:
-        logger.info("Aspect computed (all flat)")
-
-    return aspect_deg
-
-
-def compute_strahler_order(
-    dem: np.ndarray,
-    metadata: dict,
-    stream_threshold: int = 1000,
-) -> np.ndarray:
-    """
-    Compute Strahler stream order using pyflwdir.
-
-    .. deprecated::
-        Use ``compute_strahler_from_fdir()`` instead — it reuses
-        pre-computed fdir/acc from the main pipeline, avoiding
-        inconsistency between Strahler and vectorized streams.
-
-    Uses pyflwdir's FlwdirRaster.stream_order() method.
-    Only stream cells (flow_accumulation >= threshold) get an order.
-    Non-stream cells have order 0 (nodata).
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        Filled DEM array
-    metadata : dict
-        Grid metadata with transform or xllcorner/yllcorner/cellsize, nodata_value
-    stream_threshold : int
-        Flow accumulation threshold for stream identification
-
-    Returns
-    -------
-    np.ndarray
-        Strahler stream order array (uint8, nodata=0)
-    """
-    import pyflwdir
-    from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
-
-    from core.hydrology import fill_internal_nodata_holes
-
-    logger.info("Computing Strahler stream order via pyflwdir...")
-
-    nodata = metadata["nodata_value"]
-
-    # Patch internal nodata holes (same as main pipeline)
-    dem_patched, _ = fill_internal_nodata_holes(dem, nodata)
-
-    # Depression filling + D8 flow direction
-    _filled, d8_fdir = pyflwdir_fill_depressions(
-        dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
-    )
-
-    # Build transform
-    transform = metadata.get("transform")
-    if transform is None:
-        from rasterio.transform import from_bounds
-
-        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-        nrows, ncols = dem.shape
-        cs = metadata["cellsize"]
-        transform = from_bounds(
-            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-        )
-
-    # Build FlwdirRaster
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
-
-    # Compute upstream area for mask
-    acc_float = flw.upstream_area(unit="cell")
-    acc = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
-
-    # Stream mask
-    stream_mask = acc >= stream_threshold
-
-    # Compute Strahler order
-    strahler = flw.stream_order(type="strahler", mask=stream_mask)
-    strahler = strahler.astype(np.uint8)
-
-    # Non-stream cells → 0 (nodata)
-    strahler[~stream_mask] = 0
-
-    max_order = int(strahler.max()) if np.any(strahler > 0) else 0
-    stream_count = int(np.sum(strahler > 0))
-    logger.info(
-        f"Strahler order computed (max order: {max_order}, "
-        f"stream cells: {stream_count:,})"
-    )
-
-    return strahler
+    return np.asarray(aspect_deg)
 
 
 def compute_strahler_from_fdir(
-    d8_fdir: np.ndarray,
+    flw: Any,
     acc: np.ndarray,
-    metadata: dict,
     stream_threshold: int,
 ) -> np.ndarray:
     """
-    Compute Strahler stream order using pre-computed fdir and acc.
+    Compute Strahler stream order using pre-computed flow directions and acc.
 
-    Unlike ``compute_strahler_order()``, this function does NOT recompute
-    hydrology from scratch. It reuses the same ``d8_fdir`` and ``acc``
-    produced by ``process_hydrology_pyflwdir()``, ensuring that Strahler
-    orders are consistent with the vectorized stream network.
+    It does not recompute the hydrology: it reuses the FlwdirRaster and ``acc``
+    produced by ``process_hydrology_pyflwdir()``, so that Strahler orders are
+    consistent with the vectorized stream network. The orders come from
+    pyflwdir.streams.strahler_order, not from FlwdirRaster.stream_order: that
+    one caches the orders of its first call and ignores the mask of the next
+    one, so the thresholds of a run could not share the FlwdirRaster.
 
     Parameters
     ----------
-    d8_fdir : np.ndarray
-        Original pyflwdir D8 flow direction (uint8, nodata=247, pit=0)
+    flw : pyflwdir.FlwdirRaster
+        Flow directions of the run (process_hydrology_pyflwdir)
     acc : np.ndarray
-        Flow accumulation from the main pipeline (after fix_internal_sinks)
-    metadata : dict
-        Grid metadata with transform or xllcorner/yllcorner/cellsize
+        Flow accumulation from the main pipeline (process_hydrology_pyflwdir)
     stream_threshold : int
         Flow accumulation threshold (in cells) for stream identification
 
@@ -294,25 +182,14 @@ def compute_strahler_from_fdir(
     np.ndarray
         Strahler stream order array (uint8, nodata=0)
     """
-    import pyflwdir
+    from pyflwdir import streams
 
     logger.info("Computing Strahler stream order (from pre-computed fdir)...")
 
-    transform = metadata.get("transform")
-    if transform is None:
-        from rasterio.transform import from_bounds
-
-        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-        nrows, ncols = d8_fdir.shape
-        cs = metadata["cellsize"]
-        transform = from_bounds(
-            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-        )
-
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
-
     stream_mask = acc >= stream_threshold
-    strahler = flw.stream_order(type="strahler", mask=stream_mask).astype(np.uint8)
+    strahler = streams.strahler_order(
+        flw.idxs_ds, flw.idxs_seq, mask=stream_mask.ravel()
+    ).reshape(acc.shape)
     strahler[~stream_mask] = 0
 
     max_order = int(strahler.max()) if np.any(strahler > 0) else 0
@@ -322,7 +199,7 @@ def compute_strahler_from_fdir(
         f"stream cells: {stream_count:,})"
     )
 
-    return strahler
+    return np.asarray(strahler)
 
 
 def compute_twi(
@@ -356,10 +233,9 @@ def compute_twi(
     Returns
     -------
     np.ndarray
-        TWI array (float32, nodata=-9999)
+        TWI array (float32, nodata=-9999); cell by cell, so the rows of a strip
+        of ``acc`` and ``slope`` give those rows of the TWI
     """
-    logger.info("Computing TWI (Topographic Wetness Index)...")
-
     cell_area = cellsize * cellsize
 
     # Upstream area in m2 and specific catchment area (SCA)
@@ -378,9 +254,5 @@ def compute_twi(
     twi_result[valid_mask] = np.log(sca[valid_mask] / tan_slope[valid_mask]).astype(
         np.float32
     )
-
-    valid = twi_result[twi_result > -9999]
-    if len(valid) > 0:
-        logger.info(f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})")
 
     return twi_result

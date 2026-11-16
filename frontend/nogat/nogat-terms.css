@@ -1,0 +1,114 @@
+/*
+ * Nogat GUI kit: the terms page nogat-terms.html (DEV-15.7). Tokens of design/tokens.css with
+ * light fallbacks, so the page reads even without them. Copy byte for byte (DEV-15.6).
+ */
+
+body {
+  margin: 0;
+  background: var(--bg, #faf8f8);
+  color: var(--text, #2b2b2b);
+  font: var(--weight-regular, 400) var(--text-site, 16px) / 1.55 var(--font-sans, system-ui, sans-serif);
+}
+
+.nogat-terms {
+  box-sizing: border-box;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-8, 32px) var(--space-4, 16px) var(--space-6, 24px);
+}
+
+.nogat-terms h1,
+.nogat-terms h2,
+.nogat-terms h3 {
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.nogat-terms h1 {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: var(--text-2xl, 28px);
+}
+
+.nogat-terms h2 {
+  margin: var(--space-8, 32px) 0 var(--space-3, 12px);
+  padding-top: var(--space-4, 16px);
+  border-top: 1px solid var(--line, #e5e5e5);
+  font-size: var(--text-xl, 22px);
+}
+
+.nogat-terms h3 {
+  margin: var(--space-6, 24px) 0 var(--space-2, 8px);
+  font-size: var(--text-lg, 18px);
+}
+
+.nogat-terms h1 + p {
+  color: var(--text-3, #6b6565);
+}
+
+.nogat-terms ol,
+.nogat-terms ul {
+  padding-left: var(--space-6, 24px);
+}
+
+.nogat-terms li + li {
+  margin-top: var(--space-2, 8px);
+}
+
+.nogat-terms blockquote {
+  margin: var(--space-3, 12px) 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border-left: 3px solid var(--accent, #284b63);
+  border-radius: 0 var(--radius-md, 8px) var(--radius-md, 8px) 0;
+  background: var(--surface-2, #f4f1f1);
+}
+
+.nogat-terms blockquote p {
+  margin: 0;
+}
+
+.nogat-terms blockquote p + p {
+  margin-top: var(--space-2, 8px);
+}
+
+.nogat-terms a,
+.nogat-terms-footer a {
+  color: var(--accent, #284b63);
+  overflow-wrap: anywhere;
+}
+
+.nogat-terms a:hover,
+.nogat-terms-footer a:hover {
+  color: var(--accent-hover, #1a3a50);
+}
+
+.nogat-terms a:focus-visible,
+.nogat-terms-footer a:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+.nogat-terms code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+
+.nogat-terms-footer {
+  box-sizing: border-box;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-4, 16px) var(--space-4, 16px) var(--space-8, 32px);
+  border-top: 1px solid var(--line, #e5e5e5);
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+}
+
+@media print {
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .nogat-terms-footer {
+    display: none;
+  }
+}

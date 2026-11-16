@@ -1,24 +1,35 @@
-"""
-Bulk database operations using PostgreSQL COPY for
-stream_network and stream_catchments tables.
+"""Bulk database operations using PostgreSQL COPY.
 
-Provides high-performance bulk INSERT via temp tables and COPY FROM.
+Covers the stream_network and stream_catchments tables. Provides
+high-performance bulk INSERT via temp tables and COPY FROM.
 """
 
 import io
 import json
 import logging
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def override_statement_timeout(db_session, timeout_s: int = 0):
+def override_statement_timeout(
+    db_session: Session, timeout_s: int = 0, *, local: bool = False
+) -> Iterator[None]:
     """
     Context manager to override PostgreSQL statement_timeout.
 
-    Uses session-level SET (not LOCAL) because LOCAL resets on commit.
+    Uses session-level SET (not LOCAL) because LOCAL resets on commit; the SET
+    and its restore are committed. With ``local=True`` it is ``SET LOCAL``
+    instead: the timeout holds inside the open transaction only and nothing is
+    committed here, so the block can be part of one all-or-nothing transaction.
+    (After a failed statement the restore is skipped; the caller's rollback
+    drops the setting anyway.)
 
     Parameters
     ----------
@@ -26,6 +37,8 @@ def override_statement_timeout(db_session, timeout_s: int = 0):
         SQLAlchemy database session
     timeout_s : int
         Timeout in seconds (0 = no limit)
+    local : bool
+        ``SET LOCAL`` and no commit (default: session-level SET, committed)
     """
     # SECURITY: SET doesn't support parameterized queries in PostgreSQL,
     # so we validate timeout_s is a non-negative integer before interpolation.
@@ -33,31 +46,36 @@ def override_statement_timeout(db_session, timeout_s: int = 0):
         raise ValueError(f"timeout_s must be a non-negative integer, got {timeout_s}")
 
     raw_conn = db_session.connection().connection
-    cursor = raw_conn.cursor()
+    cursor: Any = raw_conn.cursor()
+    scope = "SET LOCAL" if local else "SET"
 
     # Save current timeout
     cursor.execute("SHOW statement_timeout")
     original_timeout = cursor.fetchone()[0]
 
-    # Set new timeout (session-level, survives commits)
-    cursor.execute(f"SET statement_timeout = '{timeout_s}s'")
-    raw_conn.commit()
+    # Set new timeout (session-level, survives commits; local: this transaction)
+    cursor.execute(f"{scope} statement_timeout = '{timeout_s}s'")
+    if not local:
+        raw_conn.commit()
 
     try:
         yield
     finally:
         # Restore original timeout (connection may already be closed)
         try:
-            cursor.execute(f"SET statement_timeout = '{original_timeout}'")
-            raw_conn.commit()
+            cursor.execute(f"{scope} statement_timeout = '{original_timeout}'")
+            if not local:
+                raw_conn.commit()
         except Exception:
             pass
 
 
 def insert_stream_segments(
-    db_session,
-    segments: list[dict],
+    db_session: Session,
+    segments: list[dict[str, Any]],
     threshold_m2: int = 1000,
+    *,
+    commit: bool = True,
 ) -> int:
     """
     Insert vectorized stream segments into stream_network table.
@@ -72,6 +90,10 @@ def insert_stream_segments(
         List of segment dicts from vectorize_streams()
     threshold_m2 : int
         Flow accumulation threshold in m² used to generate these segments
+    commit : bool
+        Commit the insert (default). ``False`` leaves the transaction open for
+        the caller to commit or roll back, with the timeout set ``SET LOCAL``:
+        the insert then belongs to the caller's all-or-nothing transaction.
 
     Returns
     -------
@@ -87,9 +109,9 @@ def insert_stream_segments(
         f"(threshold={threshold_m2} m²) into stream_network..."
     )
 
-    with override_statement_timeout(db_session, timeout_s=600):
+    with override_statement_timeout(db_session, timeout_s=600, local=not commit):
         raw_conn = db_session.connection().connection
-        cursor = raw_conn.cursor()
+        cursor: Any = raw_conn.cursor()
 
         # Create temp table (drop first in case of multi-threshold re-use)
         cursor.execute("DROP TABLE IF EXISTS temp_stream_import")
@@ -126,7 +148,10 @@ def insert_stream_segments(
             tsv_buffer,
         )
 
-        # Insert with geometry construction (skip geohash duplicates)
+        # Insert with geometry construction + Chaikin smoothing.
+        # ST_ChaikinSmoothing(geom, 3) with preserve_end_points=true (default)
+        # smooths pixel staircase while keeping junction endpoints fixed
+        # → network topology preserved.  length_m recomputed from smoothed geom.
         cursor.execute("""
             INSERT INTO stream_network (
                 geom, strahler_order, length_m,
@@ -134,16 +159,23 @@ def insert_stream_segments(
                 threshold_m2, segment_idx
             )
             SELECT
-                ST_SetSRID(ST_GeomFromText(wkt), 2180),
-                strahler_order, length_m,
+                smoothed, strahler_order,
+                ST_Length(smoothed),
                 upstream_area_km2, mean_slope_percent, source,
                 threshold_m2, segment_idx
-            FROM temp_stream_import
+            FROM (
+                SELECT *,
+                    ST_ChaikinSmoothing(
+                        ST_SetSRID(ST_GeomFromText(wkt), 2180), 3
+                    ) AS smoothed
+                FROM temp_stream_import
+            ) sub
             ON CONFLICT DO NOTHING
         """)
 
-        total = cursor.rowcount
-        raw_conn.commit()
+        total: int = cursor.rowcount
+        if commit:
+            raw_conn.commit()
         logger.info(f"  Inserted {total} stream segments")
 
     if total < len(segments):
@@ -156,9 +188,11 @@ def insert_stream_segments(
 
 
 def insert_catchments(
-    db_session,
-    catchments: list[dict],
+    db_session: Session,
+    catchments: list[dict[str, Any]],
     threshold_m2: int,
+    *,
+    commit: bool = True,
 ) -> int:
     """
     Insert sub-catchment polygons into stream_catchments table.
@@ -173,6 +207,11 @@ def insert_catchments(
         List of catchment dicts from polygonize_subcatchments()
     threshold_m2 : int
         Flow accumulation threshold in m²
+    commit : bool
+        Commit the insert and the clean-up (default). ``False`` leaves the
+        transaction open for the caller to commit or roll back, with the timeout
+        set ``SET LOCAL``: the work then belongs to the caller's all-or-nothing
+        transaction.
 
     Returns
     -------
@@ -188,9 +227,9 @@ def insert_catchments(
         f"(threshold={threshold_m2} m²) into stream_catchments..."
     )
 
-    with override_statement_timeout(db_session, timeout_s=600):
+    with override_statement_timeout(db_session, timeout_s=600, local=not commit):
         raw_conn = db_session.connection().connection
-        cursor = raw_conn.cursor()
+        cursor: Any = raw_conn.cursor()
 
         # Create temp table (drop first in case of multi-threshold re-use)
         cursor.execute("DROP TABLE IF EXISTS temp_catchments_import")
@@ -208,12 +247,21 @@ def insert_catchments(
                 elevation_max_m FLOAT,
                 perimeter_km FLOAT,
                 stream_length_km FLOAT,
-                elev_histogram JSONB
+                hydraulic_length_km FLOAT,
+                elev_histogram JSONB,
+                max_flow_dist_m FLOAT,
+                longest_flow_path_wkt TEXT,
+                divide_flow_path_wkt TEXT,
+                outlet_flow_dist_m FLOAT,
+                flow_path_head_elev_m FLOAT,
+                overland_length_m FLOAT,
+                overland_drop_m FLOAT,
+                stream_head_elev_m FLOAT
             )
         """)
 
         # Build TSV
-        def _tsv_val(v):
+        def _tsv_val(v: object) -> str:
             return "" if v is None else str(v)
 
         tsv_buffer = io.StringIO()
@@ -231,7 +279,16 @@ def insert_catchments(
                 f"{_tsv_val(cat.get('elevation_max_m'))}\t"
                 f"{_tsv_val(cat.get('perimeter_km'))}\t"
                 f"{_tsv_val(cat.get('stream_length_km'))}\t"
-                f"{hist_str}\n"
+                f"{_tsv_val(cat.get('hydraulic_length_km'))}\t"
+                f"{hist_str}\t"
+                f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
+                f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\t"
+                f"{_tsv_val(cat.get('divide_flow_path_wkt'))}\t"
+                f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\t"
+                f"{_tsv_val(cat.get('flow_path_head_elev_m'))}\t"
+                f"{_tsv_val(cat.get('overland_length_m'))}\t"
+                f"{_tsv_val(cat.get('overland_drop_m'))}\t"
+                f"{_tsv_val(cat.get('stream_head_elev_m'))}\n"
             )
 
         tsv_buffer.seek(0)
@@ -249,7 +306,12 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram,
+                max_flow_dist_m, longest_flow_path_geom,
+                divide_flow_path_geom, outlet_flow_dist_m,
+                flow_path_head_elev_m, overland_length_m,
+                overland_drop_m, stream_head_elev_m
             )
             SELECT
                 ST_SetSRID(ST_GeomFromText(wkt), 2180),
@@ -257,12 +319,28 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram,
+                max_flow_dist_m,
+                CASE WHEN longest_flow_path_wkt IS NOT NULL
+                          AND longest_flow_path_wkt != ''
+                    THEN ST_SetSRID(ST_GeomFromText(longest_flow_path_wkt), 2180)
+                    ELSE NULL
+                END,
+                CASE WHEN divide_flow_path_wkt IS NOT NULL
+                          AND divide_flow_path_wkt != ''
+                    THEN ST_SetSRID(ST_GeomFromText(divide_flow_path_wkt), 2180)
+                    ELSE NULL
+                END,
+                outlet_flow_dist_m,
+                flow_path_head_elev_m, overland_length_m,
+                overland_drop_m, stream_head_elev_m
             FROM temp_catchments_import
         """)
 
-        total = cursor.rowcount
-        raw_conn.commit()
+        total: int = cursor.rowcount
+        if commit:
+            raw_conn.commit()
         logger.info(f"  Inserted {total} sub-catchments")
 
         # Clean up micro-fragments from raster polygonization.
@@ -285,8 +363,340 @@ def insert_catchments(
             (_min_part_area, threshold_m2),
         )
         cleaned = cursor.rowcount
-        raw_conn.commit()
+        if commit:
+            raw_conn.commit()
         if cleaned:
             logger.info(f"  Cleaned {cleaned} multi-part geometries")
 
     return total
+
+
+# ---------------------------------------------------------------------------
+# BDOT10k stream import & matching
+# ---------------------------------------------------------------------------
+
+VALID_BDOT_LINE_TYPES = {"SWRS", "SWKN", "SWRM"}
+
+
+def _text_or_none(value: Any) -> str | None:
+    """Turn a GeoDataFrame cell into a clean text value.
+
+    Parameters
+    ----------
+    value : Any
+        Cell value; missing text may be ``None``, ``NaN`` or ``pd.NA``
+        depending on the pandas string dtype.
+
+    Returns
+    -------
+    str or None
+        The stripped text, or ``None`` when the value is missing or blank.
+    """
+    import pandas as pd
+
+    if value is None or (pd.api.types.is_scalar(value) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def load_bdot_streams_from_gpkg(gpkg_path: str | Path) -> list[dict[str, Any]]:
+    """Load BDOT10k linear hydro features from merged GeoPackage.
+
+    Reads OT_SWRS_L, OT_SWKN_L, OT_SWRM_L layers.
+    Reprojects to EPSG:2180 if needed. Decomposes MultiLineString.
+
+    Returns list of dicts ready for insert_bdot_streams().
+    """
+    from pathlib import Path
+
+    import fiona
+    import geopandas as gpd
+    from shapely.geometry import LineString, MultiLineString
+
+    gpkg_path = Path(gpkg_path)
+    if not gpkg_path.exists():
+        logger.warning(f"BDOT GPKG not found: {gpkg_path}")
+        return []
+
+    LAYER_MAP = {
+        "OT_SWRS_L": "SWRS",
+        "OT_SWKN_L": "SWKN",
+        "OT_SWRM_L": "SWRM",
+    }
+    available = set(fiona.listlayers(str(gpkg_path)))
+    results = []
+
+    for layer_name, layer_type in LAYER_MAP.items():
+        if layer_name not in available:
+            continue
+        gdf = gpd.read_file(str(gpkg_path), layer=layer_name)
+        if gdf.crs and gdf.crs.to_epsg() != 2180:
+            gdf = gdf.to_crs(epsg=2180)
+
+        for _, row in gdf.iterrows():
+            geom = row.geometry
+            if geom is None or geom.is_empty:
+                continue
+            name = None
+            for col in ("NAZWA", "nazwa", "Name", "name"):
+                if col in row.index:
+                    name = _text_or_none(row[col])
+                    if name is not None:
+                        break
+
+            lines = []
+            if isinstance(geom, MultiLineString):
+                lines = list(geom.geoms)
+            elif isinstance(geom, LineString):
+                lines = [geom]
+
+            for line in lines:
+                if line.length < 1.0:
+                    continue
+                results.append(
+                    {
+                        "geom_wkt": line.wkt,
+                        "layer_type": layer_type,
+                        "name": name,
+                        "length_m": round(line.length, 1),
+                    }
+                )
+
+    logger.info(f"Loaded {len(results)} BDOT stream features from {gpkg_path.name}")
+    return results
+
+
+def insert_bdot_streams(db_session: Session, streams: list[dict[str, Any]]) -> int:
+    """Insert BDOT10k linear hydro features into bdot_streams table.
+
+    Full replace on each run (DELETE + INSERT).
+
+    Returns number of inserted rows.
+    """
+    valid = [s for s in streams if s.get("layer_type") in VALID_BDOT_LINE_TYPES]
+    if not valid:
+        return 0
+
+    raw_conn = db_session.connection().connection
+    cursor: Any = raw_conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM bdot_streams")
+        cursor.execute("DROP TABLE IF EXISTS temp_bdot_import")
+        cursor.execute("""
+            CREATE TEMP TABLE temp_bdot_import (
+                wkt TEXT,
+                layer_type VARCHAR(10),
+                name VARCHAR(200),
+                length_m DOUBLE PRECISION
+            )
+        """)
+
+        buf = io.StringIO()
+        for s in valid:
+            name = (s.get("name") or "").replace("\t", " ").replace("\n", " ")
+            buf.write(
+                f"{s['geom_wkt']}\t{s['layer_type']}\t{name}\t{s.get('length_m', 0)}\n"
+            )
+        buf.seek(0)
+        cursor.copy_expert(
+            "COPY temp_bdot_import (wkt, layer_type, name, length_m) "
+            "FROM STDIN WITH (FORMAT text)",
+            buf,
+        )
+
+        cursor.execute("""
+            INSERT INTO bdot_streams (geom, layer_type, name, length_m)
+            SELECT
+                ST_SetSRID(ST_GeomFromText(wkt), 2180),
+                layer_type,
+                NULLIF(name, ''),
+                length_m
+            FROM temp_bdot_import
+        """)
+        count: int = cursor.rowcount
+        raw_conn.commit()
+        logger.info(f"Inserted {count} BDOT streams into database")
+        return count
+    except Exception:
+        raw_conn.rollback()
+        raise
+
+
+BDOT_BUFFER_M = 25.0  # 5 * cellsize (5m DEM), accounts for bends/meanders
+OVERLAP_THRESHOLD = 0.5
+
+
+def update_stream_real_flags(
+    db_session: Session,
+    threshold_m2: int,
+    buffer_m: float = BDOT_BUFFER_M,
+    overlap_threshold: float = OVERLAP_THRESHOLD,
+    *,
+    _bdot_buffer_ready: bool = False,
+) -> dict[str, int]:
+    """Mark stream_network segments as real/overland based on BDOT overlap.
+
+    Uses per-feature BDOT buffers with spatial join for efficient GIST-indexed
+    matching.  Per-buffer ST_Intersection avoids expensive polygon ST_Union
+    (distributive law: A∩(B∪C) = (A∩B)∪(A∩C)).
+
+    is_real_stream = true if overlap_ratio >= threshold, false otherwise.
+
+    Parameters
+    ----------
+    _bdot_buffer_ready : bool
+        If True, assumes temp_bdot_buffer already exists (skip creation).
+        Used by update_stream_real_flags_all to avoid recreating per threshold.
+
+    Returns dict with total/real/overland counts.
+    """
+    with override_statement_timeout(db_session, timeout_s=600):
+        raw_conn = db_session.connection().connection
+        cursor: Any = raw_conn.cursor()
+
+        try:
+            # Step 1: Check if bdot_streams has data
+            if not _bdot_buffer_ready:
+                cursor.execute("SELECT COUNT(*) FROM bdot_streams")
+                bdot_count = cursor.fetchone()[0]
+                if bdot_count == 0:
+                    logger.warning(
+                        "No BDOT streams in database — marking all as overland"
+                    )
+                    cursor.execute(
+                        "UPDATE stream_network SET is_real_stream = false "
+                        "WHERE threshold_m2 = %s",
+                        (threshold_m2,),
+                    )
+                    raw_conn.commit()
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
+                        (threshold_m2,),
+                    )
+                    total = cursor.fetchone()[0]
+                    return {"total": total, "real": 0, "overland": total}
+
+                # Step 2: Materialize per-feature BDOT buffers (GIST-indexable)
+                cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
+                cursor.execute(
+                    "CREATE TEMP TABLE temp_bdot_buffer AS "
+                    "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
+                    (buffer_m,),
+                )
+                cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+
+            # Fresh statistics first: right after the segments of a threshold
+            # are inserted the planner estimates one row for it and runs the
+            # aggregate below once per segment (minutes for long segments).
+            cursor.execute("ANALYZE stream_network")
+
+            # Step 3: Spatial join with per-buffer intersection to avoid
+            # expensive ST_Union of overlapping polygons.
+            # Distributive law: A ∩ (B∪C) = (A∩B) ∪ (A∩C) — same result,
+            # but ST_Union of line fragments is O(n) vs ST_Union of polygons O(n²).
+            # ST_Within check handles short segments (< ~30m) where GEOS
+            # ST_Intersection incorrectly returns EMPTY despite full containment.
+            cursor.execute(
+                """
+                UPDATE stream_network sn
+                SET is_real_stream = sub.is_real
+                FROM (
+                    SELECT
+                        sn2.segment_idx,
+                        (CASE
+                            WHEN bool_or(ST_Within(sn2.geom, bb.geom)) THEN 1.0
+                            ELSE COALESCE(
+                                ST_Length(ST_Union(ST_Intersection(sn2.geom, bb.geom)))
+                                / NULLIF(ST_Length(sn2.geom), 0),
+                                0
+                            )
+                        END >= %s) AS is_real
+                    FROM stream_network sn2
+                    LEFT JOIN temp_bdot_buffer bb
+                        ON ST_Intersects(sn2.geom, bb.geom)
+                    WHERE sn2.threshold_m2 = %s
+                    GROUP BY sn2.segment_idx, sn2.geom
+                ) sub
+                WHERE sn.threshold_m2 = %s
+                  AND sn.segment_idx = sub.segment_idx
+            """,
+                (overlap_threshold, threshold_m2, threshold_m2),
+            )
+
+            raw_conn.commit()
+
+            # Count results
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE is_real_stream = true) AS real,
+                    COUNT(*) FILTER (WHERE is_real_stream = false) AS overland
+                FROM stream_network
+                WHERE threshold_m2 = %s
+            """,
+                (threshold_m2,),
+            )
+            row = cursor.fetchone()
+            return {"total": row[0], "real": row[1], "overland": row[2]}
+
+        except Exception:
+            raw_conn.rollback()
+            raise
+
+
+def update_stream_real_flags_all(
+    db_session: Session,
+    threshold_list: Sequence[int],
+    buffer_m: float = BDOT_BUFFER_M,
+    overlap_threshold: float = OVERLAP_THRESHOLD,
+) -> dict[int, dict[str, int]]:
+    """Run BDOT stream matching for several thresholds with one temp buffer table.
+
+    Returns dict mapping threshold_m2 → {total, real, overland}.
+    """
+    with override_statement_timeout(db_session, timeout_s=600):
+        raw_conn = db_session.connection().connection
+        cursor: Any = raw_conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM bdot_streams")
+        bdot_count = cursor.fetchone()[0]
+        if bdot_count == 0:
+            logger.warning("No BDOT streams in database — marking all as overland")
+            results = {}
+            for threshold_m2 in threshold_list:
+                cursor.execute(
+                    "UPDATE stream_network SET is_real_stream = false "
+                    "WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                raw_conn.commit()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                total = cursor.fetchone()[0]
+                results[threshold_m2] = {"total": total, "real": 0, "overland": total}
+            return results
+
+        # Create temp buffer table once for all thresholds
+        cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
+        cursor.execute(
+            "CREATE TEMP TABLE temp_bdot_buffer AS "
+            "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
+            (buffer_m,),
+        )
+        cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+
+    results = {}
+    for threshold_m2 in threshold_list:
+        results[threshold_m2] = update_stream_real_flags(
+            db_session,
+            threshold_m2,
+            buffer_m=buffer_m,
+            overlap_threshold=overlap_threshold,
+            _bdot_buffer_ready=True,
+        )
+    return results

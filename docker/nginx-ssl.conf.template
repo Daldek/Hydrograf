@@ -6,21 +6,26 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    # Logging
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
+    # No log here (Nogat DEV-12.8, ECO-066; ADR-084): see nginx.conf. With TLS here
+    # nginx's peer is the client itself, which an error of a request, a failed TLS
+    # handshake included, would name at every level.
+    access_log off;
+    error_log /dev/null;
 
     # Gzip
     gzip on;
     gzip_types text/plain text/css application/json application/geo+json application/javascript text/xml application/xml application/x-protobuf;
 
-    # Rate limiting zones
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;
-    limit_req_zone $binary_remote_addr zone=admin_limit:1m rate=5r/s;
+    # No limit here: the API limits pages and routes per client address, which nginx
+    # tells it in X-Real-IP (api/traffic.py, DEV-15.9).
+
+    # Docker's DNS, asked again every 10 s, so that a rebuilt api container is
+    # followed without a reload: see nginx.conf.
+    resolver 127.0.0.11 valid=10s ipv6=off;
 
     upstream api_backend {
-        server api:8000;
+        zone api_backend 64k;
+        server api:8000 resolve;
     }
 
     # HTTP -> HTTPS redirect
@@ -44,45 +49,121 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
 
+        # nginx w kontenerze nie zna zewnetrznego portu z ewentualnego
+        # mapowania (np. jesli 443 jest przekierowywane z innego portu przez
+        # host/Dockera). Przy domyslnym absolute_redirect on przekierowania
+        # (np. redirect katalogowy /data -> /data/) budowalyby
+        # bezwzgledny URL z $host i portem nasluchu, gubiac faktyczny port
+        # klienta. Wzgledny Location dziala poprawnie zawsze, bo przegladarka
+        # doklei biezacy origin sama; nie dotyczy to redirectu http->https
+        # wyzej, ktory celowo zmienia schemat i musi byc bezwzgledny.
+        absolute_redirect off;
+
         # Security headers
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' https://*.tile.openstreetmap.org https://server.arcgisonline.com https://*.tile.opentopomap.org https://mapy.geoportal.gov.pl data:; font-src 'self' https://cdn.jsdelivr.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
         # Tile proxy
         location ^~ /api/tiles/ {
-            limit_req zone=tile_limit burst=200 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/tiles/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 15s;
         }
 
-        # Cache for static files
-        location ~* \.(css|js|png|ico|svg|pbf|geojson)$ {
+        # Admin panel (Nogat DEV-15.13, ADR-086): see nginx.conf. /admin answers 308; the
+        # page, its own files and /api/admin/ are the only admin paths, each answer
+        # no-store; add_header in these locations repeats the server's security headers.
+        location = /admin {
+            return 308 /admin/;
+        }
+        location = /admin/index.html {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
+        }
+        # CSP 'self' but the area map's GUGiK OSM tiles (a basemap, DEV-15.7); no-store
+        # comes with the API's answer
+        location ^~ /_site/admin/ {
+            internal;
+            alias /usr/share/nginx/html/admin/;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        }
+        location ~ ^/admin/.+\.(css|js)$ {
+            root /usr/share/nginx/html;
+            add_header Cache-Control "no-store" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        }
+
+        # Own code and styles. Pages reference them as `?v=<content hash>`
+        # (scripts/bump_asset_versions.py), so a changed file gets a new URL
+        # and bypasses browser and CDN caches regardless of this TTL.
+        location ~* \.(css|js|ico|svg)$ {
             root /usr/share/nginx/html;
             expires 1h;
             add_header Cache-Control "public, must-revalidate";
             add_header X-Content-Type-Options "nosniff" always;
         }
 
-        # Admin panel
-        location = /admin {
-            root /usr/share/nginx/html;
-            try_files /admin.html =404;
+        # HTML pages pass through the API, which limits and counts them (ADR-084):
+        # X-Accel-Redirect to the page's file under /_site/, the filled regulamin, or
+        # 429. While the API is down nginx sends the page's file itself.
+        location ~* \.html$ {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_read_timeout 30s;
+            error_page 502 504 = @page_file;
         }
 
-        # Admin API — stricter rate limiting
+        # The page files, always revalidated (ETag), so a deploy's new asset URLs
+        # reach the browser on the next load. `expires` instead of add_header keeps
+        # the server-level security headers inherited.
+        location ^~ /_site/ {
+            internal;
+            alias /usr/share/nginx/html/;
+            expires -1;
+        }
+        location @page_file {
+            root /usr/share/nginx/html;
+            expires -1;
+        }
+
+        # Pipeline-generated data (tiles, overlays, geojson) — no browser cache
+        # to avoid stale data after pipeline re-run
+        location ~* \.(pbf|geojson|mbtiles|pmtiles)$ {
+            root /usr/share/nginx/html;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+        location ^~ /data/ {
+            root /usr/share/nginx/html;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+        location ^~ /tiles/ {
+            root /usr/share/nginx/html;
+            expires -1;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+            add_header X-Content-Type-Options "nosniff" always;
+        }
+
+        # Admin API
         location /api/admin/ {
-            limit_req zone=admin_limit burst=10 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/admin/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
@@ -94,12 +175,10 @@ http {
         }
 
         # Admin SSE stream (longer timeout for bootstrap)
-        # NOTE: exact match bypasses admin_limit rate limiting intentionally
         location = /api/admin/bootstrap/stream {
             proxy_pass http://api_backend/api/admin/bootstrap/stream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
             proxy_buffering off;
@@ -107,12 +186,9 @@ http {
 
         # API proxy
         location /api/ {
-            limit_req zone=api_limit burst=20 nodelay;
-            limit_req_status 429;
             proxy_pass http://api_backend/api/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;

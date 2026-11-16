@@ -1,22 +1,25 @@
 """
-Land cover analysis for CN (Curve Number) calculation.
+Land cover of a watershed and its curve number (CN) for the SCS-CN method.
 
-Provides functions to calculate area-weighted CN from the land_cover table
-using spatial intersection with watershed boundary.
-
-The CN (Curve Number) is used in the SCS-CN method for estimating
-direct runoff from rainfall.
+The CN of a watershed is the area-weighted mean of the CN of its hydrologic
+soil-cover complexes (USDA-NRCS NEH 630, chapters 9 and 10; ADR-075): the pieces where
+a land cover row of ``land_cover`` lies on a soil group of ``soil_hsg``, intersected in
+PostGIS. The CN of a complex is the TR-55 value of Hydrolog for its cover and soil
+group (``core/cn_tables.py``).
 """
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
-from shapely.geometry import Polygon
+from hydrolog.runoff import calculate_weighted_cn
+from shapely.geometry import MultiPolygon, Polygon
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.constants import DEFAULT_CN  # re-exported for backwards compat
+from core.cn_tables import DEFAULT_HSG, HSG_GROUPS, complex_cn
+from core.constants import DEFAULT_CN
 
 logger = logging.getLogger(__name__)
 
@@ -34,250 +37,261 @@ VALID_CATEGORIES = frozenset(
     ]
 )
 
+# The land cover of Lutz's estimation of Nash's n and K (KZGW 2017, eq. 6.17): W is the
+# share of forest, U the share of urbanised land ("udział terenów zurbanizowanych";
+# Lutz 1984: "Bebauungsanteil"). Urbanised land is the built-up and the transport land
+# (BDOT10k PTZB, and PTKM with PTPL as `droga`), as the land register counts it (its
+# "grunty zabudowane i zurbanizowane" include roads and railways: Dz.U. 2021 poz. 1390,
+# § 9 ust. 3) and as KZGW names the impervious surfaces of an urbanised catchment
+# (roads, pavements, car parks and buildings); `inny` (unused land, undeveloped land,
+# dumps) is not.
+FOREST_CATEGORIES: Final = frozenset({"las"})
+URBAN_CATEGORIES: Final = frozenset(
+    {"zabudowa_mieszkaniowa", "zabudowa_przemysłowa", "droga"}
+)
 
-def calculate_weighted_cn(
-    boundary: Polygon,
-    db: Session,
-) -> tuple[int, dict[str, float]]:
-    """
-    Calculate area-weighted CN from land cover data.
-
-    Performs spatial intersection between watershed boundary and land_cover
-    table, then calculates area-weighted average CN.
-
-    Parameters
-    ----------
-    boundary : Polygon
-        Watershed boundary polygon in EPSG:2180
-    db : Session
-        Database session
-
-    Returns
-    -------
-    Tuple[int, Dict[str, float]]
-        - weighted_cn: Area-weighted CN value (0-100)
-        - land_cover_stats: Dictionary with category percentages
-
-    Examples
-    --------
-    >>> cn, stats = calculate_weighted_cn(boundary, db)
-    >>> print(f"CN = {cn}, Forest: {stats.get('las', 0):.1f}%")
-    CN = 72, Forest: 45.2%
-
-    Notes
-    -----
-    If no land cover data is found for the watershed area, returns
-    (DEFAULT_CN, {}) and logs a warning.
-
-    The CN calculation uses the formula:
-        weighted_cn = sum(cn_i * area_i) / total_area
-    where cn_i is the CN value for category i and area_i is the
-    intersection area of that category with the watershed.
-    """
-    if not boundary.is_valid:
-        logger.warning("Invalid boundary polygon, using default CN")
-        return (DEFAULT_CN, {})
-
-    # Convert boundary to WKB hex for SQL
-    boundary_wkb = boundary.wkb_hex
-
-    query = text("""
-        WITH watershed AS (
-            SELECT ST_SetSRID(
-                ST_GeomFromWKB(decode(:boundary_wkb, 'hex')),
-                2180
-            ) AS geom
-        ),
-        intersections AS (
-            SELECT
-                lc.category,
-                lc.cn_value,
-                ST_Area(ST_Intersection(lc.geom, w.geom)) AS intersection_area_m2
-            FROM land_cover lc
-            CROSS JOIN watershed w
-            WHERE ST_Intersects(lc.geom, w.geom)
-        )
+# The land cover of a watershed, once whole (hsg_group NULL) and once in its pieces on
+# each soil group. The watershed and the soil polygons clipped to it are subdivided
+# first, so each land cover polygon is cut by pieces of at most 256 vertices instead
+# of the whole boundary (the 500 km² of the Wełna: 7.7 s instead of 10.1 s), and the
+# pieces come from the index of land_cover.
+_COMPLEXES_SQL = text("""
+    WITH watershed AS (
+        SELECT ST_SetSRID(ST_GeomFromWKB(decode(:boundary_wkb, 'hex')), 2180) AS geom
+    ),
+    watershed_parts AS (
+        SELECT ST_Subdivide(geom, 256) AS geom FROM watershed
+    ),
+    soils AS (
         SELECT
-            category,
-            cn_value,
-            SUM(intersection_area_m2) AS total_area_m2
-        FROM intersections
-        GROUP BY category, cn_value
-        ORDER BY total_area_m2 DESC
-    """)
-
-    try:
-        result = db.execute(query, {"boundary_wkb": boundary_wkb}).fetchall()
-    except Exception as e:
-        logger.error(f"Database error calculating CN: {e}")
-        return (DEFAULT_CN, {})
-
-    if not result:
-        logger.warning("No land cover data found for watershed, using default CN")
-        return (DEFAULT_CN, {})
-
-    # Calculate weighted CN
-    total_area = sum(row.total_area_m2 for row in result)
-
-    if total_area <= 0:
-        logger.warning("Zero total area from land cover intersection, using default CN")
-        return (DEFAULT_CN, {})
-
-    weighted_cn_sum = sum(row.cn_value * row.total_area_m2 for row in result)
-    weighted_cn = round(weighted_cn_sum / total_area)
-
-    # Clamp to valid range 0-100
-    weighted_cn = max(0, min(100, weighted_cn))
-
-    # Build stats dictionary with category percentages
-    land_cover_stats: dict[str, float] = {}
-    for row in result:
-        category = row.category
-        percentage = (row.total_area_m2 / total_area) * 100
-        if category in land_cover_stats:
-            land_cover_stats[category] += percentage
-        else:
-            land_cover_stats[category] = percentage
-
-    # Round percentages
-    land_cover_stats = {k: round(v, 1) for k, v in land_cover_stats.items()}
-
-    logger.info(
-        f"Calculated CN={weighted_cn} from {len(result)} land cover categories "
-        f"(total area: {total_area / 1e6:.2f} km²)"
+            sh.hsg_group,
+            ST_Subdivide(
+                ST_CollectionExtract(ST_Intersection(sh.geom, w.geom), 3), 256
+            ) AS geom
+        FROM soil_hsg sh
+        CROSS JOIN watershed w
+        WHERE ST_Intersects(sh.geom, w.geom)
     )
-
-    return (weighted_cn, land_cover_stats)
+    SELECT
+        lc.category,
+        lc.bdot_class,
+        lc.imperviousness,
+        NULL::varchar AS hsg_group,
+        SUM(ST_Area(ST_Intersection(lc.geom, w.geom))) AS area_m2
+    FROM watershed_parts w
+    JOIN land_cover lc ON ST_Intersects(lc.geom, w.geom)
+    GROUP BY lc.category, lc.bdot_class, lc.imperviousness
+    UNION ALL
+    SELECT
+        lc.category,
+        lc.bdot_class,
+        lc.imperviousness,
+        s.hsg_group,
+        SUM(ST_Area(ST_Intersection(lc.geom, s.geom))) AS area_m2
+    FROM soils s
+    JOIN land_cover lc ON ST_Intersects(lc.geom, s.geom)
+    GROUP BY lc.category, lc.bdot_class, lc.imperviousness, s.hsg_group
+""")
 
 
 def get_land_cover_for_boundary(
-    boundary: Polygon,
+    boundary: Polygon | MultiPolygon,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
-    Get detailed land cover information for a watershed boundary.
+    Land cover of a watershed with the CN of its soil-cover complexes.
 
     Parameters
     ----------
-    boundary : Polygon
-        Watershed boundary polygon in EPSG:2180
+    boundary : Polygon | MultiPolygon
+        Watershed boundary in EPSG:2180.
     db : Session
-        Database session
+        Database session.
 
     Returns
     -------
-    Optional[Dict]
-        Dictionary with land cover details:
-        - categories: List of category stats
-        - total_area_m2: Total intersection area
-        - weighted_cn: Calculated CN
-        - weighted_imperviousness: Weighted imperviousness fraction
-
-        Returns None if no land cover data is found.
+    dict | None
+        ``summarize_complexes`` of the land cover in the boundary: ``categories``,
+        ``total_area_m2``, ``weighted_cn``, ``weighted_imperviousness``, ``forest_pct``,
+        ``urban_pct``, ``hsg_assumed_pct`` and ``complexes``; None for an invalid
+        boundary, a database error or a watershed without land cover.
     """
     if not boundary.is_valid:
         return None
 
-    boundary_wkb = boundary.wkb_hex
-
-    query = text("""
-        WITH watershed AS (
-            SELECT ST_SetSRID(
-                ST_GeomFromWKB(decode(:boundary_wkb, 'hex')),
-                2180
-            ) AS geom
-        ),
-        intersections AS (
-            SELECT
-                lc.category,
-                lc.cn_value,
-                lc.imperviousness,
-                lc.bdot_class,
-                ST_Area(ST_Intersection(lc.geom, w.geom)) AS intersection_area_m2
-            FROM land_cover lc
-            CROSS JOIN watershed w
-            WHERE ST_Intersects(lc.geom, w.geom)
-        )
-        SELECT
-            category,
-            cn_value,
-            imperviousness,
-            SUM(intersection_area_m2) AS total_area_m2
-        FROM intersections
-        GROUP BY category, cn_value, imperviousness
-        ORDER BY total_area_m2 DESC
-    """)
-
     try:
-        result = db.execute(query, {"boundary_wkb": boundary_wkb}).fetchall()
+        rows = db.execute(_COMPLEXES_SQL, {"boundary_wkb": boundary.wkb_hex}).fetchall()
     except Exception as e:
-        logger.error(f"Database error getting land cover: {e}")
+        logger.error("Database error getting land cover: %s", e)
         return None
+    return summarize_complexes(rows)
 
-    if not result:
-        return None
 
-    total_area = sum(row.total_area_m2 for row in result)
+def summarize_complexes(rows: Iterable[Any]) -> dict[str, Any] | None:
+    """
+    Summarize the land cover of a watershed and its weighted CN from its pieces.
 
+    Each row has ``category``, ``bdot_class``, ``imperviousness``, ``hsg_group`` and
+    ``area_m2``: with ``hsg_group`` None the whole area of the land cover of that
+    category, source and imperviousness in the watershed, otherwise its part on that
+    soil group. The part of a land cover outside ``soil_hsg`` takes the soil groups of
+    the land cover of the watershed that lies on ``soil_hsg``, in their shares; without
+    any, group ``DEFAULT_HSG`` (ADR-075). The CN of the watershed and of each category
+    is the area-weighted mean of the CN of the complexes (NEH 630, chapter 10, the
+    weighted CN; Hydrolog's ``calculate_weighted_cn``).
+
+    Parameters
+    ----------
+    rows : Iterable
+        Rows of the land cover query.
+
+    Returns
+    -------
+    dict | None
+        - categories: one entry per category, largest first: ``category``,
+          ``area_m2``, ``percentage`` and ``cn_value`` (its weighted CN, to 0.1)
+        - total_area_m2: area of the land cover [m2]
+        - weighted_cn: CN of the watershed for AMC II, to 0.1
+        - weighted_imperviousness: area-weighted imperviousness (0-1), to 0.001
+        - forest_pct, urban_pct: Lutz's W and U [%] (``FOREST_CATEGORIES``,
+          ``URBAN_CATEGORIES``), to 0.1
+        - hsg_assumed_pct: share of the land cover outside ``soil_hsg``, whose soil
+          group was assumed [%], to 0.1
+        - complexes: the soil-cover complexes of the watershed as (CN, area [m2]),
+          one pair per CN, by ascending CN; their weighted mean is ``weighted_cn``
+
+        None when the land cover has no area.
+    """
+    totals: dict[tuple[str, str | None, float | None], float] = {}
+    parts: dict[tuple[str, str | None, float | None], dict[str, float]] = {}
+    for row in rows:
+        key = (row.category, row.bdot_class, row.imperviousness)
+        area_m2 = float(row.area_m2 or 0.0)
+        if row.hsg_group is None:
+            totals[key] = totals.get(key, 0.0) + area_m2
+        else:
+            groups = parts.setdefault(key, {})
+            groups[row.hsg_group] = groups.get(row.hsg_group, 0.0) + area_m2
+
+    totals = {key: area for key, area in totals.items() if area > 0}
+    total_area = sum(totals.values())
     if total_area <= 0:
         return None
 
-    # Calculate weighted values
-    weighted_cn_sum = sum(row.cn_value * row.total_area_m2 for row in result)
-    weighted_imperv_sum = sum(
-        (row.imperviousness or 0) * row.total_area_m2 for row in result
-    )
+    on_soil = {
+        group: sum(groups.get(group, 0.0) for groups in parts.values())
+        for group in HSG_GROUPS
+    }
+    known_area = sum(on_soil.values())
+    if known_area > 0:
+        soil_shares = {g: a / known_area for g, a in on_soil.items() if a > 0}
+    else:
+        soil_shares = {DEFAULT_HSG: 1.0}
 
-    weighted_cn = round(weighted_cn_sum / total_area)
-    weighted_imperviousness = weighted_imperv_sum / total_area
-
-    # Build category details
-    categories = []
-    for row in result:
-        categories.append(
-            {
-                "category": row.category,
-                "cn_value": row.cn_value,
-                "imperviousness": row.imperviousness,
-                "area_m2": round(row.total_area_m2, 1),
-                "percentage": round((row.total_area_m2 / total_area) * 100, 1),
-            }
+    pairs: dict[str, list[tuple[int, float]]] = {}
+    assumed_area = 0.0
+    for key, area in totals.items():
+        category, bdot_class, _ = key
+        groups = {g: a for g, a in parts.get(key, {}).items() if a > 0}
+        known = sum(groups.values())
+        if known > area:
+            # Overlapping soil polygons: the pieces cannot exceed the land cover
+            groups = {g: a * area / known for g, a in groups.items()}
+            known = area
+        missing = area - known
+        assumed_area += missing
+        for group, share in soil_shares.items():
+            groups[group] = groups.get(group, 0.0) + missing * share
+        pairs.setdefault(category, []).extend(
+            (complex_cn(category, bdot_class, group), group_area)
+            for group, group_area in groups.items()
+            if group_area > 0
         )
+
+    category_area = {
+        category: sum(area for _, area in cat_pairs)
+        for category, cat_pairs in pairs.items()
+    }
+    categories = [
+        {
+            "category": category,
+            "area_m2": round(category_area[category], 1),
+            "percentage": round(category_area[category] / total_area * 100, 1),
+            "cn_value": round(calculate_weighted_cn(cat_pairs), 1),
+        }
+        for category, cat_pairs in sorted(
+            pairs.items(), key=lambda item: (-category_area[item[0]], item[0])
+        )
+    ]
+    all_pairs = [pair for cat_pairs in pairs.values() for pair in cat_pairs]
+    area_by_cn: dict[int, float] = {}
+    for cn, area in all_pairs:
+        area_by_cn[cn] = area_by_cn.get(cn, 0.0) + area
+    imperviousness = (
+        sum((key[2] or 0.0) * area for key, area in totals.items()) / total_area
+    )
 
     return {
         "categories": categories,
         "total_area_m2": round(total_area, 1),
-        "weighted_cn": weighted_cn,
-        "weighted_imperviousness": round(weighted_imperviousness, 3),
+        "weighted_cn": round(calculate_weighted_cn(all_pairs), 1),
+        "weighted_imperviousness": round(imperviousness, 3),
+        "forest_pct": _share_pct(category_area, FOREST_CATEGORIES, total_area),
+        "urban_pct": _share_pct(category_area, URBAN_CATEGORIES, total_area),
+        "hsg_assumed_pct": round(assumed_area / total_area * 100, 1),
+        "complexes": sorted(area_by_cn.items()),
     }
 
 
+def _share_pct(
+    category_area: dict[str, float], categories: frozenset[str], total_area_m2: float
+) -> float:
+    """Return the share of the categories in the land cover of a watershed.
+
+    Parameters
+    ----------
+    category_area : dict[str, float]
+        Area of each category [m2].
+    categories : frozenset[str]
+        The categories counted.
+    total_area_m2 : float
+        Area of all the land cover [m2], > 0.
+
+    Returns
+    -------
+    float
+        The share [%], rounded to 0.1 like the shares of the categories.
+    """
+    area_m2 = sum(area for cat, area in category_area.items() if cat in categories)
+    return round(area_m2 / total_area_m2 * 100, 1)
+
+
 def determine_cn(
-    boundary: Polygon,
+    boundary: Polygon | MultiPolygon,
     db: Session,
-    config_cn: int | None = None,
+    config_cn: float | None = None,
     default_cn: int = DEFAULT_CN,
     use_kartograf: bool = True,
     boundary_wgs84: list[list[float]] | None = None,
-    data_dir: Path | None = None,
+    cache_dir: Path | None = None,
     teryt: str | None = None,
-) -> tuple[int, str, dict[str, Any] | None]:
+) -> tuple[float, str, dict[str, Any] | None]:
     """
     Okresl wartosc CN wedlug hierarchii zrodel.
 
     Hierarchia:
     1. Jawnie podana wartosc w konfiguracji (config_cn)
-    2. Z tabeli land_cover w bazie danych
+    2. Z tabel land_cover i soil_hsg w bazie danych (``get_land_cover_for_boundary``)
     3. Z Kartografa (HSG + land cover) - jesli use_kartograf=True
     4. Wartosc domyslna (default_cn)
 
     Parameters
     ----------
-    boundary : Polygon
+    boundary : Polygon | MultiPolygon
         Granica zlewni w EPSG:2180
     db : Session
         Sesja bazy danych
-    config_cn : int, optional
+    config_cn : float, optional
         Wartosc CN z konfiguracji (najwyzszy priorytet)
     default_cn : int, optional
         Domyslna wartosc CN, domyslnie 75
@@ -285,48 +299,51 @@ def determine_cn(
         Czy uzywac Kartografa, domyslnie True
     boundary_wgs84 : List[List[float]], optional
         Granica w WGS84 (wymagana dla Kartografa)
-    data_dir : Path, optional
-        Katalog danych (wymagany dla Kartografa)
+    cache_dir : Path, optional
+        Katalog cache pobranych danych (wymagany dla Kartografa): jego magazyn to
+        ``<cache_dir>/kartograf`` (ADR-061)
 
     Returns
     -------
-    Tuple[int, str, Optional[Dict[str, Any]]]
+    Tuple[float, str, Optional[Dict[str, Any]]]
         (cn_value, source, details)
-        - cn_value: wartosc CN (0-100)
+        - cn_value: wartosc CN (0-100, wartosci wazone zaokraglone do 0.1)
         - source: zrodlo ('config', 'database_land_cover', 'kartograf_hsg', 'default')
-        - details: dodatkowe informacje (dla kartograf)
+        - details: dodatkowe informacje (udzialy kategorii z bazy; dane Kartografa)
 
     Examples
     --------
     >>> cn, source, details = determine_cn(boundary, db, config_cn=80)
     >>> print(f"CN={cn} (zrodlo: {source})")
     CN=80 (zrodlo: config)
-
-    >>> cn, source, details = determine_cn(boundary, db)
-    >>> print(f"CN={cn} (zrodlo: {source})")
-    CN=72 (zrodlo: database_land_cover)
     """
     # 1. Jawnie podana wartosc
     if config_cn is not None:
         logger.info(f"CN z konfiguracji: {config_cn}")
         return (config_cn, "config", None)
 
-    # 2. Z tabeli land_cover w DB
-    try:
-        cn_value, land_cover_stats = calculate_weighted_cn(boundary, db)
-
-        if land_cover_stats:  # Prawdziwe dane (nie DEFAULT_CN z braku danych)
-            logger.info(f"CN z bazy danych (land_cover): {cn_value}")
-            return (cn_value, "database_land_cover", {"stats": land_cover_stats})
-
-    except Exception as e:
-        logger.debug(f"Blad pobierania land_cover z bazy: {e}")
+    # 2. Z tabel land_cover i soil_hsg w DB
+    lc_data = get_land_cover_for_boundary(boundary, db)
+    if lc_data:
+        logger.info(
+            "CN z bazy danych (land_cover, soil_hsg): %s", lc_data["weighted_cn"]
+        )
+        return (
+            lc_data["weighted_cn"],
+            "database_land_cover",
+            {
+                "stats": {
+                    c["category"]: c["percentage"] for c in lc_data["categories"]
+                },
+                "hsg_assumed_pct": lc_data["hsg_assumed_pct"],
+            },
+        )
 
     # 3. Z Kartografa
-    if use_kartograf and boundary_wgs84 and data_dir:
+    if use_kartograf and boundary_wgs84 and cache_dir:
         from core.cn_calculator import calculate_cn_from_kartograf
 
-        result = calculate_cn_from_kartograf(boundary_wgs84, data_dir, teryt=teryt)
+        result = calculate_cn_from_kartograf(boundary_wgs84, cache_dir, teryt=teryt)
 
         if result and result.cn:
             logger.info(f"CN z Kartografa (HSG={result.dominant_hsg}): {result.cn}")

@@ -26,5 +26,5 @@ tests/
 # Documentation (not needed in image)
 *.md
 
-# Dev config (runtime deps are in requirements.txt)
-pyproject.toml
+# pyproject.toml and uv.lock stay in the context: the builder installs the lock and
+# core/version.py reads the version from pyproject.toml at run time.

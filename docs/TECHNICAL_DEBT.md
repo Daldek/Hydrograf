@@ -1,53 +1,55 @@
 # Technical Debt - Hydrograf
 
-Lista znanych problemów technicznych do naprawy w przyszłych iteracjach.
+A list of known technical problems to fix in future iterations.
 
 ---
 
 ## Hardcoded Values (Q3.9)
 
-**Akcja:** ~~Utworzyć `backend/core/constants.py` z wszystkimi stałymi.~~ ZREALIZOWANE (v0.4.0, `core/constants.py` — CRS, konwersje jednostek, domyslne CN, limity zlewni i grafu).
+**Action:** ~~Create `backend/core/constants.py` with all the constants.~~ DONE (v0.4.0, `core/constants.py` — CRS, unit conversions, the default CN, the limits of the watershed and of the graph).
 
-### Stałe jednostek konwersji — CZESCIOWO ZREALIZOWANE
+### Unit conversion constants — PARTLY DONE
 
-Stale `M_PER_KM` i `M2_PER_KM2` istnieja w `core/constants.py`, ale nie sa uzywane w modulach `core/`:
+The constants `M_PER_KM` and `M2_PER_KM2` of `core/constants.py` are used by the newer modules (`core/cell_parameters.py`, `core/network_delineation.py`, `core/network_preview.py`, `core/network_tree.py`, `api/endpoints/network.py`), but not by `core/watershed_service.py`:
 
-| Wartość | Lokalizacja | Status |
-|---------|-------------|--------|
-| `1000.0` (m/km) | `core/morphometry.py` ×4 (linie 37, 73, 253, 486) | Nadal hardcoded — `M_PER_KM` nie importowane |
-| `1_000_000` (m²/km²) | `core/watershed.py:252`, `core/morphometry.py:598` | Nadal hardcoded — `M2_PER_KM2` nie importowane |
+| Value | Location | Status |
+|-------|----------|--------|
+| `1000` (m/km) | `core/watershed_service.py` (`build_morph_dict_from_graph`, `compute_watershed_length`, `_compute_lc_along_channel`) | Still hardcoded — `M_PER_KM` is not imported |
 
-**Uwaga:** `M2_PER_KM2` jest importowane w `api/endpoints/watershed.py`, ale moduly core nie korzystaja ze stalych — rozjazd miedzy intencja a realizacja.
+### Algorithm parameters
 
-### Parametry algorytmów
+| Value | Location | Description | Status |
+|-------|----------|-------------|--------|
+| `75` | ~~`core/morphometry.py`~~ | Default CN value | DONE — `DEFAULT_CN` in `constants.py`, used by `land_cover.py` |
 
-| Wartość | Lokalizacja | Opis | Status |
-|---------|-------------|------|--------|
-| `0.3` | `core/watershed.py:211` | Concave hull ratio | Nadal hardcoded |
-| `75` | ~~`core/morphometry.py`~~ | Default CN value | ZREALIZOWANE — `DEFAULT_CN` w `constants.py`, uzywane przez `land_cover.py` |
+### CRS identifiers — PARTLY DONE
 
-### Identyfikatory CRS — CZESCIOWO ZREALIZOWANE
+The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but no module imports them, and the string `"EPSG:2180"` appears directly in these files:
 
-Stale `CRS_PL1992` i `CRS_WGS84` istnieja w `core/constants.py`, ale string `"EPSG:2180"` nadal pojawia sie bezposrednio w 7+ plikach core:
+| Value | Location | Status |
+|-------|----------|--------|
+| `"EPSG:2180"` | `core/analysis_results.py` ×2, `core/boundary.py` ×2, `core/cn_calculator.py` ×3, `core/hydrology.py` ×2, `core/raster_io.py`, `core/watershed_service.py` | Still hardcoded — `CRS_PL1992` is not imported |
+| `"EPSG:2180"` | `utils/geometry.py`, `utils/kartograf_set.py`, `utils/nmt_coverage.py`, `utils/raster_utils.py`, `utils/sheet_lookup.py`, `models/schemas.py`, `api/endpoints/profile.py` | Still hardcoded |
 
-| Wartość | Lokalizacja | Status |
-|---------|-------------|--------|
-| `"EPSG:2180"` | `core/cn_calculator.py`, `core/hydrology.py` ×2, `core/morphometry.py`, `core/precipitation.py`, `core/raster_io.py`, `core/watershed_service.py` | Nadal hardcoded — `CRS_PL1992` nie importowane |
-| `"EPSG:2180"` | `utils/geometry.py`, `models/schemas.py` | Nadal hardcoded |
+### Other
 
-### Inne
+| Value | Location | Status |
+|-------|----------|--------|
+| `"Hydrograf"` | `core/watershed_service.py` (`build_morph_dict_from_graph`) | Still hardcoded |
 
-| Wartość | Lokalizacja | Status |
-|---------|-------------|--------|
-| `"Hydrograf"` | `core/morphometry.py:613` | Nadal hardcoded |
-
-**Priorytet:** LOW — `constants.py` istnieje, ale moduly core trzeba zmigrowac do importu stalych zamiast literalow. Czysto kosmetyczny refactoring, bez ryzyka bledu.
+**Priority:** LOW — `constants.py` exists, but the core modules have to be migrated to import the constants instead of literals. A purely cosmetic refactoring with no risk of error.
 
 ---
 
-## Hardcoded Secrets (S5.3)
+## Hardcoded Secrets (S5.3) — DONE
 
-### S5.3a - Default password w config.py — NADAL OTWARTE
+Both items were fixed on 2026-03-02 (`7451ef9`, `ec2039c`): `Settings.postgres_password` defaults to
+an empty string and warns when it is empty, and `migrations/env.py` falls back to a local URL without a
+password with a warning. `_DEFAULT_CONFIG` has held no database settings since 2026-11-14 (the key
+`database` of `config.yaml` and `get_database_url_from_config` were removed). The text below is the
+finding of that time.
+
+### S5.3a - Default password in config.py — DONE
 
 ```python
 # backend/core/config.py:38
@@ -57,14 +59,14 @@ postgres_password: str = "hydro_password"
 "password": "hydro_password",
 ```
 
-**Problem:** Domyslne haslo `hydro_password` pojawia sie w 2 miejscach w `config.py` — w `Settings` (linia 38) i w `_DEFAULT_CONFIG` dla pipeline YAML (linia 106).
+**Problem:** The default password `hydro_password` appears in 2 places in `config.py` — in `Settings` (line 38) and in `_DEFAULT_CONFIG` for the pipeline YAML (line 106).
 
-**Rekomendacja:**
-- Usunac domyslna wartosc z `Settings`
-- Wymagac zmiennej srodowiskowej `POSTGRES_PASSWORD`
-- W `_DEFAULT_CONFIG` uzyc placeholder lub `os.getenv()`
+**Recommendation:**
+- Remove the default value from `Settings`
+- Require the environment variable `POSTGRES_PASSWORD`
+- In `_DEFAULT_CONFIG` use a placeholder or `os.getenv()`
 
-### S5.3b - Connection string w migrations/env.py — NADAL OTWARTE
+### S5.3b - Connection string in migrations/env.py — DONE
 
 ```python
 # backend/migrations/env.py:27
@@ -73,141 +75,182 @@ database_url = os.getenv(
 )
 ```
 
-**Problem:** Hardcoded connection string jako fallback w `os.getenv()`.
+**Problem:** A hardcoded connection string as a fallback in `os.getenv()`.
 
-**Rekomendacja:**
-- Wymagac zmiennej `DATABASE_URL`
-- Rzucac blad jesli brak konfiguracji
+**Recommendation:**
+- Require the variable `DATABASE_URL`
+- Raise an error when the configuration is missing
 
-**Priorytet:** MEDIUM — w srodowisku dev nie stanowi zagrożenia, ale w produkcji moze prowadzic do uzywania domyslnych credentials jesli braknie zmiennej srodowiskowej.
-
----
-
-## Brakujące testy dla scripts/ (T4.8) — CZESCIOWO ZREALIZOWANE
-
-**Problem:** Wiekszość skryptow preprocessingu (`scripts/*.py`) miala niskie pokrycie testami.
-
-**Stan testow (aktualizacja 2026-03-01, 568 test functions, 35 plikow):**
-- `scripts/process_dem.py` — **47 testow** (`test_process_dem.py`)
-- `scripts/import_landcover.py` — **16 testow** (`test_import_landcover.py`) — NOWE
-- `utils/sheet_finder.py` — **32 testy** (`test_sheet_finder.py`) — NOWE
-- `utils/raster_utils.py` — 0% pokrycia — NADAL BRAK
-- `scripts/bootstrap.py` — **20 testow** (`test_bootstrap.py`) — NOWE
-- `scripts/download_landcover.py` — **17 testow** (`test_download_landcover.py`) — NOWE
-- `scripts/preprocess_precipitation.py` — **12 testow** (`test_preprocess_precipitation.py`) — NOWE
-- `scripts/generate_dem_overlay.py` — 0% pokrycia
-- `scripts/generate_tiles.py` — 0% pokrycia
-- `scripts/prepare_area.py` — 0% pokrycia
-- `scripts/download_dem.py` — 0% pokrycia
-- `scripts/analyze_watershed.py` — 0% pokrycia
-
-**Priorytet:** LOW (kluczowe moduly core pokryte, scripts to jednorazowe narzedzia pipeline)
-
-> **Uwaga:** Pipeline CI/CD via GitHub Actions zostal wdrozony (v0.4.0). Obejmuje:
-> lint (ruff check + format --check), testy (pytest), type-check (mypy).
-> Kazdy push i PR na `develop`/`main` uruchamia pelna walidacje.
+**Priority:** MEDIUM — in a dev environment it is not a threat, but in production it can lead to the use of the default credentials when the environment variable is missing.
 
 ---
 
-## Dokumentacja vs Kod (C2.x) — CZESCIOWO NIEAKTUALNE
+## Missing tests for scripts/ (T4.8) — DONE
 
-**Problem:** Dokumentacja API jest nieaktualna wzgledem kodu.
+**Problem:** Most of the preprocessing scripts (`scripts/*.py`) had low test coverage.
 
-**Znane rozbieznosci (stan na 2026-03-01):**
-| Element | Dokumentacja | Kod | Status |
-|---------|--------------|-----|--------|
-| `outlet_coords` | `[lon, lat]` array | `outlet.latitude/longitude` (obiekt `OutletInfo`) | Prawdopodobnie naprawione — wymaga audytu ARCHITECTURE.md |
-| `parameters` | sekcja `parameters` | `morphometry` (obiekt `MorphometricParameters`) | Wymaga audytu |
-| `water_balance` | BRAK | nowa sekcja w response | Wymaga audytu |
-| Panel admin | BRAK | 8 endpointow `/api/admin/*` + strona `/admin` | Brak w ARCHITECTURE.md |
-| SSE bootstrap | BRAK | `/api/admin/bootstrap/stream` (text/event-stream) | Brak w ARCHITECTURE.md |
-| MVT tiles | Czesciowo | 3 endpointy `/api/tiles/*` (streams, catchments, landcover) | Wymaga audytu |
+**State of the tests (update 2026-03-01, 568 test functions, 35 files):**
+- `scripts/process_dem.py` — **47 tests** (`test_process_dem.py`)
+- `scripts/import_landcover.py` — **16 tests** (`test_import_landcover.py`) — NEW
+- ~~`utils/sheet_finder.py` — 32 tests (`test_sheet_finder.py`)~~ REMOVED — replaced by `utils/sheet_lookup.py` (a thin wrapper around `kartograf.find_sheets_for_bbox()`, 6 tests in `test_sheet_lookup.py`), data acquisition only through Kartograf (ADR-057)
+- ~~`utils/raster_utils.py` — 0% coverage~~ DONE — `test_raster_utils.py` (99%, 2026-10-25)
+- `scripts/bootstrap.py` — **20 tests** (`test_bootstrap.py`) — NEW
+- `scripts/download_landcover.py` — **17 tests** (`test_download_landcover.py`) — NEW
+- `scripts/preprocess_precipitation.py` — **12 tests** (`test_preprocess_precipitation.py`) — NEW
+- `scripts/generate_dem_overlay.py` — ~~0% coverage~~ `test_generate_overlays.py`
+- `scripts/generate_tiles.py` — ~~0% coverage~~ `test_generate_tiles_metadata.py`
+- `scripts/prepare_area.py` — ~~0% coverage~~ `test_process_dem_callers.py`
+- `scripts/download_dem.py` — ~~0% coverage~~ `test_download_dem.py`, `test_download_dem_report.py`
+- `scripts/analyze_watershed.py` — ~~0% coverage~~ `test_analyze_watershed_delineate.py`, `test_analyze_watershed_hydrograph.py`, `test_analyze_watershed_nmt_files.py`, `test_process_dem_callers.py`
 
-**Akcja:** Zaktualizowac `docs/ARCHITECTURE.md` — sekcja API endpoints + nowe wzorce (admin, SSE, MVT).
+**Update 2026-11-14:** every script of this list has tests; the coverage per script is not measured here.
 
-**Priorytet:** MEDIUM
+**Priority:** LOW (the key core modules are covered, scripts are one-off pipeline tools)
 
----
-
-## ~~Wydajnosc bazy danych — bulk INSERT + indeksy (P1.x)~~ ZREALIZOWANE
-
-**ZREALIZOWANE (ADR-028, migracja 015, sesja 33): Tabela `flow_network` wyeliminowana.**
-
-Tabela `flow_network` (39.4M rekordow, 58% czasu pipeline) zostala calkowicie usunieta. Pipeline generuje `stream_network` i `stream_catchments` bezposrednio z rastra. Sekcje P1.1 i P1.2 sa nieaktualne — dotyczyly optymalizacji usunietej tabeli.
-
-Brak referencji do `flow_network` w zadnym pliku `core/*.py` ani `api/endpoints/*.py` (zweryfikowane 2026-03-01).
+> **Note:** A CI/CD pipeline through GitHub Actions was deployed (v0.4.0). It covers:
+> lint (ruff check + format --check), tests (pytest), type-check (mypy).
+> Every push and PR on `develop`/`main` runs the full validation.
 
 ---
 
-## Checklist po migracjach DB (zapobieganie regresji)
+## Documentation vs Code (C2.x) — DONE
 
-**Problem:** Migracja 014 dodala `segment_idx` do `stream_network`, ale nie zaktualizowano `find_nearest_stream_segment()` w `watershed_service.py` — funkcja nadal pobierala `id` (auto-increment PK) i zwracala go jako `segment_idx`. Bug trwal przez 6 sesji (24-32).
+Checked 2026-11-14: `docs/ARCHITECTURE.md` describes the response objects (`watershed.outlet`, `morphometry`, `water_balance`), every `/api/admin/*` route with the SSE stream of the bootstrap, and the `/api/tiles/*` routes; `docs/DATA_MODEL.md` §6 follows `models/schemas.py`. The text below is the finding of 2026-03-01.
 
-**Checklist po kazdej migracji:**
-1. `grep -r "TABLE_NAME" backend/` — znajdz WSZYSTKIE zapytania SQL do zmienionej tabeli
-2. Sprawdz czy nowa/zmieniona kolumna jest uzywana poprawnie w kazdym zapytaniu
-3. Sprawdz czy mapowanie wynikow (result.X → dict["Y"]) jest spojne z SQL SELECT
-4. Uruchom istniejace testy integracyjne — jesli testy nie pokrywaja nowej kolumny, dodaj
-5. `verify_graph()` przy starcie API — walidacja spojnosci danych miedzy tabelami
+**Problem:** The API documentation is out of date against the code.
 
-**Priorytet:** HIGH — cichy bug tral 6 sesji bez wykrycia
+**Known discrepancies (state of 2026-03-01):**
+| Element | Documentation | Code | Status |
+|---------|---------------|------|--------|
+| `outlet_coords` | a `[lon, lat]` array | `outlet.latitude/longitude` (an `OutletInfo` object) | Probably fixed — needs an audit of ARCHITECTURE.md |
+| `parameters` | a `parameters` section | `morphometry` (a `MorphometricParameters` object) | Needs an audit |
+| `water_balance` | MISSING | a new section in the response | Needs an audit |
+| Admin panel | MISSING | 8 `/api/admin/*` endpoints + the page `/admin` | Missing in ARCHITECTURE.md |
+| SSE bootstrap | MISSING | `/api/admin/bootstrap/stream` (text/event-stream) | Missing in ARCHITECTURE.md |
+| MVT tiles | Partly | 3 `/api/tiles/*` endpoints (streams, catchments, landcover) | Needs an audit |
+
+**Action:** Update `docs/ARCHITECTURE.md` — the API endpoints section + the new patterns (admin, SSE, MVT).
+
+**Priority:** MEDIUM
 
 ---
 
-## f-string w logowaniu (L1.x) — NOWE
+## ~~Database performance — bulk INSERT + indexes (P1.x)~~ DONE
 
-**Problem:** W 30 plikach backendu uzywane sa f-stringi w wywolaniach `logger.*()` zamiast lazy formatting z `%s`. Lacznie ~396 wystapien.
+**DONE (ADR-028, migration 015, session 33): the `flow_network` table was eliminated.**
 
-**Najczesciej w:**
-- `scripts/analyze_watershed.py` (61 wystapien)
-- `scripts/prepare_area.py` (46 wystapien)
-- `scripts/download_dem.py` (31 wystapien)
-- `scripts/download_landcover.py` (32 wystapien)
-- `utils/raster_utils.py` (20 wystapien)
-- `scripts/process_dem.py` (26 wystapien)
-- `scripts/bootstrap.py` (18 wystapien)
-- moduly core: `raster_io.py` (11), `cn_calculator.py` (9), `land_cover.py` (7), `hydrology.py` (7), `watershed.py` (5)
+The table `flow_network` (39.4M records, 58% of the pipeline time) was removed completely. The pipeline generates `stream_network` and `stream_catchments` directly from the raster. Sections P1.1 and P1.2 are out of date — they concerned the optimization of the removed table.
 
-**Standard (z DEVELOPMENT_STANDARDS.md sekcja 14.3):**
+There is no reference to `flow_network` in any file `core/*.py` or `api/endpoints/*.py` (verified 2026-03-01).
+
+---
+
+## Checklist after DB migrations (preventing regressions)
+
+**Problem:** Migration 014 added `segment_idx` to `stream_network`, but `find_nearest_stream_segment()` in `watershed_service.py` was not updated — the function still fetched `id` (the auto-increment PK) and returned it as `segment_idx`. The bug lasted 6 sessions (24-32). The function has since been removed: the sub-catchment at a point is found by `CatchmentGraph.find_catchment_at_point` (ADR-039).
+
+**A checklist after every migration:**
+1. `grep -r "TABLE_NAME" backend/` — find ALL the SQL queries to the changed table
+2. Check that the new/changed column is used correctly in every query
+3. Check that the mapping of the results (result.X → dict["Y"]) is consistent with the SQL SELECT
+4. Run the existing integration tests — if the tests do not cover the new column, add them
+5. `verify_graph()` at the API start — validation of the consistency of the data between the tables
+
+**Priority:** HIGH — a silent bug lasted 6 sessions without being detected
+
+---
+
+## f-strings in logging (L1.x) — NEW
+
+**Problem:** In 33 backend files (tests excluded) f-strings are used in `logger.*()` calls instead of lazy formatting with `%s`. About 416 occurrences in total (counted 2026-11-14).
+
+**Most often in:**
+- `scripts/analyze_watershed.py` (59 occurrences)
+- `scripts/prepare_area.py` (45 occurrences)
+- `scripts/process_dem.py` (41 occurrences)
+- `scripts/download_dem.py` (29 occurrences)
+- `scripts/bootstrap.py` (22 occurrences)
+- `scripts/generate_tiles.py` (20 occurrences)
+- `scripts/download_landcover.py` (18 occurrences)
+- `utils/raster_utils.py` (18 occurrences)
+- core modules: `cn_calculator.py` (15), `hydrology.py` (14), `raster_io.py` (10), `land_cover.py` (3)
+
+**Standard (DEV-12.3 of the Nogat standard):**
 ```python
-# DOBRZE — lazy evaluation z %s
+# GOOD — lazy evaluation with %s
 logger.info("Watershed area: %s km2", area_km2)
 
-# ZLE — f-string (ewaluowany nawet jesli poziom logowania filtruje)
+# BAD — an f-string (evaluated even if the logging level filters it out)
 logger.info(f"Watershed area: {area_km2} km2")
 ```
 
-**Priorytet:** LOW — nie wplywa na poprawnosc, minimalny impact na wydajnosc. Refactoring moze byc zautomatyzowany (ruff rule `G` — flake8-logging-format).
+**Priority:** LOW — it does not affect correctness, a minimal performance impact. The refactoring can be automated (the ruff rule `G` — flake8-logging-format).
 
 ---
 
-## traceback.print_exc() zamiast logger.exception() (L2.x) — NOWE
+## traceback.print_exc() instead of logger.exception() (L2.x) — DONE
 
-**Problem:** W kilku plikach uzywane jest `import traceback; traceback.print_exc()` zamiast `logger.exception()`.
+Checked 2026-11-14: no `traceback.print_exc()` is left in `backend/`. The text below is the finding of that time.
 
-**Lokalizacje:**
+**Problem:** In a few files `import traceback; traceback.print_exc()` is used instead of `logger.exception()`.
+
+**Locations:**
 - `core/cn_calculator.py:331-333`
 - `scripts/prepare_area.py:330`
 - `scripts/analyze_watershed.py:414-416, 1310-1312`
 
-**Rekomendacja:** Zamienic na `logger.exception("Opis bledu")` — automatycznie loguje traceback i szanuje konfiguracje loggera.
+**Recommendation:** Replace with `logger.exception("Description of the error")` — it logs the traceback automatically and respects the logger configuration.
 
-**Priorytet:** LOW
-
----
-
-## TODO w kodzie (T5.x) — NOWE
-
-**Problem:** Jeden aktywny TODO w kodzie produkcyjnym (po wylaczeniu .venv):
-
-| Plik | Linia | Tresc | Priorytet |
-|------|-------|-------|-----------|
-| `core/cn_calculator.py:198` | `# TODO: Analiza pliku GeoPackage` | Funkcja `get_land_cover_stats()` zwraca puste `{}` po pobraniu GeoPackage — brak parsowania | MEDIUM |
-
-**Kontekst:** Funkcja `get_land_cover_stats()` pobiera plik pokrycia terenu z Kartografa, ale nie parsuje go — zwraca pusty slownik i fallbackuje do domyslnych wartosci. To oznacza, ze obliczenie CN opiera sie na szacunkowych (nie rzeczywistych) danych o pokryciu terenu gdy uzywany jest ten sciezka kodu.
-
-**Priorytet:** MEDIUM — wplywa na dokladnosc obliczen CN w sciezce Kartograf
+**Priority:** LOW
 
 ---
 
-*Ostatnia aktualizacja: 2026-03-01*
+## TODO in the code (T5.x)
+
+**Problem:** One active TODO in the production code (`api`, `core`, `models`, `scripts`, `utils`, `migrations`, `frontend/js` and the tests; checked 2026-11-14):
+
+| File | Line | Content | Priority |
+|------|------|---------|----------|
+| `core/watershed_service.py:1029` | `# TODO: compute AL and AP from main channel geometry` | `asymmetry_coefficient` (α = 2·(AL−AP)/A) is always `None`: the watershed is not split along the main channel into the areas of its two banks | LOW |
+
+**Context:** The field is a placeholder among the relief indices (`MorphometricParameters`, the response, the table of the parameters in the front end). Nothing computes with it, so the gap shows as an empty value of one parameter.
+
+**Priority:** LOW — it affects the display of one parameter only
+
+**Closed:** the earlier entry of this section, `core/cn_calculator.py:198` (`# TODO: Analiza pliku GeoPackage`: `get_land_cover_stats()` returned `{}` after the download, without parsing the GeoPackage), no longer applies. `get_land_cover_stats()` reads the PT* layers of the BDOT10k packages of the Kartograf store and sums the area of every category in the bbox (`_analyze_land_cover_gpkgs`, `_land_cover_areas`; `tests/unit/test_land_cover_stats.py`). It still returns `{}` when Kartograf fails or finds no package: that is the backlog item on the `KartografError` catch (`docs/BACKLOG.md`, Bugs and diagnoses).
+
+---
+
+## Memory of the DEM processing (`process_dem`) — IN PROGRESS (F1–F7 DONE)
+
+**Problem:** the bootstrap of the Kaczawa catchment (513 sheets, a raster of 183 332 457 cells of 5 m) failed twice with OOM on 2026-10-29/30: with a limit of 8G + 8G swap in the `zonal_stats` of the sub-catchments of the threshold 10000 (140 183 labels), with 12G + 4G in the TWI. The peak of the current code is ~103 B/cell, that is ~19 GB at 183M; more than 13 GB is taken by 8 different stages (there is no single bottleneck). Kotlina Kłodzka (113M) fitted only thanks to the default swap of Docker (8G + 8G).
+
+**Measurement (2026-10-30):** a 4000×4000 cut (16M cells, 57% valid as in the whole mosaic) of the Kaczawa mosaic, one-off containers without network and without database (`dry_run`), the RSS peak per stage scaled to 183M; it agrees with the places of both OOMs. A prototype of the fixes (outside the repository) gave 13 rasters, statistics, streams and catchments identical bit for bit, and the time of the cut fell from 287.5 s to 52.5 s.
+
+**Main causes:** pyflwdir 0.5.12 builds an n×7 int32 matrix of upstream cells for every new `FlwdirRaster` (28 B/cell = 5.1 GB), and the code creates it 4 times; full float64 copies in `zonal_stats`, slope, aspect and TWI; flow paths traced to the outlet of the whole catchment (1.3 billion cells, 5.2 GB) and only then cut; the results of the threshold 10000 kept while the threshold 100000 is computed.
+
+| # | Change | Place | Saving at 183M | Effort |
+|---|--------|-------|----------------|--------|
+| F7 | Remove needless copies: `astype(copy=False)` in `save_raster_geotiff`, `np.asarray` instead of `fdir.astype(np.int16)`, `upstream_count` uint8, `del dem` after the hydrology, `label_raster`/`strahler_t` in `del` | `core/raster_io.py:73`, `core/stream_extraction.py:47,153,324`, `scripts/process_dem.py:760,780,954` | 0.2–0.8 GB per stage | small |
+| F1 | Sub-catchment statistics in one numba pass (count, sums, min, max, hydraulic max) + numba histogram; the old functions stay for `generate_depressions.py` and the tests | `core/stream_extraction.py:424-472`, `core/zonal_stats.py:44-171` | −9.4 GB (threshold 100000: −10 GB) | medium |
+| F2 | Argmax per label in numba and flow-path tracing only within the sub-catchment | `scripts/process_dem.py:145-186,257-299,333-342` | −7.2 GB and −5.2 GB | medium-small |
+| F3 | Slope, aspect and TWI in strips of 512 rows with a 1-row margin, windowed writing; also removes the `valid_aspect` leak | `scripts/process_dem.py:755-790,828-839`, `core/morphometry_raster.py:38-52,76-77,102-108,366-380` | TWI −9.9 GB, aspect −9.3 GB | medium |
+| F4 | One `FlwdirRaster` for the whole run (`order_cells(method='sort')`), Strahler through `pyflwdir.streams.strahler_order(...)`. Trap: `FlwdirRaster.stream_order` caches `strord` and ignores the mask | `core/hydrology.py:1311`, `scripts/process_dem.py:667-670,741,815,871`, `core/morphometry_raster.py:312-315`; `tests/unit/test_lake_drain.py` (4 places) | −5 to −11 GB per stage | small-medium |
+| F5 | Hole filling with a uint8 counter and the mean only for fillable cells; Kahn accumulation in numba instead of `deque`; `del dem_patched`; a numba mask instead of `np.isin` | `core/hydrology.py:61-113,1049-1090,1139-1157,1287-1331` | holes 7.15 → 2.2 GB and 88 min → ~1 s; accumulation 11.5 → 5.9 GB | small-medium |
+| F6 | Thresholds from the largest, release of the results of the previous threshold, sorting before writing to the database | `scripts/process_dem.py:860,885,943,954` | ~2 GB | small |
+
+**Expected peak at 183M:** F1–F7 ~9.1 GB (identical results). Further steps: F8 (filling `label_raster` in place instead of `flw.basins` + a copy), F9 (float32 slope; `mean_slope` differs by 8.6e-8 relative), F10 (`GDAL_CACHEMAX` 64–256 MB) give ~8.3 GB; F11 (releasing `acc`, `fdir`, `strahler`, `filled_dem`, `slope` in the last threshold) ~7.4 GB, that is 8 GiB without swap. Not worth it: windowed polygonization (≤0.8 GB), cropping to the envelope of the catchment (gain ~0), tiling (breaks the hydrological continuity).
+
+**Order of implementation:** F7 → F1 + F2 → F3 → F4 + F6 (without them the Strahler of the threshold 100000 stays at ~16.5 GB) → F5 → possibly F8–F11. Then one control bootstrap of the Kaczawa in a separate container (`docker compose run --rm`), not in `hydro_api`.
+
+**Tests to write:** equivalence of old and new for `fill_internal_nodata_holes` (multi-step holes, edges, float64), `recompute_flow_accumulation` (codes 0/-1/255, nodata, cycle pairs), the strip computation (strips that do not divide the number of rows, `strip_rows=1`, nodata at a strip border), Strahler for two thresholds on a shared `flw` and `sort` vs `walk`, `zonal_summary` and the histogram against bincount/scipy (label 0, missing labels, only nodata), argmax per label and tracing within a label (extend `tests/unit/test_flow_path.py`). No unit test of the memory: verification by one run on the full raster. The shared helpers of these tests are in `backend/tests/dem_equivalence.py`: deterministic synthetic DEMs with pits, flats, a nodata border, holes and internal sinks, the hydrology of `process_dem` on them, and `assert_identical` (bit for bit).
+
+**Closed (`fix(dem): sink fixing never creates flow cycles`):** the `max_acc` strategy of `fix_internal_sinks` created pairs of cells that drain into each other (Kaczawa: 4520 fixes, all `max_acc`). Every one of those "internal sinks" was a pyflwdir pit next to nodata, that is an outlet of the area, and the fix pointed it at a neighbour that drains back. Kahn does not process the cells of a cycle, so the accumulation at the outlet left out the area of the partner, and `d8_fdir`/`flw` did not get the fixes: the flow distance, Strahler and the catchments were computed on the uncorrected network. Now an internal sink is a cell without a D8 direction whose 8 neighbours all have data; the strategies take only a neighbour whose flow does not come back to the sink (a numba path check), so no fix creates a cycle; on pyflwdir's output nothing is fixed, and `acc` equals pyflwdir's `upstream_area`. Measured: on the 5 m raster of the v0.5.0 reprocessing (`/data/nmt/hydrograf-v050/precut`, 42,058,347 cells with data) 2574 pits next to nodata ended 42,058,378 cells (1051.5 km², all of it); the saved rasters of the old run have 2577 fixed cells, 2335 pairs of cells draining into each other, and the accumulation of 2326 outlets understated by 41,890,933 cells in total (1047.3 km²; one outlet by 32,526,822 cells, 813.2 km²). On the 6 synthetic DEMs 1 to 4 cells were fixed and 122 to 482 cells changed their accumulation (details in `docs/CHANGELOG.md`).
+
+Still open from this paragraph: `pyflwdir.streams.stream_distance` (0.5.12) is not `@njit` (4 min at 183M), and aspect and TWI are computed also with `save_intermediates=False`.
+
+**Priority:** HIGH before the next bootstrap of a raster above ~160M cells (8G + 8G swap; ~80M without swap); until then such areas are out of reach.
+
+---
+
+*Last update: 2026-11-14*

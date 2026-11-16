@@ -8,11 +8,12 @@ optional filtering by volume and area.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.errors import InternalError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -138,7 +139,6 @@ def get_depressions(
 
     except Exception as e:
         logger.error(f"Error fetching depressions: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error fetching depressions",
+        raise InternalError(
+            "depressions_failed", reason="depressions_query_failed"
         ) from e

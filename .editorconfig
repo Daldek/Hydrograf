@@ -1,26 +1,24 @@
-# EditorConfig — spójne formatowanie niezależnie od edytora
-# Źródło: shared/standards/DEVELOPMENT_STANDARDS.md
-# Użycie: skopiuj do korzenia nowego projektu
-# Wspierane natywnie przez większość edytorów (VS Code wymaga rozszerzenia)
-
+# EditorConfig (DEV-14.1, DEV-14.2): https://editorconfig.org
 root = true
 
-# Domyślne ustawienia dla wszystkich plików
 [*]
-indent_style = space
-end_of_line = lf
 charset = utf-8
-trim_trailing_whitespace = true
+end_of_line = lf
 insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
 
-# Python — wcięcia 4 spacje (PEP 8)
 [*.py]
 indent_size = 4
 
-# Pliki konfiguracyjne i dokumentacja — wcięcia 2 spacje
-[*.{md,yaml,yml,json,toml}]
-indent_size = 2
+# The front end, the nginx files and the shell scripts keep four spaces
+# (a deviation of DEV-14.2 and DEV-15.1, listed in CLAUDE.md).
+[*.{js,css,html,sh,conf,template}]
+indent_size = 4
 
-# Makefile wymaga tabulatorów (składnia make)
+[*.md]
+trim_trailing_whitespace = false
+
 [Makefile]
 indent_style = tab

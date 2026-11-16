@@ -1,8 +1,10 @@
 """
 Unit tests for CR9: cascade threshold boundary vs stats mismatch fix.
 
-Verifies that when cascade escalation occurs (>500 segments triggers
+Verifies that when cascade escalation occurs (>300 segments triggers
 coarser threshold), both boundary AND stats use the escalated threshold.
+
+Tests target the unified /api/delineate-watershed endpoint (precomputed mode).
 """
 
 from unittest.mock import MagicMock, patch
@@ -24,13 +26,15 @@ def client():
 
 def _make_boundary_wkb():
     """Create a simple boundary WKB for mocking merge_catchment_boundaries."""
-    poly = Polygon([
-        (639100, 486650),
-        (639200, 486650),
-        (639200, 486750),
-        (639100, 486750),
-        (639100, 486650),
-    ])
+    poly = Polygon(
+        [
+            (639100, 486650),
+            (639200, 486650),
+            (639200, 486750),
+            (639100, 486750),
+            (639100, 486650),
+        ]
+    )
     return MultiPolygon([poly])
 
 
@@ -38,13 +42,14 @@ def _make_mock_cg_with_cascade():
     """
     Create a mock CatchmentGraph that triggers cascade escalation.
 
-    Setup:
-    - Fine threshold (1000): BFS returns 600 segments (>500 limit)
-    - Coarse threshold (10000): BFS returns 50 segments (<=500 limit)
+    Setup (the request's threshold 1000 is raised to the floor 10000):
+    - Fine threshold (10000): BFS returns 600 segments (>300 limit)
+    - Coarse threshold (100000): BFS returns 50 segments (<=300 limit)
     - aggregate_stats returns different values for fine vs coarse indices
     """
     cg = MagicMock()
     cg.loaded = True
+    cg.thresholds_m2.return_value = [10000, 100000, 1000000, 10000000]
 
     # Fine threshold upstream indices (600 items -> triggers cascade)
     fine_upstream = np.arange(600, dtype=np.int32)
@@ -86,18 +91,18 @@ def _make_mock_cg_with_cascade():
 
     # traverse_upstream -> fine indices (600 items)
     cg.traverse_upstream.side_effect = [
-        fine_upstream,       # First call: fine threshold BFS
-        coarse_upstream,     # Second call: coarse threshold BFS (during cascade)
+        fine_upstream,  # First call: fine threshold BFS
+        coarse_upstream,  # Second call: coarse threshold BFS (during cascade)
     ]
 
     # get_segment_indices: maps indices to segment_idxs
     cg.get_segment_indices.side_effect = [
-        fine_segment_idxs,     # First call: fine -> 600 segments
-        coarse_segment_idxs,   # Second call: coarse -> 50 segments
+        fine_segment_idxs,  # First call: fine -> 600 segments
+        coarse_segment_idxs,  # Second call: coarse -> 50 segments
     ]
 
     # aggregate_stats: different results for fine vs coarse
-    def _aggregate_stats(indices):
+    def _aggregate_stats(indices, outlet_idx=None):
         if len(indices) == 600:
             return fine_stats.copy()
         elif len(indices) == 50:
@@ -177,49 +182,87 @@ def _make_mock_db():
     return mock_session
 
 
-class TestSelectStreamCascadeStats:
-    """Tests for select_stream cascade stats consistency (CR9)."""
+class TestPrecomputedCascadeStats:
+    """Tests for precomputed mode cascade stats consistency (CR9)."""
 
     def test_cascade_stats_use_escalated_threshold(self, client):
         """
-        When BFS returns >500 segments, cascade escalates to coarser threshold.
+        When BFS returns >300 segments, cascade escalates to coarser threshold.
         Verify that aggregate_stats is called with the coarser upstream_indices.
         """
         cg, fine_stats, coarse_stats = _make_mock_cg_with_cascade()
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.select_stream.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
-        ), patch(
-            "api.endpoints.select_stream.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.select_stream.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 100.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.select_stream.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.select_stream.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
-            return_value=None,
+        with (
+            patch(
+                "api.endpoints.watershed.loaded_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "elevation_mean_m": 202.0,
+                    "mean_slope_m_per_m": 0.048,
+                    "channel_length_km": 15.0,
+                    "channel_slope_m_per_m": 0.003,
+                    "compactness_coefficient": 1.4,
+                    "circularity_ratio": 0.5,
+                    "elongation_ratio": 0.6,
+                    "form_factor": 0.3,
+                    "mean_width_km": 5.0,
+                    "relief_ratio": 0.01,
+                    "hypsometric_integral": 0.45,
+                    "drainage_density_km_per_km2": 1.8,
+                    "stream_frequency_per_km2": 1.3,
+                    "ruggedness_number": 0.4,
+                    "max_strahler_order": 4,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
             response = client.post(
-                "/api/select-stream",
+                "/api/delineate-watershed",
                 json={
                     "latitude": 52.23,
                     "longitude": 21.01,
@@ -230,14 +273,17 @@ class TestSelectStreamCascadeStats:
             assert response.status_code == 200
             data = response.json()
 
+            # Should be precomputed mode
+            assert data["mode"] == "precomputed"
+
             # After cascade, area should come from coarse stats (105.0),
             # not fine stats (100.0)
             assert data["watershed"]["area_km2"] == 105.0
             assert data["watershed"]["morphometry"]["area_km2"] == 105.0
 
             # aggregate_stats should have been called twice:
-            # 1. First with fine upstream indices (len=600)
-            # 2. Then with coarse upstream indices (len=50)
+            # 1. First with fine upstream indices (len=600) — in _select_precomputed
+            # 2. Then with coarse upstream indices (len=50) — in cascade_escalate
             assert cg.aggregate_stats.call_count == 2
             first_call_indices = cg.aggregate_stats.call_args_list[0][0][0]
             second_call_indices = cg.aggregate_stats.call_args_list[1][0][0]
@@ -248,7 +294,7 @@ class TestSelectStreamCascadeStats:
 
     def test_no_cascade_stats_unchanged(self, client):
         """
-        When BFS returns <=500 segments, no cascade occurs.
+        When BFS returns <=300 segments, no cascade occurs.
         Stats should use the original upstream_indices.
         """
         cg = MagicMock()
@@ -283,38 +329,65 @@ class TestSelectStreamCascadeStats:
 
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.select_stream.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
-        ), patch(
-            "api.endpoints.select_stream.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.select_stream.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 25.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.select_stream.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.select_stream.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
-            return_value=None,
+        with (
+            patch(
+                "api.endpoints.watershed.loaded_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 25.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 25.0,
+                    "perimeter_km": 30.0,
+                    "length_km": 10.0,
+                    "elevation_min_m": 120.0,
+                    "elevation_max_m": 250.0,
+                    "elevation_mean_m": 185.0,
+                    "mean_slope_m_per_m": 0.04,
+                    "channel_length_km": 5.0,
+                    "channel_slope_m_per_m": 0.005,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
             response = client.post(
-                "/api/select-stream",
+                "/api/delineate-watershed",
                 json={
                     "latitude": 52.23,
                     "longitude": 21.01,
@@ -324,6 +397,9 @@ class TestSelectStreamCascadeStats:
 
             assert response.status_code == 200
             data = response.json()
+
+            # Should be precomputed mode
+            assert data["mode"] == "precomputed"
 
             # No cascade — stats should use original indices
             assert data["watershed"]["area_km2"] == 25.0
@@ -341,38 +417,61 @@ class TestSelectStreamCascadeStats:
         cg, fine_stats, coarse_stats = _make_mock_cg_with_cascade()
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.select_stream.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
-        ), patch(
-            "api.endpoints.select_stream.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.select_stream.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 100.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.select_stream.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.select_stream.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
-            return_value=None,
+        with (
+            patch(
+                "api.endpoints.watershed.loaded_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
             response = client.post(
-                "/api/select-stream",
+                "/api/delineate-watershed",
                 json={
                     "latitude": 52.23,
                     "longitude": 21.01,
@@ -387,24 +486,23 @@ class TestSelectStreamCascadeStats:
             hypso_indices = cg.aggregate_hypsometric.call_args[0][0]
             assert len(hypso_indices) == 50
 
-            # trace_main_channel should also use coarse indices
-            assert cg.trace_main_channel.call_count == 1
-            trace_indices = cg.trace_main_channel.call_args[0][1]
-            assert len(trace_indices) == 50
-
             app.dependency_overrides.clear()
 
 
 class TestWatershedCascadeStats:
-    """Tests for watershed delineation cascade stats consistency (CR9)."""
+    """Tests for watershed delineation cascade stats consistency (CR9).
+
+    Uses precomputed mode (threshold_m2 provided) to test cascade behavior.
+    """
 
     def test_cascade_stats_use_escalated_threshold(self, client):
         """
-        When watershed BFS returns >500 segments, cascade escalates.
+        When watershed BFS returns >300 segments, cascade escalates.
         Verify that build_morph_dict_from_graph is called with coarse indices.
         """
         cg = MagicMock()
         cg.loaded = True
+        cg.thresholds_m2.return_value = [10000, 100000, 1000000, 10000000]
 
         # Fine threshold: 600 upstream indices (triggers cascade)
         fine_upstream = np.arange(600, dtype=np.int32)
@@ -429,7 +527,7 @@ class TestWatershedCascadeStats:
             coarse_segment_idxs,
         ]
 
-        def _aggregate_stats(indices):
+        def _aggregate_stats(indices, outlet_idx=None):
             if len(indices) == 600:
                 return fine_stats.copy()
             elif len(indices) == 50:
@@ -441,52 +539,72 @@ class TestWatershedCascadeStats:
 
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.watershed.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.watershed.get_stream_info_by_segment_idx",
-            return_value={
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.watershed.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.watershed.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.watershed.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.get_land_cover_for_boundary",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_morph_dict_from_graph",
-            return_value={
-                "area_km2": 105.0,
-                "perimeter_km": 50.0,
-                "length_km": 20.0,
-                "elevation_min_m": 95.0,
-                "elevation_max_m": 310.0,
-                "elevation_mean_m": 202.0,
-                "mean_slope_m_per_m": 0.048,
-                "channel_length_km": 15.0,
-                "channel_slope_m_per_m": 0.003,
-                "compactness_coefficient": 1.4,
-                "circularity_ratio": 0.5,
-                "elongation_ratio": 0.6,
-                "form_factor": 0.3,
-                "mean_width_km": 5.0,
-                "relief_ratio": 0.01,
-                "hypsometric_integral": 0.45,
-                "drainage_density_km_per_km2": 1.8,
-                "stream_frequency_per_km2": 1.3,
-                "ruggedness_number": 0.4,
-                "max_strahler_order": 4,
-            },
-        ) as mock_morph:
+        with (
+            patch(
+                "api.endpoints.watershed.loaded_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "elevation_mean_m": 202.0,
+                    "mean_slope_m_per_m": 0.048,
+                    "channel_length_km": 15.0,
+                    "channel_slope_m_per_m": 0.003,
+                    "compactness_coefficient": 1.4,
+                    "circularity_ratio": 0.5,
+                    "elongation_ratio": 0.6,
+                    "form_factor": 0.3,
+                    "mean_width_km": 5.0,
+                    "relief_ratio": 0.01,
+                    "hypsometric_integral": 0.45,
+                    "drainage_density_km_per_km2": 1.8,
+                    "stream_frequency_per_km2": 1.3,
+                    "ruggedness_number": 0.4,
+                    "max_strahler_order": 4,
+                    "_main_channel_nodes": [],
+                },
+            ) as mock_morph,
+        ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
             response = client.post(
@@ -494,11 +612,15 @@ class TestWatershedCascadeStats:
                 json={
                     "latitude": 52.23,
                     "longitude": 21.01,
+                    "threshold_m2": 1000,
                 },
             )
 
             assert response.status_code == 200
             data = response.json()
+
+            # Should be precomputed mode
+            assert data["mode"] == "precomputed"
 
             # After cascade, area should come from coarse stats
             assert data["watershed"]["area_km2"] == 105.0

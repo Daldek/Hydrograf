@@ -9,6 +9,7 @@ Pre-generated tiles serve in ~1ms (static file) vs ~50-200ms (SQL per request).
 Usage:
     cd backend
     .venv/bin/python -m scripts.generate_tiles [--output-dir ../frontend/tiles]
+        [--thresholds 1000000,10000000]
 
 Prerequisites:
     - tippecanoe: https://github.com/felt/tippecanoe
@@ -39,6 +40,11 @@ logger = logging.getLogger(__name__)
 # Tile generation settings
 MIN_ZOOM = 8
 MAX_ZOOM = 18
+
+# Per-threshold zoom overrides: fine-grained thresholds only at high zooms
+THRESHOLD_MIN_ZOOM = {
+    1000: 14,
+}
 
 
 def check_prerequisites() -> dict[str, str | None]:
@@ -78,41 +84,38 @@ def export_geojson(
     """
     Export PostGIS table to GeoJSON for a given threshold.
 
+    The rows are read with a server-side cursor and written feature by feature,
+    so the memory does not grow with the table (180,431 catchments of 1 ha on the
+    Hydroni area took 6.9 GB as one list of parsed geometries).
+
     Returns number of features exported.
     """
     cols = ", ".join(columns)
     query = (
         f"SELECT {cols}, "
-        f"ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geometry "
+        f"ST_AsGeoJSON(ST_Transform(geom, 4326)) AS geometry "
         f"FROM {table} "
         f"WHERE threshold_m2 = :threshold AND geom IS NOT NULL"
     )
-
-    rows = db.execute(text(query), {"threshold": threshold}).fetchall()
-
-    features = []
-    for r in rows:
-        props = {}
-        for i, col in enumerate(columns):
-            props[col] = r[i]
-        geom = r[len(columns)]
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": geom,
-                "properties": props,
-            }
-        )
-
-    geojson = {
-        "type": "FeatureCollection",
-        "features": features,
-    }
-
+    rows = db.execute(
+        text(query),
+        {"threshold": threshold},
+        execution_options={"stream_results": True, "yield_per": 2000},
+    )
+    count = 0
     with open(output_path, "w") as f:
-        json.dump(geojson, f)
-
-    return len(features)
+        f.write('{"type": "FeatureCollection", "features": [')
+        for r in rows:
+            props = {col: r[i] for i, col in enumerate(columns)}
+            if count:
+                f.write(", ")
+            f.write(
+                '{"type": "Feature", "geometry": '
+                f'{r[len(columns)]}, "properties": {json.dumps(props)}}}'
+            )
+            count += 1
+        f.write("]}")
+    return count
 
 
 def run_tippecanoe(
@@ -181,14 +184,15 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
     import gzip
     import sqlite3
 
+    from scripts.clean import force_rmtree
+
     tile_dir = output_dir / prefix
     if tile_dir.exists():
-        shutil.rmtree(tile_dir)
+        force_rmtree(tile_dir)
 
     conn = sqlite3.connect(str(mbtiles_path))
     cursor = conn.execute(
-        "SELECT zoom_level, tile_column, tile_row, "
-        "tile_data FROM tiles"
+        "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles"
     )
 
     count = 0
@@ -208,26 +212,137 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
     return count
 
 
-def generate_tiles(output_dir: Path) -> None:
-    """Generate pre-built MVT tiles for all thresholds."""
+def _publish_mbtiles(mbtiles_path: Path, output_dir: Path, has_pmtiles: bool) -> None:
+    """Serve a tileset built in a temporary directory from ``output_dir``.
+
+    Extracts its tiles to ``output_dir/<stem>/{z}/{x}/{y}.pbf``, converts it to
+    ``.pmtiles`` when the tool is there, then copies the ``.mbtiles`` beside them
+    (its bounds go into ``tiles_metadata.json``) and deletes the temporary file.
+    A plain copy works on a network share, where SQLite cannot write.
+    """
+    stem = mbtiles_path.stem
+    extract_mbtiles_to_pbf(mbtiles_path, output_dir, stem)
+    if has_pmtiles:
+        convert_to_pmtiles(mbtiles_path, output_dir / f"{stem}.pmtiles")
+    # A journal left by an interrupted write would make a reader roll it back
+    (output_dir / f"{mbtiles_path.name}-journal").unlink(missing_ok=True)
+    shutil.copyfile(mbtiles_path, output_dir / mbtiles_path.name)
+    mbtiles_path.unlink()
+
+
+def mbtiles_bounds(paths: list[Path]) -> list[float] | None:
+    """Return the union of the ``bounds`` of .mbtiles files, or None.
+
+    The frontend passes it to the tile layers so the browser never asks
+    for tiles outside the data (each of them would answer 404).
+
+    Returns
+    -------
+    list[float] or None
+        ``[west, south, east, north]`` in WGS84 (MBTiles convention);
+        None when no file holds valid bounds.
+    """
+    import sqlite3
+
+    union: list[float] | None = None
+    for path in paths:
+        if not path.exists():
+            continue
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT value FROM metadata WHERE name = 'bounds'"
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            continue
+        try:
+            west, south, east, north = (float(v) for v in row[0].split(","))
+        except ValueError:
+            logger.warning(f"Invalid bounds in {path.name}: {row[0]!r}")
+            continue
+        if union is None:
+            union = [west, south, east, north]
+        else:
+            union = [
+                min(union[0], west),
+                min(union[1], south),
+                max(union[2], east),
+                max(union[3], north),
+            ]
+    return union
+
+
+def write_metadata(output_dir: Path, thresholds: list[int]) -> Path:
+    """Write ``tiles_metadata.json`` for the tiles in ``output_dir``."""
+    metadata = {
+        "thresholds": thresholds,
+        "min_zoom": MIN_ZOOM,
+        "max_zoom": MAX_ZOOM,
+        "threshold_min_zoom": {str(k): v for k, v in THRESHOLD_MIN_ZOOM.items()},
+        "format": "pbf",
+        "bounds": mbtiles_bounds(
+            [
+                output_dir / f"{layer}_{threshold}.mbtiles"
+                for threshold in thresholds
+                for layer in ("streams", "catchments")
+            ]
+        ),
+    }
+    meta_path = output_dir / "tiles_metadata.json"
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return meta_path
+
+
+def tiled_thresholds(output_dir: Path, thresholds: list[int]) -> list[int]:
+    """Return the thresholds of ``thresholds`` that have tiles in ``output_dir``."""
+    return [
+        t
+        for t in thresholds
+        if any(
+            (output_dir / f"{layer}_{t}").is_dir()
+            for layer in ("streams", "catchments")
+        )
+    ]
+
+
+def generate_tiles(output_dir: Path, only_thresholds: list[int] | None = None) -> None:
+    """Generate pre-built MVT tiles for the thresholds of the database.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory of the tiles and of ``tiles_metadata.json``.
+    only_thresholds : list[int], optional
+        Build only these thresholds and keep the tiles of the others; the
+        metadata then lists every threshold of the database with tiles.
+    """
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tools = check_prerequisites()
     tippecanoe_path = tools.get("tippecanoe")
     if not tippecanoe_path:
-        logger.error(
-            "tippecanoe is required. Install: pip install tippecanoe"
-        )
+        logger.error("tippecanoe is required. Install: pip install tippecanoe")
         sys.exit(1)
 
     has_pmtiles = tools.get("pmtiles") is not None
 
     with get_db_session() as db:
-        thresholds = get_thresholds(db)
-        if not thresholds:
+        db_thresholds = get_thresholds(db)
+        if not db_thresholds:
             logger.error("No thresholds found in stream_network")
             sys.exit(1)
+
+        thresholds = db_thresholds
+        if only_thresholds:
+            unknown = sorted(set(only_thresholds) - set(db_thresholds))
+            if unknown:
+                logger.error(f"Thresholds not in stream_network: {unknown}")
+                sys.exit(1)
+            thresholds = sorted(set(only_thresholds))
 
         logger.info(f"Thresholds: {thresholds}")
 
@@ -268,62 +383,41 @@ def generate_tiles(output_dir: Path) -> None:
                 )
                 logger.info(f"Exported {n_catch} catchment features")
 
-                # Generate .mbtiles
-                streams_mbt = output_dir / f"streams_{threshold}.mbtiles"
+                # Generate .mbtiles in the temporary directory: tippecanoe writes
+                # SQLite, which fails on a network share ("database is locked"),
+                # and the output directory may be one
+                th_min_zoom = THRESHOLD_MIN_ZOOM.get(threshold, MIN_ZOOM)
+                streams_mbt = tmp / f"streams_{threshold}.mbtiles"
                 if n_streams > 0:
                     run_tippecanoe(
                         streams_json,
                         streams_mbt,
                         "streams",
+                        min_zoom=th_min_zoom,
                         executable=tippecanoe_path,
                     )
                 else:
                     logger.warning(f"No streams for threshold {threshold} — skipping")
 
-                catchments_mbt = output_dir / f"catchments_{threshold}.mbtiles"
+                catchments_mbt = tmp / f"catchments_{threshold}.mbtiles"
                 if n_catch > 0:
                     run_tippecanoe(
                         catchments_json,
                         catchments_mbt,
                         "catchments",
+                        min_zoom=th_min_zoom,
                         executable=tippecanoe_path,
                     )
                 else:
                     logger.warning(f"No catchments for threshold {threshold}")
 
-                # Extract to static PBF files for Nginx serving
-                if streams_mbt.exists():
-                    extract_mbtiles_to_pbf(
-                        streams_mbt, output_dir, f"streams_{threshold}"
-                    )
-                if catchments_mbt.exists():
-                    extract_mbtiles_to_pbf(
-                        catchments_mbt, output_dir, f"catchments_{threshold}"
-                    )
+                streams_json.unlink(missing_ok=True)
+                catchments_json.unlink(missing_ok=True)
+                for mbtiles in (streams_mbt, catchments_mbt):
+                    if mbtiles.exists():
+                        _publish_mbtiles(mbtiles, output_dir, has_pmtiles)
 
-                # Convert to PMTiles if available
-                if has_pmtiles:
-                    if streams_mbt.exists():
-                        convert_to_pmtiles(
-                            streams_mbt,
-                            output_dir / f"streams_{threshold}.pmtiles",
-                        )
-                    if catchments_mbt.exists():
-                        convert_to_pmtiles(
-                            catchments_mbt,
-                            output_dir / f"catchments_{threshold}.pmtiles",
-                        )
-
-    # Write metadata
-    metadata = {
-        "thresholds": thresholds,
-        "min_zoom": MIN_ZOOM,
-        "max_zoom": MAX_ZOOM,
-        "format": "pbf",
-    }
-    meta_path = output_dir / "tiles_metadata.json"
-    with open(meta_path, "w") as f:
-        json.dump(metadata, f, indent=2)
+    write_metadata(output_dir, tiled_thresholds(output_dir, db_thresholds))
 
     elapsed = time.time() - t0
     logger.info(
@@ -333,15 +427,29 @@ def generate_tiles(output_dir: Path) -> None:
 
 
 def main() -> None:
+    """Run the MVT tile generator."""
     parser = argparse.ArgumentParser(description="Pre-generate MVT tiles from PostGIS")
     parser.add_argument(
         "--output-dir",
         default="../frontend/tiles",
         help="Output directory for tile files (default: ../frontend/tiles)",
     )
+    parser.add_argument(
+        "--thresholds",
+        default=None,
+        help=(
+            "Comma-separated thresholds [m²] to build; the tiles of the other "
+            "thresholds stay (default: every threshold of the database)"
+        ),
+    )
     args = parser.parse_args()
 
-    generate_tiles(Path(args.output_dir))
+    only = (
+        [int(t.strip()) for t in args.thresholds.split(",")]
+        if args.thresholds
+        else None
+    )
+    generate_tiles(Path(args.output_dir), only)
 
 
 if __name__ == "__main__":

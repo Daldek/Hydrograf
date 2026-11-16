@@ -18,12 +18,9 @@ M2_PER_KM2 = 1_000_000.0
 DEFAULT_CN = 75
 HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 
-# Flow graph safety limit (~200 km² @ 1m resolution)
-MAX_WATERSHED_CELLS = 2_000_000
-MAX_STREAM_DISTANCE_M = 1000.0
-
 # Default flow accumulation threshold (finest resolution)
-DEFAULT_THRESHOLD_M2 = 1000
+DEFAULT_THRESHOLD_M2 = 10000
 
-# Delineation area limit — above this, auto-switch to selection display
-DELINEATION_MAX_AREA_M2 = 10_000  # 0.01 km²
+# Flow accumulation thresholds of the preprocessing [m²]: stream networks and
+# sub-catchments of 1 ha, 10 ha, 1 km² and 10 km². The lowest is DEFAULT_THRESHOLD_M2.
+PIPELINE_THRESHOLDS_M2 = (10_000, 100_000, 1_000_000, 10_000_000)

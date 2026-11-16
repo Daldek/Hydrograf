@@ -1,6 +1,4 @@
-"""
-Utility functions for Hydrograf backend.
-"""
+"""Utility functions for the Hydrograf backend."""
 
 from utils.geometry import (
     polygon_to_geojson_feature,

@@ -2,26 +2,146 @@
 Raster I/O utilities for reading and writing DEM files.
 
 Supports ASCII GRID (.asc), VRT mosaics (.vrt), and GeoTIFF (.tif) formats.
-All outputs use PL-1992 (EPSG:2180) CRS.
+All outputs use PL-1992 (EPSG:2180) CRS. ``read_raster`` reads a whole raster
+(the preprocessing); ``read_window`` reads only a window of whole cells, such as
+``cells_window`` around a query (the API).
 """
 
 import logging
+import math
+from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
+from typing import Any
 
 import numpy as np
+import rasterio
+from rasterio.transform import Affine
+from rasterio.windows import Window, from_bounds
 
 logger = logging.getLogger(__name__)
+
+# Rows and columns of the tiles of the GeoTIFFs that GeoTiffWriter writes
+_TILE_CELLS = 256
+
+
+class GeoTiffWriter:
+    """A GeoTIFF in PL-1992 (EPSG:2180), LZW, written whole or strip by strip.
+
+    The file is tiled (256 x 256 cells), so a windowed reader decodes only the
+    tiles its window touches, not rows across the whole width. Strips of a
+    multiple of 256 rows write every tile once. A strip that ends inside a row of
+    tiles leaves them for the next strip to complete; a tile that GDAL's block
+    cache cannot keep until then is written again at the end of the file, which
+    grows (strips of 7 rows of a 2000 x 2000 raster with a cache of 1 MB: 19 times
+    the size).
+
+    Uses the original transform from the input raster if ``metadata`` has it, for a
+    perfect alignment with the source DEM; else one from its corner and cell size.
+
+    Parameters
+    ----------
+    output_path : Path
+        Output GeoTIFF path.
+    metadata : dict
+        Grid metadata with transform (preferred) or xllcorner, yllcorner, cellsize.
+    shape : tuple[int, ...]
+        Rows and columns of the raster.
+    nodata : float
+        NoData value.
+    dtype : str
+        Data type of the file ('float32', 'float64', 'int32', 'int16', 'uint8';
+        another name gives float32).
+    """
+
+    def __init__(
+        self,
+        output_path: Path,
+        metadata: dict[str, Any],
+        shape: tuple[int, ...],
+        nodata: float = -9999.0,
+        dtype: str = "float32",
+    ) -> None:
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        nrows, ncols = shape
+        if "transform" in metadata:
+            transform = metadata["transform"]
+        else:
+            # From the corner and the cell size (may be inexact)
+            cellsize = metadata["cellsize"]
+            xll = metadata["xllcorner"]
+            yll = metadata["yllcorner"]
+            transform = from_bounds(
+                xll, yll, xll + ncols * cellsize, yll + nrows * cellsize, ncols, nrows
+            )
+        dtype_map = {
+            "float32": (np.float32, rasterio.float32),
+            "float64": (np.float64, rasterio.float64),
+            "int32": (np.int32, rasterio.int32),
+            "int16": (np.int16, rasterio.int16),
+            "uint8": (np.uint8, rasterio.uint8),
+        }
+        self._np_dtype, rio_dtype = dtype_map.get(dtype, (np.float32, rasterio.float32))
+        self._ncols = ncols
+        self.path = output_path
+        self._dataset = rasterio.open(
+            output_path,
+            "w",
+            driver="GTiff",
+            height=nrows,
+            width=ncols,
+            count=1,
+            dtype=rio_dtype,
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=nodata,
+            compress="lzw",
+            tiled=True,
+            blockxsize=_TILE_CELLS,
+            blockysize=_TILE_CELLS,
+        )
+
+    def write_rows(self, row_start: int, data: np.ndarray) -> None:
+        """Write ``data`` (2-D) into the rows from ``row_start`` on.
+
+        The data is cast to the type of the file, without a copy when it has it.
+        """
+        from rasterio.windows import Window
+
+        self._dataset.write(
+            data.astype(self._np_dtype, copy=False),
+            1,
+            window=Window(0, row_start, self._ncols, data.shape[0]),
+        )
+
+    def __enter__(self) -> "GeoTiffWriter":
+        """Return the writer."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Close the file, and log it when the writing did not fail."""
+        self._dataset.close()
+        if exc_type is None:
+            size_kb = self.path.stat().st_size / 1024
+            logger.info("Saved: %s (%.1f KB)", self.path, size_kb)
 
 
 def save_raster_geotiff(
     data: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     output_path: Path,
     nodata: float = -9999.0,
     dtype: str = "float32",
 ) -> None:
     """
-    Save numpy array as GeoTIFF with PL-1992 (EPSG:2180) CRS.
+    Save numpy array as GeoTIFF with PL-1992 (EPSG:2180) CRS (GeoTiffWriter).
 
     Uses the original transform from input raster if available to ensure
     perfect alignment with source DEM.
@@ -37,60 +157,15 @@ def save_raster_geotiff(
     nodata : float
         NoData value
     dtype : str
-        Output data type ('float32', 'int32', 'int16')
+        Output data type ('float32', 'float64', 'int32', 'int16', 'uint8')
     """
-    import rasterio
-    from rasterio.transform import from_bounds
-
-    nrows, ncols = data.shape
-
-    # Preferuj oryginalną transformację z pliku wejściowego (idealne wyrównanie)
-    if "transform" in metadata:
-        transform = metadata["transform"]
-    else:
-        # Fallback: oblicz z bounds (może być niedokładne)
-        cellsize = metadata["cellsize"]
-        xll = metadata["xllcorner"]
-        yll = metadata["yllcorner"]
-        xmin = xll
-        ymin = yll
-        xmax = xll + ncols * cellsize
-        ymax = yll + nrows * cellsize
-        transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
-
-    # Map dtype string to numpy/rasterio dtype
-    dtype_map = {
-        "float32": (np.float32, rasterio.float32),
-        "float64": (np.float64, rasterio.float64),
-        "int32": (np.int32, rasterio.int32),
-        "int16": (np.int16, rasterio.int16),
-        "uint8": (np.uint8, rasterio.uint8),
-    }
-
-    np_dtype, rio_dtype = dtype_map.get(dtype, (np.float32, rasterio.float32))
-
-    # Prepare data (flip vertically because ASCII GRID is top-down)
-    out_data = data.astype(np_dtype)
-
-    with rasterio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=nrows,
-        width=ncols,
-        count=1,
-        dtype=rio_dtype,
-        crs="EPSG:2180",
-        transform=transform,
-        nodata=nodata,
-        compress="lzw",
-    ) as dst:
-        dst.write(out_data, 1)
-
-    logger.info(f"Saved: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
+    with GeoTiffWriter(
+        output_path, metadata, data.shape, nodata=nodata, dtype=dtype
+    ) as writer:
+        writer.write_rows(0, data)
 
 
-def read_raster(filepath: Path) -> tuple[np.ndarray, dict]:
+def read_raster(filepath: Path) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read raster file (ASC, VRT, or GeoTIFF) using rasterio.
 
@@ -145,6 +220,103 @@ def read_raster(filepath: Path) -> tuple[np.ndarray, dict]:
     return data, metadata
 
 
+@dataclass(frozen=True, eq=False)
+class RasterWindow:
+    """Cells of the first band of a raster in a window, with their grid.
+
+    Attributes
+    ----------
+    data : np.ndarray
+        Values of the window in the dtype of the raster; the cells beyond the
+        raster hold ``nodata`` (0 for a raster without one)
+    transform : Affine
+        Transform of ``data``: ``transform * (col, row)`` is the upper left
+        corner of the cell ``data[row, col]``
+    nodata : float | None
+        Nodata value of the raster
+    """
+
+    data: np.ndarray
+    transform: Affine
+    nodata: float | None
+
+
+def cells_window(
+    transform: Affine,
+    bounds: tuple[float, float, float, float],
+    margin_m: float = 0.0,
+) -> Window:
+    """Window of the whole cells of a grid around a bounding box.
+
+    The window holds the whole cells covering ``bounds`` widened by
+    ``margin_m``, plus one cell on every side, so a point on the edge of
+    ``bounds`` lies inside it whatever the rounding. It may reach beyond the
+    raster.
+
+    Parameters
+    ----------
+    transform : Affine
+        Transform of the raster
+    bounds : tuple[float, float, float, float]
+        (minx, miny, maxx, maxy) in the CRS of the raster
+    margin_m : float
+        Margin around ``bounds`` in the units of the CRS (metres in EPSG:2180)
+
+    Returns
+    -------
+    Window
+        Rows and columns of the raster; negative or past its size beyond it
+    """
+    minx, miny, maxx, maxy = bounds
+    span = from_bounds(
+        minx - margin_m,
+        miny - margin_m,
+        maxx + margin_m,
+        maxy + margin_m,
+        transform=transform,
+    )
+    row0 = math.floor(span.row_off) - 1
+    col0 = math.floor(span.col_off) - 1
+    row1 = math.ceil(span.row_off + span.height) + 1
+    col1 = math.ceil(span.col_off + span.width) + 1
+    return Window(col0, row0, col1 - col0, row1 - row0)
+
+
+def read_window(src: rasterio.DatasetReader, window: Window) -> RasterWindow:
+    """Read the first band of an open raster in a window of whole cells.
+
+    Only the part of the raster in the window is read (of a VRT mosaic, only
+    the tiles it touches). The window may reach beyond the raster: those cells
+    are filled with the nodata value. The whole window is allocated, so the
+    caller keeps it small.
+
+    Parameters
+    ----------
+    src : rasterio.DatasetReader
+        Open raster
+    window : Window
+        Whole rows and columns of the raster, e.g. from ``cells_window``
+
+    Returns
+    -------
+    RasterWindow
+        The values of the window, its transform and the nodata of the raster
+    """
+    row0, col0 = int(window.row_off), int(window.col_off)
+    height, width = int(window.height), int(window.width)
+    fill = src.nodata if src.nodata is not None else 0
+    data = np.full((height, width), fill, dtype=src.dtypes[0])
+    # The rows and columns of the window on the raster, read in place
+    top, bottom = max(row0, 0), min(row0 + height, src.height)
+    left, right = max(col0, 0), min(col0 + width, src.width)
+    if top < bottom and left < right:
+        part = data[top - row0 : bottom - row0, left - col0 : right - col0]
+        src.read(1, window=Window(left, top, right - left, bottom - top), out=part)
+    return RasterWindow(
+        data=data, transform=src.window_transform(window), nodata=src.nodata
+    )
+
+
 def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) -> Path:
     """
     Downsample raster to target resolution using GDAL (bilinear).
@@ -158,10 +330,15 @@ def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) 
 
     cmd = [
         "gdalwarp",
-        "-tr", str(target_res_m), str(target_res_m),
-        "-r", "bilinear",
-        "-of", "GTiff",
-        "-co", "COMPRESS=DEFLATE",
+        "-tr",
+        str(target_res_m),
+        str(target_res_m),
+        "-r",
+        "bilinear",
+        "-of",
+        "GTiff",
+        "-co",
+        "COMPRESS=DEFLATE",
         "-overwrite",
         str(input_path),
         str(output_path),
@@ -173,7 +350,7 @@ def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) 
     return output_path
 
 
-def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
+def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read ARC/INFO ASCII GRID file.
 
@@ -203,7 +380,7 @@ def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
     if not filepath.exists():
         raise FileNotFoundError(f"DEM file not found: {filepath}")
 
-    metadata = {}
+    metadata: dict[str, float] = {}
     header_lines = 6
 
     with open(filepath) as f:

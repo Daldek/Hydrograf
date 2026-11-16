@@ -1,6 +1,4 @@
-"""
-Alembic environment configuration for Hydrograf.
-"""
+"""Alembic environment configuration for Hydrograf."""
 
 import os
 from logging.config import fileConfig
@@ -8,11 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Import your models' metadata here
-# from models.database import Base
-# target_metadata = Base.metadata
-
-# For now, use None until models are created
+# The migrations are written by hand: no model metadata for autogenerate
 target_metadata = None
 
 # Alembic Config object
@@ -26,6 +20,7 @@ if config.config_file_name is not None:
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     import logging as _logging
+
     _logging.getLogger(__name__).warning(
         "DATABASE_URL not set — using default local connection. "
         "Set DATABASE_URL env var for production."

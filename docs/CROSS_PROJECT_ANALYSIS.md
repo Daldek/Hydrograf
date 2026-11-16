@@ -1,152 +1,182 @@
 # Cross-Project Analysis
 
-**Data:** 2026-01-21
-**Ostatnia aktualizacja:** 2026-03-01
-**Autor:** Claude Code (sesja analizy)
-**Projekty:** Hydrograf, Hydrolog, Kartograf, IMGWTools
+**Date:** 2026-01-21
+**Last update:** 2026-11-15 (Kartograf pinned to `e14bc78`, the candidate-5 head of its `develop` after its documentation fixes); 2026-11-15 (the pins follow the release set candidate-5 of Nogat: Obserwator `f4f6a8d`, Kartograf `c9afdd3`, Hydrolog `3ce7ee8`; production runs Obserwator `0394af7`, Kartograf `c9afdd3` and Hydrolog `e5df06d`, Hydroni candidate-3); 2026-11-15 (Hydrolog pinned to `e5df06d`, the head of its `develop` at 0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds `9e2cb61`; production runs these pins, Hydroni candidate-3); 2026-11-14 (the pins follow the release set candidate-4 of Nogat: Obserwator `0394af7`, Kartograf `c9afdd3`, Hydrolog `9e2cb61`; production and Hydroni still run candidate-3); 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Author:** Claude Code (analysis session)
+**Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
 ---
 
-## 1. Mapa zależności
+## 1. Dependency map
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           HYDROGRAF                                      │
-│         (Główna aplikacja - System Analizy Hydrologicznej)              │
+│                           HYDROGRAF                                     │
+│         (Main application - Hydrological Analysis System)               │
 │         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
-│         19 endpointów (11 core + 8 admin), 720 testów                   │
+│         23 endpoints (11 core + 12 admin), 991 tests (2026-03-27)       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
-│  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
-│  │  v2.1.0       │   │   v0.4.1      │   │   v0.5.2      │             │
-│  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
-│  └───────────────┘   └───────────────┘   └───────┬───────┘             │
-│                                                  │                      │
-└──────────────────────────────────────────────────┼──────────────────────┘
-                                                   │
-                                                   ▼
-                                            ┌──────────────┐
-                                            │  Kartograf   │
-                                            │  (opcja)     │
-                                            └──────────────┘
+│  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
+│  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
+│  │  f4f6a8d      │   │   e14bc78     │   │   3ce7ee8     │              │
+│  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
+│  └───────────────┘   └───────────────┘   └───────────────┘              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Szczegóły zależności
+### Details of the dependencies
 
-| Projekt | Zależy od | Typ zależności | Wersja |
-|---------|-----------|----------------|--------|
-| **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
-| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.4.1 |
-| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.5.2 |
-| **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
+| Project | Depends on | Type of dependency | Version |
+|---------|-----------|--------------------|---------|
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit f4f6a8d (3.0.0.dev0) |
+| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit e14bc78 (0.8.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 3ce7ee8 (0.8.0.dev0) |
+| **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
-**Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
+**Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
-### Instalacja zależności (requirements.txt)
+### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-```
-imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
-kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.1
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2
+The three producers are pinned by the commits of the release set of Nogat (candidate-5: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release commit of Hydrograf v0.5.0 replaces each commit with its tag of the first joint release, Obserwator `v3.0.0`, Kartograf `v0.8.0` and Hydrolog `v0.8.0`, and narrows the ranges to `>=3.0.0,<4`, `>=0.8.0,<0.9` and `>=0.8.0,<0.9` (REL-5.6):
+
+```toml
+# [tool.uv.sources]
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "e14bc78c014e9d3e19ad0e8fd8e1764e5191018a" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "3ce7ee847df14f7aaec7abbefd828d389eb7aae8" }
 ```
 
 ---
 
-## 2. Stan gałęzi Git
+## 2. State of the Git branches
 
-| Projekt | Gałąź robocza | Inne gałęzie | Stan |
-|---------|---------------|--------------|------|
+| Project | Working branch | Other branches | State |
+|---------|----------------|----------------|-------|
 | Hydrograf | `develop` | main | ✅ OK |
 | Hydrolog | `develop` | main | ✅ OK |
 | Kartograf | `develop` | main | ✅ OK |
-| IMGWTools | `master` | slave (=master) | ✅ OK |
+| Obserwator (IMGWTools until its v3.0.0) | `develop` | main | ✅ OK |
 
-**Uwaga:** IMGWTools używa `master/slave` zamiast `main/develop`.
-
----
-
-## 3. Punkty integracji w kodzie
-
-### 3.1 Hydrolog — importy w Hydrografie
-
-| Moduł Hydrografa | Importy z Hydrologa | Zastosowanie |
-|-------------------|---------------------|--------------|
-| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | Endpoint API generowania hydrogramu |
-| `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
-| `core/morphometry.py` | `WatershedParameters` (w docstring) | Dokumentacja formatu wymiany |
-| `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
-
-### 3.2 Kartograf — importy w Hydrografie
-
-| Moduł Hydrografa | Importy z Kartografa | Zastosowanie |
-|-------------------|---------------------|--------------|
-| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
-| `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE, wykrywanie TERYT |
-| `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
-| `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
-| `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN (HSG + land cover) |
-
-### 3.3 IMGWTools — importy w Hydrografie
-
-| Moduł Hydrografa | Importy z IMGWTools | Zastosowanie |
-|-------------------|---------------------|--------------|
-| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Pobieranie PMAXTP z IMGW (42 scenariusze) |
-| `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Pobieranie opadu dla skryptu CLI |
+**Pinned branches:** the three pins are commits of the `develop` branches of the producers, all on GitHub (ADR-060).
 
 ---
 
-## 4. Wykryte problemy
+## 3. Integration points in the code
 
-### 4.1 ✅ NAPRAWIONE (2026-01-21)
+### 3.1 Hydrolog: imports in Hydrograf
 
-| # | Projekt | Problem | Commit | Status |
+| Hydrograf module | Imports from Hydrolog | Use |
+|------------------|-----------------------|-----|
+| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `Hietogram`, `HietogramResult`, `HydrographGenerator`, `SCSCN`, `AMC`, `InvalidParameterError` | The hydrograph generation endpoint |
+| `api/endpoints/hydrograph.py` | `WatershedParameters.calculate_tc` | Time of concentration, computed only by Hydrolog: 6 methods: kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti |
+| `api/endpoints/hydrograph.py` | `NashIUH` | The Nash model: 2 parameter estimations: from_lutz, from_urban_regression |
+| `api/endpoints/hydrograph.py` | `uh_model` selector | The choice of the unit hydrograph model: scs / nash / snyder |
+| `core/cn_tables.py` | `AMC`, `SCSCN`, `HydrologicCondition`, `LandCover`, `get_cn` | The TR-55 CN of the soil-cover complexes (ADR-075) |
+| `core/cn_calculator.py`, `core/land_cover.py` | `calculate_weighted_cn` | The area-weighted CN |
+| `core/point_info.py` | `AMC`, `SCSCN` | The CN for AMC I, II and III of „Identyfikuj” |
+| `core/precipitation.py` | `Station`, `inverse_distance_weighting`, `thiessen_polygons` | The design depth of a watershed: Thiessen weights (ADR-069), IDW without a boundary |
+| `core/handoff.py` | none (writes Hydrolog's `hydrolog-network/1` and reads the version of the distribution `hydrolog`) | The hand-off to Hydrolog's GUI (ADR-068, ADR-080) |
+| `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | The CLI script of the full analysis |
+| `scripts/export_catchment_parameters.py` | `AMC` | The control columns of the runoff (ADR-075) |
+| `core/morphometry.py` | `WatershedParameters` (in a docstring) | Documentation of the exchange format |
+| `tests/unit/test_tc_methods.py` | `WatershedParameters` | Tests of the tc methods |
+
+### 3.2 Kartograf: imports in Hydrograf
+
+| Hydrograf module | Imports from Kartograf | Use |
+|------------------|------------------------|-----|
+| `utils/sheet_lookup.py` | `BBox`, `find_sheets_for_bbox` | Point + buffer to sheet codes (ADR-057) |
+| `utils/kartograf_store.py` | `MetadataCache`, `download_landcover`, `BBox`, `KartografError`, `NoCoverageError` | The store of the pipeline, the metadata cache, the BDOT10k packages of the counties of an area (ADR-061) |
+| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `MetadataCache`, `find_sheets_for_geometry` | NMT download into the store |
+| `scripts/download_landcover.py` | `MetadataCache`, `download_landcover`, `LandCoverReport` | BDOT10k / CORINE download into the store (the pipeline uses BDOT10k only) |
+| `scripts/bootstrap.py` | `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | The preprocessing orchestrator |
+| `scripts/write_instance_info.py` | `Sidecar`, `read_sidecar`, `InvalidSidecarError` | The dates of the GUGiK data in `instance.json` (line G, ADR-085) |
+| `utils/nmt_coverage.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox` | The coverage check of the NMT sheets (ADR-076) |
+| `utils/kartograf_set.py` | `find_sheets_for_geometry`, `BBox`, `Bdot10kProvider`, `KartografError`, `read_sidecar`, `transform_bbox` | A bootstrap from a set of an Archiwista project (ADR-067) |
+| `utils/archiwista_project.py` | `KartografError`, `store_state` | The check of the project's Kartograf store (ADR-067) |
+| `scripts/prepare_area.py` | `BBox` | The area preparation pipeline |
+| `scripts/analyze_watershed.py` | `iter_store`, `list_segments` | The NMT sheets of the store |
+| `core/cn_calculator.py` | `BBox`, `calculate_hsg`, `download_landcover`, `hsg_statistics`, `KartografError` | The CN calculation (HSG + land cover) |
+| `core/db_bulk.py` | none (works on the BDOT10k GeoPackage that Kartograf downloaded) | BDOT stream matching (ADR-044): the `is_real_stream` flag, the table `bdot_streams`, overlap-based matching |
+
+The WFS PRG discovery of the counties (ADR-045) and its fallback on a private method of Kartograf (ADR-057, exception a) are gone: `download_landcover(bbox=)` finds the counties of an area itself (ADR-061). `LandCoverManager` and `HSGCalculator` are no longer public in Kartograf 0.8.0. Details: [integrations/KARTOGRAF.md](integrations/KARTOGRAF.md) §5.
+
+### 3.3 Obserwator: imports in Hydrograf
+
+Hydrograf imports the package `obserwator` (`IMGWTools` before its v3.0.0).
+
+| Hydrograf module | Imports from `obserwator` | Use |
+|------------------|------------------------|-----|
+| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError` | Downloading PMAXTP from IMGW (432 scenarios) |
+| `scripts/analyze_watershed.py` | `fetch_pmaxtp`, `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError` | Downloading the precipitation for the CLI script |
+
+---
+
+## 4. Problems found
+
+### 4.1 ✅ FIXED (2026-01-21)
+
+| # | Project | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
-| 1 | **Hydrolog** | Błąd stałej SCS - Qmax zawyżony ~10x | `cc3e2a7` | ✅ NAPRAWIONE |
-| 2 | **Hydrolog** | Niespójność wersji | v0.5.2 | ✅ NAPRAWIONE |
-| 3 | **Kartograf** | Brak eksportów `SoilGridsProvider`, `HSGCalculator` | `23887db` | ✅ NAPRAWIONE |
-| 4 | **Kartograf** | SCOPE.md/PRD.md nieaktualne | `b99c08e` | ✅ NAPRAWIONE |
+| 1 | **Hydrolog** | A bug in the SCS constant: Qmax overstated ~10x | `aa8a0f3` | ✅ FIXED |
+| 2 | **Hydrolog** | Inconsistent versions | v0.5.2 | ✅ FIXED |
+| 3 | **Kartograf** | Missing exports `SoilGridsProvider`, `HSGCalculator` | `23887db` | ✅ FIXED |
+| 4 | **Kartograf** | SCOPE.md/PRD.md out of date | `b99c08e` | ✅ FIXED |
 
-#### Szczegóły naprawy SCS (Hydrolog)
+`HSGCalculator` itself was replaced in Kartograf 0.8.0 by `calculate_hsg` and `hsg_statistics` (ADR-061).
+
+#### Details of the SCS fix (Hydrolog)
 
 ```python
-# BYŁO (błędnie):
+# WAS (wrong):
 qp = 2.08 * self.area_km2 / tp_hours
 
-# JEST (poprawnie):
+# IS (correct):
 qp = 0.208 * self.area_km2 / tp_hours
 ```
 
-**Wersje po naprawie:**
+**Versions after the fix:**
 - Hydrolog: v0.5.2
-- Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
-- IMGWTools: v2.1.0 (Hydrograf zaktualizowany 2026-01-21)
+- Kartograf: v0.3.1 (SCOPE.md/PRD.md updated to v2.0)
+- IMGWTools: v2.1.0 (Hydrograf updated on 2026-01-21)
 
-### 4.2 ✅ NAPRAWIONE (IMGWTools - 2026-01-21)
+### 4.2 ✅ FIXED (IMGWTools - 2026-01-21)
 
-| # | Projekt | Problem | Commit | Status |
+| # | Project | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
-| 5 | **IMGWTools** | Python `>=3.11` (inne `>=3.12`) | `4bacf36` | ✅ NAPRAWIONE |
-| 6 | **IMGWTools** | Brak DEVELOPMENT_STANDARDS.md | `4bacf36` | ✅ NAPRAWIONE |
+| 5 | **IMGWTools** | Python `>=3.11` (the others `>=3.12`) | `e8ca92d` | ✅ FIXED |
+| 6 | **IMGWTools** | No DEVELOPMENT_STANDARDS.md | `e8ca92d` | ✅ FIXED |
 
-### 4.3 ✅ NAPRAWIONE (Hydrograf - sesja 2+)
+### 4.3 ✅ FIXED (Hydrograf - session 2+)
 
-| # | Projekt | Problem | Status |
+| # | Project | Problem | Status |
 |---|---------|---------|--------|
-| 7 | **Hydrograf** | line-length 100 → 88 | ✅ NAPRAWIONE |
-| 8 | **Hydrograf** | Migracja z black/flake8 → ruff | ✅ ZROBIONE |
+| 7 | **Hydrograf** | line-length 100 → 88 | ✅ FIXED |
+| 8 | **Hydrograf** | Migration from black/flake8 → ruff | ✅ DONE |
 
-### 4.4 ℹ️ INFORMACYJNE (bez akcji)
+### 4.5 ✅ FIXED (sessions 69-71, 2026-03-25)
 
-| # | Projekt | Obserwacja | Status |
-|---|---------|------------|--------|
-| 9 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
+| # | Project | Problem | ADR/Commit | Status |
+|---|---------|---------|------------|--------|
+| 10 | **Kartograf** | WFS BBOX axis order fix (EPSG:2180 Y,X instead of X,Y) | session 69 | ✅ FIXED |
+| 11 | **Hydrograf** | Mosaic bbox alignment (TERYT/BDOT/HSG): a mismatch of the extents | session 69 | ✅ FIXED |
+| 12 | **Hydrograf** | DEM auto-discovery with a fallback chain | ADR-049 | ✅ FIXED |
+| 13 | **Hydrograf** | Chaikin smoothing of streams in preprocessing | ADR-047 | ✅ FIXED |
+| 14 | **Hydrograf** | The flow path from the watershed divide as a separate geometry | ADR-048 | ✅ FIXED |
+
+### 4.4 ℹ️ INFORMATIONAL (no action)
+
+| # | Project | Observation | Status |
+|---|---------|-------------|--------|
+| 9 | IMGWTools | Uses `hatchling` (the others `setuptools`) | OK |
 
 ---
 
-## 5. Porównanie standardów kodu
+## 5. Comparison of the code standards
 
-| Aspekt | Hydrograf | Hydrolog | Kartograf | IMGWTools |
+| Aspect | Hydrograf | Hydrolog | Kartograf | IMGWTools |
 |--------|-----------|----------|-----------|-----------|
 | **Python** | >=3.12 | >=3.12 | >=3.12 | >=3.12 |
 | **Line length** | 88 ✅ | 88 | 88 | 88 |
@@ -154,23 +184,23 @@ qp = 0.208 * self.area_km2 / tp_hours
 | **Linter** | ruff | flake8 | flake8 | ruff |
 | **Type checker** | mypy | mypy | - | mypy |
 | **Docstrings** | NumPy (PL) | NumPy (EN) | NumPy (PL/EN) | NumPy (EN) |
-| **Build** | setuptools | setuptools | setuptools | hatchling |
+| **Build** | uv, no package build (`[tool.uv] package = false`) | setuptools | setuptools | hatchling |
 | **Tests** | pytest | pytest | pytest | pytest |
-| **Coverage** | ≥80% | ≥80% | ≥80% | 80% (cel) |
+| **Coverage** | ≥80% | ≥80% | ≥80% | 80% (target) |
 | **Git workflow** | main/develop | main/develop | main/develop | master/slave |
 
-**Uwaga:** Hydrograf przeszedł z black/flake8 na ruff (formatter + linter) — nowoczesna konfiguracja w `[tool.ruff]` w pyproject.toml.
+**Note:** Hydrograf moved from black/flake8 to ruff (formatter + linter): a modern configuration in `[tool.ruff]` in pyproject.toml.
 
 ---
 
-## 6. Porównanie wersji zależności
+## 6. Comparison of the versions of the dependencies
 
-| Zależność | Hydrograf | Hydrolog | Kartograf | IMGWTools |
-|-----------|-----------|----------|-----------|-----------|
+| Dependency | Hydrograf | Hydrolog | Kartograf | IMGWTools |
+|------------|-----------|----------|-----------|-----------|
 | **numpy** | >=1.26.3 | >=1.24 | >=1.24.0 | - |
 | **scipy** | >=1.12.0 | >=1.10 (opt) | - | - |
-| **requests** | - | - | >=2.31.0 | - |
-| **httpx** | >=0.26.0 | - | - | >=0.25 |
+| **requests** | >=2.31 | - | >=2.31.0 | - |
+| **httpx** | - (dev group: >=0.26.0) | - | - | >=0.25 |
 | **pydantic** | >=2.5.3 | - | - | >=2.0 |
 | **rasterio** | >=1.3.9 | - | >=1.3.0 | - |
 | **psutil** | >=5.9 | - | - | - |
@@ -179,114 +209,117 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 ---
 
-## 7. Metryki projektów
+## 7. Project metrics
 
-### Hydrograf (stan na 2026-03-01)
+### Hydrograf (as of 2026-03-27)
 
-| Metryka | Wartość |
-|---------|---------|
-| Wersja | v0.4.0 (CP4 Faza 4) |
-| Endpointy API | 19 (11 core + 8 admin) |
-| Testy | 720 (35 plików testów) |
-| Moduły core | 15 (w `backend/core/`) |
-| Skrypty | 14 (w `backend/scripts/`) |
-| Frontend JS | 10 modułów (IIFE) |
-| ADR | 34 decyzje architektoniczne |
+| Metric | Value |
+|--------|-------|
+| Version | v0.4.0+ (CP4 + sewer integration) |
+| API endpoints | 23 (11 core + 12 admin) |
+| Tests | 991 |
+| Core modules | 11 active (in `backend/core/`) |
+| Scripts | 14+ (in `backend/scripts/`) |
+| Front-end JS | 15 modules (10 core + 5 admin) |
+| ADRs | 51 architecture decisions |
 
-### Punkty integracji per biblioteka
+### Integration points per library (as of 2026-03-27)
 
-| Biblioteka | Pliki źródłowe | Pliki testowe | Łączne importy |
-|------------|----------------|---------------|-----------------|
-| Hydrolog | 4 | 2 | 6 |
-| Kartograf | 6 | 4 | 10 |
+| Library | Source files | Test files | Total imports |
+|---------|--------------|------------|---------------|
+| Hydrolog | 4 | 3 | 7 |
+| Kartograf | 7 | 4 | 11 |
 | IMGWTools | 2 | 0 | 2 |
 
 ---
 
-## 8. Plan naprawy — HISTORIA
+## 8. Repair plan: HISTORY
 
-### ✅ Priorytet 1: KRYTYCZNE - UKOŃCZONE
-
-```markdown
-✅ Hydrolog: Naprawić stałą SCS (commit cc3e2a7)
-  - Plik: hydrolog/runoff/unit_hydrograph.py:214
-  - Zmiana: 2.08 → 0.208
-  - Zaktualizowano docstring z poprawną matematyką
-
-✅ Hydrolog: Zsynchronizować wersję (v0.5.2)
-  - Plik: hydrolog/__init__.py
-  - Zmiana: __version__ = "0.4.0" → "0.5.1"
-```
-
-### ✅ Priorytet 2: WAŻNE - UKOŃCZONE
+### ✅ Priority 1: CRITICAL - DONE
 
 ```markdown
-✅ Kartograf: Dodać brakujące eksporty (commit 23887db)
-  - Plik: kartograf/__init__.py
-  - Dodano: SoilGridsProvider, HSGCalculator
+✅ Hydrolog: Fix the SCS constant (commit aa8a0f3)
+  - File: hydrolog/runoff/unit_hydrograph.py:214
+  - Change: 2.08 → 0.208
+  - The docstring was updated with the correct maths
 
-✅ Kartograf: Zaktualizować SCOPE.md i PRD.md (commit b99c08e)
-  - Dokumentacja zaktualizowana do v2.0
+✅ Hydrolog: Synchronise the version (v0.5.2)
+  - File: hydrolog/__init__.py
+  - Change: __version__ = "0.4.0" → "0.5.1"
 ```
 
-### ✅ Priorytet 3: IMGWTools - UKOŃCZONE
+### ✅ Priority 2: IMPORTANT - DONE
 
 ```markdown
-✅ IMGWTools: Podniesiono Python do >=3.12 (commit 4bacf36)
-  - Plik: pyproject.toml
-  - Zmiana: requires-python = ">=3.11" → ">=3.12"
-  - Wersja: v2.1.0
+✅ Kartograf: Add the missing exports (commit 23887db)
+  - File: kartograf/__init__.py
+  - Added: SoilGridsProvider, HSGCalculator
 
-✅ IMGWTools: Utworzono DEVELOPMENT_STANDARDS.md (commit 4bacf36)
-  - Plik: docs/DEVELOPMENT_STANDARDS.md
-  - 425 linii, pełne standardy kodowania
+✅ Kartograf: Update SCOPE.md and PRD.md (commit b99c08e)
+  - The documentation was updated to v2.0
 ```
 
-### ✅ Priorytet 4: NAPRAWIONE (2026-01-21 sesja 2)
+### ✅ Priority 3: IMGWTools - DONE
+
+```markdown
+✅ IMGWTools: Python raised to >=3.12 (commit e8ca92d)
+  - File: pyproject.toml
+  - Change: requires-python = ">=3.11" → ">=3.12"
+  - Version: v2.1.0
+
+✅ IMGWTools: DEVELOPMENT_STANDARDS.md created (commit e8ca92d)
+  - File: docs/DEVELOPMENT_STANDARDS.md
+  - 425 lines, the full coding standards
+```
+
+### ✅ Priority 4: FIXED (2026-01-21 session 2)
 
 ```markdown
 ✅ Hydrograf: line-length = 100 → 88
-  - Plik: backend/pyproject.toml (zmieniono tool.black i tool.flake8)
-  - 18 plików przeformatowanych z black
-  - Wszystkie 200 testów przechodzą
+  - File: backend/pyproject.toml (tool.black and tool.flake8 changed)
+  - 18 files reformatted with black
+  - All 200 tests pass
 
-✅ Hydrograf: Migracja z black/flake8 → ruff (sesje późniejsze)
-  - [tool.ruff] w pyproject.toml
-  - ruff>=0.8 w dev dependencies
+✅ Hydrograf: Migration from black/flake8 → ruff (later sessions)
+  - [tool.ruff] in pyproject.toml
+  - ruff>=0.8 in the dev dependencies
 ```
 
-### Priorytet 5: BACKLOG (opcjonalne)
+### Priority 5: BACKLOG (optional)
 
 ```markdown
-□ Wszystkie: Ujednolicić docstrings do EN
-□ Kartograf: Rozważyć migrację do ruff
+□ All: Unify the docstrings to EN
+□ Kartograf: Consider migrating to ruff
 ```
 
 ---
 
-## 9. Dokumentacja w projektach
+## 9. Documentation in the projects
 
-| Projekt | PROGRESS.md | DEVELOPMENT_STANDARDS.md | Status |
+| Project | PROGRESS.md | DEVELOPMENT_STANDARDS.md | Status |
 |---------|-------------|--------------------------|--------|
-| Hydrograf | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 48) |
-| Hydrolog | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 18) |
-| Kartograf | ✅ Szczegółowy | ✅ | Zaktualizowany (cross-project) |
-| IMGWTools | ✅ Szczegółowy | ✅ | Zaktualizowany (2026-01-21) |
+| Hydrograf | ✅ Detailed | — (deleted; the Nogat standard 1.0 is cited by ID, DEV-1.3) | Updated (session 48) |
+| Hydrolog | ✅ Detailed | ✅ | Updated (session 18) |
+| Kartograf | ✅ Detailed | ✅ | Updated (cross-project) |
+| IMGWTools | ✅ Detailed | ✅ | Updated (2026-01-21) |
 
-### Dokumentacja integracji Hydrografa
+### Documentation of the Hydrograf integrations
 
-| Plik | Opis | Status |
-|------|------|--------|
-| `docs/HYDROLOG_INTEGRATION.md` | Format wymiany, endpointy, moduły | ✅ Aktualny |
-| `docs/KARTOGRAF_INTEGRATION.md` | NMT, BDOT10k, HSG, building raising, MVT | ✅ Aktualny |
-| `docs/CROSS_PROJECT_ANALYSIS.md` | Zależności, standardy, metryki | ✅ Aktualny |
+| File | Description | Status |
+|------|-------------|--------|
+| `docs/integrations/HYDROLOG.md` | The exchange format, endpoints, modules | ✅ Current |
+| `docs/integrations/KARTOGRAF.md` | The Kartograf store, NMT, BDOT10k, HSG, building raising, MVT (ADR-061) | ✅ Current |
+| `docs/integrations/OBSERWATOR.md` | PMAXTP, `fetch_pmaxtp`, the errors | ✅ Current |
+| `docs/CROSS_PROJECT_ANALYSIS.md` | Dependencies, standards, metrics | ✅ Current |
 
 ---
 
-## 10. Rekomendowany wspólny standard
+## 10. Recommended common standard
+
+Superseded by the Nogat standard 1.0 (Hydrograf: ruff with `E F W I UP B SIM C4 D` and the NumPy convention, DEV-7.2; mypy `strict`, DEV-7.3; pytest with `--strict-markers`, DEV-10.1; coverage `fail_under = 80`). The recommendation of 2026-01:
 
 ```toml
-# Wspólna konfiguracja dla wszystkich projektów
+# A common configuration for all the projects
 
 [project]
 requires-python = ">=3.12"
@@ -311,43 +344,54 @@ fail_under = 80
 
 **Docstrings:** NumPy style, English
 **Commits:** Conventional Commits
-**Git workflow:** main + develop (lub master + slave dla IMGWTools)
+**Git workflow:** main + develop (or master + slave for IMGWTools)
 
 ---
 
-## 11. Podsumowanie
+## 11. Summary
 
-### Co działa dobrze
+### What works well
 
-- ✅ Jasna architektura zależności (3 biblioteki, czyste kontrakty)
-- ✅ Każdy projekt może działać niezależnie
-- ✅ Spójna konwencja 88 znaków linii
-- ✅ Dobra dokumentacja CLAUDE.md
-- ✅ Testy z pokryciem >80% (Hydrolog, Kartograf)
-- ✅ Integracja WatershedParameters (Hydrograf ↔ Hydrolog)
-- ✅ Pełny pipeline preprocessingu (bootstrap.py + 9 kroków)
-- ✅ CN calculation z HSG + land cover (Kartograf)
-- ✅ Building raising z BUBD (ADR-033)
+- ✅ A clear architecture of the dependencies (3 libraries, clean contracts)
+- ✅ Each project can work independently
+- ✅ A consistent convention of 88 characters per line
+- ✅ Good CLAUDE.md documentation
+- ✅ Tests with >80% coverage (Hydrolog, Kartograf)
+- ✅ The integration of WatershedParameters (Hydrograf ↔ Hydrolog)
+- ✅ A full preprocessing pipeline (bootstrap.py + 10 steps)
+- ✅ The CN calculation from HSG + land cover (Kartograf)
 - ✅ Land cover MVT tiles
-- ✅ Panel administracyjny z bootstrap SSE (ADR-034)
+- ✅ An admin panel with the bootstrap over SSE (ADR-034; on Nogat's GUI kit 1.0.0 at `/admin/` since ADR-086)
+- ✅ Time of concentration: 6 methods of Hydrolog's `WatershedParameters.calculate_tc` (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
+- ✅ NashIUH: 2 parameter estimations (from_lutz, from_urban_regression)
+- ✅ The UH model selector (scs/nash/snyder)
+- ✅ County (TERYT) discovery by Kartograf (ADR-061; it replaced the WFS PRG code of ADR-045)
+- ✅ BDOT stream matching with is_real_stream (ADR-044)
+- ✅ DEM auto-discovery with a fallback chain (ADR-049)
 
-### ✅ Naprawione (2026-01-21 – 2026-03-01)
+### ✅ Fixed (2026-01-21 – 2026-03-25)
 
-- ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.2
-- ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.2
-- ✅ ~~Brakujące eksporty w Kartograf~~ → dodane SoilGridsProvider, HSGCalculator
-- ✅ ~~SCOPE.md/PRD.md nieaktualne w Kartograf~~ → zaktualizowane do v2.0
-- ✅ ~~IMGWTools: Python 3.11~~ → podniesione do >=3.12 w v2.1.0
-- ✅ ~~IMGWTools: brak DEVELOPMENT_STANDARDS.md~~ → utworzone
-- ✅ ~~Hydrograf: brak PROGRESS.md~~ → utworzone (sesja 12)
-- ✅ ~~Hydrograf: line-length = 100~~ → zmieniono na 88
-- ✅ ~~Hydrograf: black/flake8~~ → zmigrowano na ruff
+- ✅ ~~A CRITICAL bug in Hydrolog (the SCS constant)~~ → fixed in v0.5.2
+- ✅ ~~Inconsistent versions in Hydrolog~~ → synchronised to v0.5.2
+- ✅ ~~Missing exports in Kartograf~~ → SoilGridsProvider, HSGCalculator added
+- ✅ ~~SCOPE.md/PRD.md out of date in Kartograf~~ → updated to v2.0
+- ✅ ~~IMGWTools: Python 3.11~~ → raised to >=3.12 in v2.1.0
+- ✅ ~~IMGWTools: no DEVELOPMENT_STANDARDS.md~~ → created
+- ✅ ~~Hydrograf: no PROGRESS.md~~ → created (session 12)
+- ✅ ~~Hydrograf: line-length = 100~~ → changed to 88
+- ✅ ~~Hydrograf: black/flake8~~ → migrated to ruff
+- ✅ ~~WFS BBOX axis order (EPSG:2180 Y,X)~~ → fixed (session 69)
+- ✅ ~~Mosaic bbox alignment (TERYT/BDOT/HSG)~~ → fixed (session 69)
+- ✅ ~~DEM auto-discovery~~ → ADR-049
+- ✅ ~~Chaikin smoothing of streams~~ → ADR-047
+- ✅ ~~The flow path from the watershed divide~~ → ADR-048
 
-### Pozostałe (backlog opcjonalny)
+### Remaining (optional backlog)
 
-- Ujednolicenie docstrings do EN (opcjonalne)
-- Kartograf: rozważyć migrację do ruff (opcjonalne)
+- Unify the docstrings to EN (optional)
+- Kartograf: consider migrating to ruff (optional)
+- Building raising (ADR-033): `process_dem` takes the footprints, but no script passes them, so the pipeline does not raise buildings ([BACKLOG.md](BACKLOG.md))
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-01 (sesja 49: audyt integracji vs kod)
+**Last update:** 2026-11-14 (audit against the code of 2026-11-14: the imports of the producers in §3, the build and dependency rows of Hydrograf in §5 and §6, the deleted `DEVELOPMENT_STANDARDS.md`, the Nogat standard 1.0 in §10, the admin panel of ADR-086). Before: 2026-10-25 (the producers pinned on their heads, the Kartograf 0.8.0 migration, ADR-060, ADR-061; translated to English); 2026-03-25 (session 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 tests).

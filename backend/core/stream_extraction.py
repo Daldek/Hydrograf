@@ -11,22 +11,14 @@ detection) to accelerate vectorize_streams from ~300s to ~10s.
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 import numba
 import numpy as np
 
-from core.hydrology import D8_DIRECTIONS
+from core.hydrology import D8_COL_OFFSET, D8_DIRECTIONS, D8_ROW_OFFSET, D8_VALID
 
 logger = logging.getLogger(__name__)
-
-# D8 lookup arrays for numba (dict not supported in njit)
-_DR = np.zeros(256, dtype=np.int32)
-_DC = np.zeros(256, dtype=np.int32)
-_VALID = np.zeros(256, dtype=np.bool_)
-for _d, (_di, _dj) in D8_DIRECTIONS.items():
-    _DR[_d] = _di
-    _DC[_d] = _dj
-    _VALID[_d] = True
 
 
 @numba.njit(cache=True)
@@ -44,7 +36,8 @@ def _count_upstream_and_find_headwaters(
     Returns upstream_count, hw_rows, hw_cols arrays.
     """
     nrows, ncols = fdir.shape
-    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
+    # At most 8 neighbours drain into a cell
+    upstream_count = np.zeros((nrows, ncols), dtype=np.uint8)
 
     # Pass 1: count upstream stream neighbors
     for i in range(nrows):
@@ -93,10 +86,10 @@ def vectorize_streams(
     acc: np.ndarray,
     slope: np.ndarray,
     strahler: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     stream_threshold: int = 1000,
     label_raster_out: np.ndarray | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Vectorize stream network from raster data as LineString segments.
 
@@ -150,25 +143,25 @@ def vectorize_streams(
     nodata_mask = dem == nodata
 
     # Numba-accelerated upstream counting + headwater detection
-    fdir_i16 = fdir.astype(np.int16)
+    fdir_i16 = np.asarray(fdir, dtype=np.int16)
     upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
         fdir_i16,
         stream_mask,
         nodata_mask,
-        _DR,
-        _DC,
-        _VALID,
+        D8_ROW_OFFSET,
+        D8_COL_OFFSET,
+        D8_VALID,
     )
 
     logger.info(f"  Found {len(hw_rows)} headwater cells")
 
-    def cell_xy(row, col):
+    def cell_xy(row: int, col: int) -> tuple[float, float]:
         """Get cell center coordinates in PL-1992."""
         x = xll + (col + 0.5) * cellsize
         y = yll + (nrows - row - 0.5) * cellsize
         return (x, y)
 
-    def downstream_cell(row, col):
+    def downstream_cell(row: int, col: int) -> tuple[int, int] | None:
         """Get downstream cell (row, col) or None."""
         d = fdir[row, col]
         if d not in D8_DIRECTIONS:
@@ -279,7 +272,7 @@ def vectorize_streams(
 
 
 def delineate_subcatchments(
-    flw,
+    flw: Any,
     label_raster: np.ndarray,
     dem: np.ndarray,
     nodata: float,
@@ -321,7 +314,7 @@ def delineate_subcatchments(
     )
 
     basin_map = flw.basins(idxs=stream_idxs, ids=stream_ids)
-    label_raster[:] = basin_map.astype(np.int32)
+    label_raster[:] = basin_map
 
     total_valid = int(np.sum(dem != nodata))
     total_labeled = int(np.sum(label_raster != 0))
@@ -338,9 +331,10 @@ def polygonize_subcatchments(
     label_raster: np.ndarray,
     dem: np.ndarray,
     slope: np.ndarray,
-    metadata: dict,
-    segments: list[dict],
-) -> list[dict]:
+    metadata: dict[str, Any],
+    segments: list[dict[str, Any]],
+    flow_dist_m: np.ndarray | None = None,
+) -> list[dict[str, Any]]:
     """
     Convert label raster to sub-catchment polygons.
 
@@ -359,24 +353,22 @@ def polygonize_subcatchments(
         Grid metadata (cellsize, nodata_value, transform)
     segments : list[dict]
         Stream segments from vectorize_streams()
+    flow_dist_m : np.ndarray, optional
+        Flow path distance to outlet (meters) from pyflwdir.stream_distance().
+        When provided, per-catchment max is stored as hydraulic_length_km.
 
     Returns
     -------
     list[dict]
         List of catchment dicts with keys: wkt, segment_idx,
         area_km2, mean_elevation_m, mean_slope_percent,
-        strahler_order
+        strahler_order, hydraulic_length_km (if flow_dist_m provided)
     """
     from rasterio.features import shapes
     from shapely.geometry import MultiPolygon, shape
     from shapely.ops import unary_union
 
-    from core.zonal_stats import (
-        zonal_bincount,
-        zonal_elevation_histogram,
-        zonal_max,
-        zonal_min,
-    )
+    from core.zonal_stats import zonal_summary
 
     logger.info("Polygonizing sub-catchments...")
 
@@ -416,76 +408,36 @@ def polygonize_subcatchments(
 
     logger.info(f"  Found {len(geom_groups)} unique sub-catchment labels")
 
-    # Pre-compute zonal stats using bincount (O(M) not O(n*M))
-    max_label = int(label_raster.max())
-
-    counts = zonal_bincount(label_raster, max_label=max_label)
-
-    # Elevation: mask nodata before bincount
-    valid_elev = dem != nodata
-    elev_sum = zonal_bincount(
-        label_raster,
-        weights=dem.astype(np.float64),
-        max_label=max_label,
-        valid_mask=valid_elev,
-    )
-    elev_count = zonal_bincount(
-        label_raster,
-        max_label=max_label,
-        valid_mask=valid_elev,
+    # Zonal statistics of all labels with their elevation histograms (for the
+    # hypsometric curve aggregation), in two passes over the raster
+    summary = zonal_summary(
+        label_raster, dem, slope, nodata, flow_dist_m=flow_dist_m, interval_m=1
     )
 
-    # Slope
-    slope_sum = zonal_bincount(
-        label_raster,
-        weights=slope,
-        max_label=max_label,
-    )
-
-    # Elevation min/max (for pre-computed stats)
-    dem_for_min = np.where(valid_elev, dem, np.inf).astype(np.float64)
-    dem_for_max = np.where(valid_elev, dem, -np.inf).astype(np.float64)
-    elev_min = zonal_min(label_raster, dem_for_min, max_label)
-    elev_max = zonal_max(label_raster, dem_for_max, max_label)
-
-    # Elevation histograms (for hypsometric curve aggregation)
-    elev_histograms = zonal_elevation_histogram(
-        label_raster,
-        dem,
-        max_label,
-        nodata,
-        interval_m=1,
-    )
-
-    logger.info("  Zonal statistics computed (single-pass bincount)")
+    logger.info("  Zonal statistics computed")
 
     # Build catchment records
     catchments = []
-    simplify_tol = cellsize * 2
+    sorted_keys = sorted(geom_groups.keys())
 
-    for seg_idx in sorted(geom_groups.keys()):
-        geom_list = geom_groups[seg_idx]
+    for seg_idx in sorted_keys:
+        geom_list = geom_groups.pop(seg_idx)  # pop to free memory progressively
         merged = unary_union(geom_list)
+        del geom_list
 
         # Ensure MULTIPOLYGON
         if merged.geom_type == "Polygon":
             merged = MultiPolygon([merged])
 
-        # Simplify to reduce staircase vertices
-        merged = merged.simplify(
-            simplify_tol,
-            preserve_topology=True,
-        )
-        if merged.geom_type == "Polygon":
-            merged = MultiPolygon([merged])
-
         # Zonal statistics from pre-computed arrays
-        n_cells = int(counts[seg_idx])
+        n_cells = int(summary.count[seg_idx])
         area_km2 = n_cells * cell_area_km2
 
-        n_elev = int(elev_count[seg_idx])
-        mean_elev = float(elev_sum[seg_idx] / n_elev) if n_elev > 0 else None
-        mean_slp = float(slope_sum[seg_idx] / n_cells) if n_cells > 0 else None
+        n_elev = int(summary.elev_count[seg_idx])
+        mean_elev = float(summary.elev_sum_m[seg_idx] / n_elev) if n_elev > 0 else None
+        mean_slp = (
+            float(summary.slope_sum_percent[seg_idx] / n_cells) if n_cells > 0 else None
+        )
 
         # Strahler order and segment-level stats
         strahler_order = None
@@ -499,8 +451,8 @@ def polygonize_subcatchments(
                 stream_length_km = round(seg["length_m"] / 1000, 4)
 
         # Elevation min/max from zonal stats
-        e_min = float(elev_min[seg_idx - 1]) if n_elev > 0 else None
-        e_max = float(elev_max[seg_idx - 1]) if n_elev > 0 else None
+        e_min = float(summary.elev_min_m[seg_idx]) if n_elev > 0 else None
+        e_max = float(summary.elev_max_m[seg_idx]) if n_elev > 0 else None
         # Guard against inf from nodata masking
         if e_min is not None and not np.isfinite(e_min):
             e_min = None
@@ -510,8 +462,15 @@ def polygonize_subcatchments(
         # Perimeter from polygon geometry (in km)
         perimeter_km = round(merged.length / 1000, 4)
 
+        # Hydraulic length (max flow path distance to outlet, in km)
+        h_length_km = None
+        if summary.flow_dist_max_m is not None:
+            h_val = float(summary.flow_dist_max_m[seg_idx])
+            if np.isfinite(h_val) and h_val > 0:
+                h_length_km = round(h_val / 1000, 4)
+
         # Elevation histogram
-        histogram = elev_histograms.get(seg_idx)
+        histogram = summary.histograms.get(seg_idx)
 
         catchments.append(
             {
@@ -530,6 +489,7 @@ def polygonize_subcatchments(
                 "elevation_max_m": (round(e_max, 2) if e_max is not None else None),
                 "perimeter_km": perimeter_km,
                 "stream_length_km": stream_length_km,
+                "hydraulic_length_km": h_length_km,
                 "elev_histogram": histogram,
             }
         )
@@ -544,10 +504,10 @@ def polygonize_subcatchments(
 
 
 def compute_downstream_links(
-    segments: list[dict],
+    segments: list[dict[str, Any]],
     label_raster: np.ndarray,
     fdir: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
 ) -> None:
     """
     For each segment, follow fdir one cell from outlet to find downstream segment.

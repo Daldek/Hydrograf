@@ -1,0 +1,106 @@
+"""
+The pages of the public service and GET /api/terms (api/endpoints/site.py; ADR-084),
+whose provider lines the welcome window shows on every deployment, with or without an
+operator.
+
+A page of the front end is sent by nginx from the file the API names in
+`X-Accel-Redirect`; the regulamin is the filled page of the deployment, or a 404 with
+no link to it when the deployment names no operator (Nogat DEV-15.7).
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+
+import api.endpoints.site
+from api.main import app
+from core.attribution import PMAXTP, SOILGRIDS_SOURCE
+from core.terms import Terms
+
+TERMS = Terms(page="<!doctype html><h1>Regulamin</h1>", operator_email="op@example.pl")
+
+
+def _gugik(products: str) -> str:
+    """G of the products, without an instance.json that dates them."""
+    return (
+        f"Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products} "
+        "(wytworzono b.d., pozyskano b.d.); dane przetworzone"
+    )
+
+
+# Every line of the service: PMAXTP's, then G and SG of a catchment (DEV-20.4), and
+# the lines of each kind of the map's layers
+LINES = {
+    "attribution": [*PMAXTP.attribution, _gugik("NMT, BDOT10k"), SOILGRIDS_SOURCE],
+    "terms_notice": list(PMAXTP.terms_notice),
+    "layers": {
+        "elevation": {"attribution": [_gugik("NMT")], "terms_notice": []},
+        "drainage": {"attribution": [_gugik("NMT, BDOT10k")], "terms_notice": []},
+        "topography": {"attribution": [_gugik("BDOT10k")], "terms_notice": []},
+        "soils": {
+            "attribution": [_gugik("BDOT10k"), SOILGRIDS_SOURCE],
+            "terms_notice": [],
+        },
+    },
+}
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def terms(monkeypatch):
+    """Serve the deployment's regulamin as given (None: no operator)."""
+
+    def serve(value: Terms | None) -> None:
+        monkeypatch.setattr(api.endpoints.site, "current_terms", lambda: value)
+
+    return serve
+
+
+@pytest.mark.parametrize(
+    "page", ["index.html", "admin/index.html", "instrukcja/index.html"]
+)
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_nginx_sends_the_file_of_a_page(client, page, method):
+    response = client.request(method, f"/{page}")
+
+    assert response.status_code == 200
+    assert response.headers["X-Accel-Redirect"] == f"/_site/{page}"
+    assert response.content == b""
+
+
+@pytest.mark.parametrize("page", ["/other.html", "/admin.html"])
+def test_an_unknown_page_is_not_found(client, page):
+    assert client.get(page).status_code == 404
+
+
+def test_regulamin_of_a_public_deployment(client, terms):
+    terms(TERMS)
+
+    response = client.get("/regulamin.html")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.text == TERMS.page
+    assert client.get("/api/terms").json() == {
+        "url": "/regulamin.html",
+        "operator_email": "op@example.pl",
+        **LINES,
+    }
+
+
+def test_without_an_operator_there_is_no_regulamin(client, terms):
+    terms(None)
+
+    response = client.get("/regulamin.html")
+
+    assert response.status_code == 404
+    assert response.json()["details"]["reason"] == "terms_not_configured"
+    assert client.get("/api/terms").json() == {
+        "url": None,
+        "operator_email": None,
+        **LINES,
+    }

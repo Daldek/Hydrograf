@@ -51,6 +51,8 @@ htmlcov/
 .env.local
 .env.*.local
 *.env
+# Secrets of the staging stack of the store migration (scripts/staging-compose.sh)
+.env.staging
 
 # Database
 *.db
@@ -82,6 +84,8 @@ cache/
 frontend/data/
 frontend/tiles/
 !data/.gitkeep
+# The default NOGAT_STATE_DIR of docker-compose.yml: the API's logs, state/hydrograf/logs
+/state/
 
 # Alembic
 alembic/versions/*.pyc
@@ -99,7 +103,10 @@ credentials.json
 config.yaml
 
 # Other
+notes/
 *.png
+!frontend/vendor/**/*.png
+current_task.md
 
 # Worktrees
 .worktrees/

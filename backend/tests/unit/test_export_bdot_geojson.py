@@ -102,3 +102,35 @@ class TestExportBdotGeojson:
         assert "0 zbiorników" in result
         assert (out_dir / "bdot_streams.geojson").exists()
         assert not (out_dir / "bdot_lakes.geojson").exists()
+
+    def test_features_without_a_name_are_exported_with_null_name(self, tmp_path):
+        from scripts.bootstrap import export_bdot_geojson
+
+        gpkg_path = tmp_path / "hydro.gpkg"
+        square = [(400000, 500000), (400100, 500000), (400100, 500100)]
+        gpd.GeoDataFrame(
+            {"NAZWA": ["Jezioro Zegrzyńskie", None]},
+            geometry=[Polygon(square), Polygon([(x + 500, y) for x, y in square])],
+            crs="EPSG:2180",
+        ).to_file(gpkg_path, layer="OT_PTWP_A", driver="GPKG")
+        gpd.GeoDataFrame(
+            {"NAZWA": [None, "Bzura"]},
+            geometry=[
+                LineString([(400000, 500000), (400500, 500500)]),
+                LineString([(401000, 500000), (401500, 500500)]),
+            ],
+            crs="EPSG:2180",
+        ).to_file(gpkg_path, layer="OT_SWRS_L", driver="GPKG")
+        out_dir = tmp_path / "output"
+        out_dir.mkdir()
+
+        export_bdot_geojson(gpkg_path, out_dir)
+
+        with open(out_dir / "bdot_lakes.geojson") as f:
+            lakes = json.load(f)
+        with open(out_dir / "bdot_streams.geojson") as f:
+            streams = json.load(f)
+        lake_names = [ft["properties"]["NAZWA"] for ft in lakes["features"]]
+        stream_names = [ft["properties"]["NAZWA"] for ft in streams["features"]]
+        assert lake_names == ["Jezioro Zegrzyńskie", None]
+        assert stream_names == [None, "Bzura"]
