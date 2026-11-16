@@ -39,7 +39,7 @@
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commits of the release set of Nogat (candidate-5: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
+The three producers are pinned by the commits of the release set of Nogat (candidate-5: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release commit of Hydrograf v0.5.0 replaces each commit with its tag of the first joint release, Obserwator `v3.0.0`, Kartograf `v0.8.0` and Hydrolog `v0.8.0`, and narrows the ranges to `>=3.0.0,<4`, `>=0.8.0,<0.9` and `>=0.8.0,<0.9` (REL-5.6):
 
 ```toml
 # [tool.uv.sources]
