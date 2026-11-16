@@ -1,6 +1,6 @@
 # Hydrograf: watershed delineation and design hydrographs for Poland
 
-Hydrograf is a web application for watershed delineation and design hydrographs in Poland. Click a point on the map to get the watershed boundary and its parameters (area, slopes, land cover, SCS-CN curve number, soil groups), then generate a design hydrograph from IMGW maximum precipitation (PMAXTP). Map interface, REST API and admin panel; FastAPI over PostGIS.
+Hydrograf is a web application for watershed delineation, catchment parameters and design hydrographs in Poland. Click a point on the map to get the watershed boundary and its parameters (area, slopes, land cover, SCS-CN curve number, soil groups), then generate a design hydrograph from IMGW maximum precipitation (PMAXTP). Map interface, REST API and admin panel; FastAPI over PostGIS.
 
 ## When to use
 
@@ -34,70 +34,25 @@ Hydrograf is a web application for watershed delineation and design hydrographs 
 | Precipitation series, station data, PMAXTP as files | [Obserwator](https://github.com/Daldek/Obserwator) |
 | User accounts, saved analyses, PDF reports, real-time or forecast data | not provided |
 
-## Run and Deploy
+## Run
 
-Requirements: Docker with Compose for the full stack; for development also Python 3.12 and
-[uv](https://docs.astral.sh/uv/).
+Requirements: Docker with Compose for the full stack; for development also Python 3.12 or
+newer and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/Daldek/Hydrograf.git
 cd Hydrograf
-cp .env.example .env      # set POSTGRES_PASSWORD (and the admin key, see below)
+cp .env.example .env      # set POSTGRES_PASSWORD
 docker compose up -d      # PostGIS, API and web server
 ```
 
 The map is at `http://localhost:8080` (the port is `HYDROGRAF_PORT`), the admin panel at
-`/admin/` (it asks for the admin key; see [Admin panel](#admin-panel)), and the scrolling user guide at `/instrukcja/`
-(on the test server: https://hydrograf-test.debever.pl/instrukcja). The guide is linked
-from the map's top-bar "Instrukcja" button via the welcome dialog. The API is under
-`/api` and the health check at `/health`. The web server listens on the loopback interface only
-(`127.0.0.1:${HYDROGRAF_PORT:-8080}`); the test server is reached through a Cloudflare
-Tunnel. In development `docker-compose.override.yml` is loaded automatically (hot
-reload, the code mounted from `./backend`); production runs
-`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (the database
-password from `SECRETS_DIR`, the admin key file required, no reload, one API process).
-
-The admin key of a deployment lives in one file of the host, never as a value in `.env`, a
-unit file or compose: `~/.config/nogat/keys/hydrograf-admin.key`, the key alone. The API's
-container runs as UID 999, so the file gets mode 0640 and a group the container joins
-(`install -m 0640 -g GROUP /dev/null ~/.config/nogat/keys/hydrograf-admin.key`, then write
-the key into it), and `.env` names the file and the group's numeric id (`stat -c %g FILE`):
-`ADMIN_API_KEY_HOST_FILE=/home/USER/.config/nogat/keys/hydrograf-admin.key` and
-`HYDROGRAF_SECRETS_GID=GID`. Compose mounts the file read-only at
-`/run/secrets/admin_api_key`, sets `ADMIN_API_KEY_FILE` to it and adds the group to the
-container's user; the production overlay refuses to start without `ADMIN_API_KEY_HOST_FILE`
-and ignores `ADMIN_API_KEY`, which is for development only (it wins over the file). The file
-is read on every request, so a new key needs no restart.
-
-A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
-`NOGAT_CONFIG=/home/USER/.config/nogat/nogat.toml`, which Compose mounts read-only into the
-API at `/config/nogat.toml`. With the table `[nogat.operator]` in that file Hydrograf is a
-public service with its regulamin at `/regulamin.html` (see [Public service](#public-service));
-without it there is no regulamin and no link „Regulamin”. On the Docker
-host, name the state directory of the logs in `.env` too,
-`NOGAT_STATE_DIR=/home/USER/.local/state/nogat`, and create the API's directory in it once,
-writable by the container's user (UID 999) as `data/` is:
-`install -d -m 0777 ~/.local/state/nogat/hydrograf` (without `NOGAT_STATE_DIR` Compose
-mounts `./state/hydrograf` of the checkout, which needs the same; see
-[Service logs](#service-logs)).
-
-A second instance runs beside the first on the same Docker host from its own checkout, with
-its own compose project and env file:
-
-```bash
-docker compose -p NAME --env-file NAME.env up -d   # with -f ... as above for production
-```
-
-`NAME.env` holds the instance's settings (`POSTGRES_PASSWORD`, `SECRETS_DIR` and so on) and
-its names: `HYDROGRAF_CONTAINER_PREFIX` (containers `<prefix>_db`, `<prefix>_api`,
-`<prefix>_nginx`; default `hydro`), a free `HYDROGRAF_PORT`, and the host directories
-`HYDROGRAF_CACHE_PATH`, `HYDROGRAF_DATA_PATH`, `HYDROGRAF_FRONTEND_DATA_PATH` and
-`HYDROGRAF_FRONTEND_TILES_PATH` (defaults `./cache`, `./data`, `./frontend/data`,
-`./frontend/tiles`), and its own `NOGAT_STATE_DIR` with a `hydrograf` directory writable by
-UID 999, so that its logs stay apart from the first instance's. The database volume and the
-network take the project's name (`NAME_postgres_data`, `NAME_default`). The checkout needs
-the empty directories `frontend/data` and `frontend/tiles`: nginx mounts the instance's
-directories there inside its read-only `./frontend`.
+`/admin/` (it asks for the admin key; see [Admin panel](#admin-panel)), and the scrolling user
+guide at `/instrukcja/` (on the test server: https://hydrograf-test.debever.pl/instrukcja),
+linked from the map's top-bar "Instrukcja" button via the welcome dialog. The API is under
+`/api` and the health check at `/health`. The web server listens on the loopback interface
+only (`127.0.0.1:${HYDROGRAF_PORT:-8080}`). In development `docker-compose.override.yml` is
+loaded automatically (hot reload, the code mounted from `./backend`).
 
 The API needs data before it can delineate: a one-off preprocessing of the DEM and its
 derivatives for your area. The easiest way is the admin panel (in „Przetwarzanie NMT” give a
@@ -110,9 +65,10 @@ uv sync --locked
 uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 ```
 
-The pipeline downloads the DEM from GUGiK, land cover from BDOT10k, soil data from
-SoilGrids and precipitation from IMGW, and writes `frontend/data/instance.json`, from which
-the welcome dialog and the guide name the data area (`--area-name`). The
+The pipeline downloads the DEM from GUGiK, land cover from the topographic database BDOT10k,
+soil data from SoilGrids and precipitation from IMGW, and writes
+`frontend/data/instance.json`, from which the welcome dialog and the guide name the data area
+(`--area-name`). The
 [scripts README](https://github.com/Daldek/Hydrograf/blob/main/backend/scripts/README.md)
 describes every script.
 
@@ -148,79 +104,26 @@ The answer holds `precipitation` (total and effective depths), `hydrograph` (`ti
 `discharge_m3s`, `peak_discharge_m3s`, `time_to_peak_min`, `total_volume_m3`),
 `water_balance` and `metadata` (the time of concentration and the methods used).
 
-### Configuration
+## Deploy
 
-Every variable is listed in
-[`.env.example`](https://github.com/Daldek/Hydrograf/blob/main/.env.example): the database
-(`POSTGRES_*`, `DATABASE_URL`, `DB_STATEMENT_TIMEOUT_MS`), the API (`LOG_LEVEL`,
-`CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
-manifest of the analysis results and `instance.json`), the admin key
-(`ADMIN_API_KEY` for development or the file named by `ADMIN_API_KEY_FILE`, read on every
-request; without either, every admin route refuses with `admin_key_not_configured`; for
-Docker Compose `ADMIN_API_KEY_HOST_FILE` and `HYDROGRAF_SECRETS_GID`), the shared Kartograf
-store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
-through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
-the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
-`{"hydrolog": "http://127.0.0.1:8070/"}`; without it the table `gui` of `[nogat]` in the file
-of `NOGAT_CONFIG`, and without both there is no menu), the public service (`NOGAT_CONFIG`, the
-deployment's `nogat.toml`; `HYDROGRAF_REQUEST_LIMIT` and `HYDROGRAF_REQUEST_WINDOW`, 300
-requests in 60 s per client address by default; `HYDROGRAF_DATA_DIR`, the directory of the
-daily statistics, `/data` in Docker), the logs (`HYDROGRAF_STATE_DIR`, then `NOGAT_STATE_DIR`,
-then `state_dir` of `[hydrograf]` or `[nogat]` in the file of `NOGAT_CONFIG`, by default
-`~/.local/state/nogat`; for Docker Compose `NOGAT_STATE_DIR` is the host's directory) and
-Docker Compose
-(`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, `ADMIN_API_KEY_HOST_FILE`,
-`HYDROGRAF_SECRETS_GID`, and the names and host paths of an instance:
-`HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets come from the environment or from
-files outside the checkout (the admin key), and `.env` is not committed.
+Production runs `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`: the
+database password from `SECRETS_DIR`, the admin key file required, no reload, one API
+process; the test server is reached through a Cloudflare Tunnel. Every variable is listed in
+[`.env.example`](https://github.com/Daldek/Hydrograf/blob/main/.env.example); secrets come
+from the environment or from files outside the checkout, and `.env` is not committed.
+[docs/USAGE.md](https://github.com/Daldek/Hydrograf/blob/main/docs/USAGE.md) has the
+details:
 
-### Service logs
-
-The API writes the logs of Nogat DEV-12.4 to DEV-12.9 (`backend/core/nogat_logging.py`, a
-copy of Nogat's reference module) into `<state_dir>/hydrograf/logs/`, one file per kind and
-UTC day, `access-`, `app-` and `lifecycle-YYYY-MM-DD.jsonl`, and deletes a file once its date
-is 14 days old, at start and at each 00:00 UTC. A record is one JSON object of the format
-`nogat-log/1` (`schemas/nogat/record-1.schema.json`): an access record per request (the
-method, the path with its query, a parameter that may carry personal data or a credential
-keeping only its name, the status, the bytes, `duration_ms` and the class of the User-Agent:
-`browser`, `bot`, `script` or `none`), the warnings and errors of the application, and the
-start with a summary of the settings, the stop and the deletions. The map tiles
-(`/api/tiles/`) are logged only when they fail. Each record has a random `request_id` that
-is never sent to the client. No log holds the client's address, a cookie, a header other
-than that class of the User-Agent, or a request body (DEV-12.5, ADR-084).
-
-On the Docker host the files are in `<NOGAT_STATE_DIR>/hydrograf/logs/` (`.env`); without
-Docker, in `~/.local/state/nogat/hydrograf/logs/` by default. The last 14 days in time
-order, without the successful requests:
-
-```bash
-jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' ~/.local/state/nogat/hydrograf/logs/*.jsonl
-```
-
-Other questions, for example the answers by status and kind of client:
-`jq -r 'select(.kind == "access") | "\(.status) \(.agent)"' ~/.local/state/nogat/hydrograf/logs/access-*.jsonl | sort | uniq -c`.
-jq is not installed on the host: `apt install jq` (root, once) or jq's static release
-binary in `~/.local/bin` (no root). Use is counted only from
-`<data_dir>/hydrograf/stats.jsonl` (DEV-15.11, see [Public service](#public-service)), never
-from the logs.
-
-The containers print only what outlives the 14 days without naming a request (DEV-12.7):
-`docker logs hydro_api` shows the JSON records of the starts, stops and deletions and the
-errors reduced to their type. nginx keeps no log (`access_log off`, `error_log /dev/null`):
-it would name the client in an error of a request at every level, and the static files it
-serves need none. uvicorn runs with `--no-access-log --log-level warning`. Every container
-logs with Docker's `local` driver, at most 3 files of 1 MiB.
-
-During tests give the tester the tunnel address that starts with `https://`. The current
-Cloudflare redirect from HTTP returns 301, so a `POST` sent straight to HTTP can be
-repeated as a `GET`. When a tester reports an error, ask for the approximate time and look
-for the `app` records and the 5xx answers around it.
-
-A change of the logging options needs the containers to be recreated
-(`docker compose up -d --force-recreate api nginx db`); a restart does not update the log
-driver. The logs hold paths and query parameters: do not share them with testers. The
-separate `imgwtools-api` container (the REST server of IMGWTools 2.1, now Obserwator) is not
-part of this Compose project and is not covered by these settings.
+- the variables by group;
+- the admin key in one host file, `~/.config/nogat/keys/hydrograf-admin.key`, named in `.env`
+  by `ADMIN_API_KEY_HOST_FILE` with the group `HYDROGRAF_SECRETS_GID`, never as a value;
+- `NOGAT_CONFIG`, the deployment's `nogat.toml`, whose table `[nogat.operator]` makes
+  Hydrograf a [public service](#public-service), and `NOGAT_STATE_DIR`, the directory of the
+  logs;
+- a second instance beside the first on the same Docker host, with its own compose project
+  and env file;
+- the service logs in `<state_dir>/hydrograf/logs/` (Nogat DEV-12.4 to DEV-12.9): 14 days,
+  no client address (ADR-084), and how to read them.
 
 ### Public service
 
@@ -265,7 +168,7 @@ to it): „Zgłoszenia”, „Statystyki” and „Stan” of the kit, then Hydr
 „Przetwarzanie NMT”, „Czyszczenie” and „Granice i kanalizacja”. Its API is under
 `/api/admin/`; every route needs the header `X-Admin-Key` with the key of `ADMIN_API_KEY`
 or of the file `ADMIN_API_KEY_FILE` names (a deployment's
-`~/.config/nogat/keys/hydrograf-admin.key`, see [Run and Deploy](#run-and-deploy)), read on
+`~/.config/nogat/keys/hydrograf-admin.key`, see [Deploy](#deploy)), read on
 every request. No key is generated or logged: without one
 every admin route answers 401 with `admin_key_not_configured`. The access paths are
 `/admin`, `/admin/*` and `/api/admin/*`, nothing else; Cloudflare Access protects them
@@ -385,6 +288,7 @@ results when you publish them.
 ## Documentation
 
 - [Changelog](https://github.com/Daldek/Hydrograf/blob/main/docs/CHANGELOG.md)
+- [Usage: configuration, admin key, second instance, service logs](https://github.com/Daldek/Hydrograf/blob/main/docs/USAGE.md)
 - [Scope](https://github.com/Daldek/Hydrograf/blob/main/docs/SCOPE.md) and
   [product requirements](https://github.com/Daldek/Hydrograf/blob/main/docs/PRD.md)
 - [Architecture](https://github.com/Daldek/Hydrograf/blob/main/docs/ARCHITECTURE.md) and
@@ -404,11 +308,7 @@ results when you publish them.
 ## Development
 
 `cd backend && uv sync --locked`, then `scripts/gate.sh` runs the checks (ruff, mypy, tests
-with coverage, commit messages, the `?v=` versions of the front-end assets). After a
-change of a JS or CSS file of `frontend/`, run `python3 scripts/bump_asset_versions.py`:
-the pages load their own scripts and styles as `?v=<content hash>`, so that a deployment
-gets past the Cloudflare and browser caches; the gate and the CI job `frontend-assets` run
-it with `--check`.
+with coverage, commit messages, the `?v=` versions of the front-end assets).
 [CLAUDE.md](https://github.com/Daldek/Hydrograf/blob/main/CLAUDE.md) has the rules for
 people and agents, and
 [CONTRIBUTING.md](https://github.com/Daldek/Hydrograf/blob/main/CONTRIBUTING.md) the workflow
@@ -416,6 +316,7 @@ of a pull request.
 
 ## Status, licence, author
 
-Releases are the tags `vX.Y.Z` of `main`; 0.5.0 is in the first joint release of Nogat. Licence: MIT
+Alpha. Releases are the tags `vX.Y.Z` of `main`; 0.5.0 is in the first joint release of
+Nogat. Licence: MIT
 ([LICENSE](https://github.com/Daldek/Hydrograf/blob/main/LICENSE)). Author:
 [Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/).

@@ -26,56 +26,44 @@ Introduction: [README.md](README.md). The Nogat standard 1.0 is in
 - The runtime path is SQL over PostGIS plus the in-memory `CatchmentGraph` (ADR-001,
   ADR-021, ADR-022); rasters are processed only by the preprocessing pipeline in
   `backend/scripts/`. PostGIS is required.
-- Hydrolog, Kartograf and Obserwator are dependencies used through their public API, pinned
-  in `backend/pyproject.toml` by the commit of Nogat's release set until the release commit
-  of v0.5.0 pins their tags Kartograf v0.8.0, Obserwator v3.0.0 and Hydrolog v0.8.0 and
-  narrows the ranges of REL-5.6 in `dependencies` (REL-5.3, ADR-060, ADR-061); the pins are
-  in `[tool.uv.sources]` and on GitHub, so `uv sync --locked` resolves them. Obserwator
-  was IMGWTools until its v3.0.0: Hydrograf installs the distribution `obserwator`
-  (`from obserwator import fetch_pmaxtp`, the `Obserwator*Error` exceptions) from the
-  repository `Obserwator`. Kartograf writes into the store `cache/kartograf/`
+- Hydrolog, Kartograf and Obserwator are used only through their public API. They are
+  pinned in `[tool.uv.sources]` of `backend/pyproject.toml`, between releases by the commit
+  of Nogat's current release set, in a release by their tags, with the ranges of REL-5.6 in
+  `dependencies` (REL-5.3, REL-6.4, ADR-060, ADR-061). Obserwator (IMGWTools until its
+  v3.0.0) is the distribution `obserwator` (`from obserwator import fetch_pmaxtp`, the
+  `Obserwator*Error` exceptions). Kartograf writes into the store `cache/kartograf/`
   (ADR-061): every script passes `root=` and `cache=` explicitly. A missing function is a
-  GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a
-  workaround here.
+  GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a workaround.
 - The SCS-CN method is valid for catchments up to 250 km²; the API memory limit is 8 GB.
 - Python only from `backend/.venv`, through `uv run` in `backend/` (DEV-6.2).
   `backend/uv.lock` is committed; install with `uv sync --locked` (DEV-6.3).
 - Data and caches stay outside Git: `data/` and `cache/` are ignored; never put downloaded
   data or temporary files in the repository.
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and documents
-  are English (DEV-2.1); the user interface is Polish (DEV-2.2). Much of the code and the
-  documents are still Polish: `docs/PROGRESS.md` lists what remains. New and edited text is
-  English.
+  are English (DEV-2.1); the user interface is Polish (DEV-2.2). New and edited text is
+  English; what is still Polish is listed in `docs/PROGRESS.md`.
 - Errors: raise a `HydrografError` subclass (`core/errors.py`) with a message ID of the
   catalogue `core/messages.py` (English and Polish text) and a `reason`; never an
   `HTTPException`, never a code outside the registry (ERR-1). `core/_errors.py` is generated:
   `uv run python -m scripts.generate_errors` after the registry in `schemas/nogat/` changes.
 - Names carry units: `area_km2`, `elevation_m`, `discharge_m3s`, `time_concentration_min`,
   `slope_percent`, `precipitation_mm`, `length_km` (DEV-8.2).
-- Front end: the look is the Nogat visual identity (ADR-065). Colours, fonts, radii and
-  shadows come only from the variables of `frontend/css/tokens.css`, a copy of Nogat's
-  `design/tokens.css` that is never edited here (change it in Nogat, then copy it again).
-  The app menu „Aplikacje”, the hand-off, the strip of sources, the regulamin template and
-  the admin page's shell are Nogat's GUI kit, copied byte for byte with the marks into
-  `frontend/nogat/` and never edited here either (DEV-15.6); `js/nogat.js` hands it to the
-  IIFE scripts, and the menu lists the GUIs of `HYDROGRAF_GUI` or of `[nogat] gui` of the
-  file `NOGAT_CONFIG` names (ADR-082).
-  Third-party scripts, styles and fonts are vendored, never loaded from another origin
-  (DEV-15.7): `frontend/vendor/<package>-<version>/` holds the published files byte for byte
-  (`-text` in `.gitattributes`) with their licence files, referenced with their `integrity`
-  (`tests/contract/test_frontend_vendor.py` checks both). JS and CSS files (own and vendored)
-  in `index.html`, `admin/index.html` and `instrukcja/index.html` are referenced with
-  `?v=<content hash>`, the only way a deployment gets through the caches of Cloudflare and
-  of the browsers: after changing a JS or CSS file or adding a `<script>` or `<link>`, run
-  `python3 scripts/bump_asset_versions.py` before the commit (reference a new file without
-  `?v=`, the script adds it; it versions the imports of `js/nogat.js` too); the gate and the
-  CI job `frontend-assets` run it with `--check`.
-- Public service (ADR-084): the client's address never reaches the front end or any log
-  (DEV-15.10, DEV-12.5): nginx keeps no log, and the API's logs (`core/nogat_logging.py`, a
-  copy of Nogat's module never edited here: access, app and lifecycle records in
-  `<state_dir>/hydrograf/logs`, 14 days, DEV-12.4 to DEV-12.9) hold none, not even in a
-  traceback; it lives only in the memory of `api/traffic.py` (the limit's window, the day's
-  salted hash).
+- Front end: colours, fonts, radii and shadows come only from the variables of
+  `frontend/css/tokens.css` (ADR-065). That file and `frontend/nogat/` (Nogat's GUI kit and
+  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the regulamin template,
+  the admin page's shell; ADR-082) are copies of Nogat's, never edited here: change them in
+  Nogat, then copy them again byte for byte (DEV-15.6). Third-party scripts, styles and
+  fonts are vendored in `frontend/vendor/<package>-<version>/` as published (`-text` in
+  `.gitattributes`), with their licence files and their `integrity`, never loaded from
+  another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py` checks both).
+- After changing a JS or CSS file or adding a `<script>` or `<link>` to `index.html`,
+  `admin/index.html` or `instrukcja/index.html`, run `python3 scripts/bump_asset_versions.py`
+  before the commit (reference a new file without `?v=`; the script adds it): the pages load
+  their assets as `?v=<content hash>` to get past the caches of Cloudflare and of the
+  browsers. The gate and the CI job `frontend-assets` run it with `--check`.
+- Public service (ADR-084): the client's address never reaches the front end or any log,
+  not even in a traceback (DEV-15.10, DEV-12.5); it lives only in the memory of
+  `api/traffic.py`. `core/nogat_logging.py` is a copy of Nogat's module, never edited here.
   The request limit and the daily totals are per process, so the API runs one uvicorn
   process (no `--workers`); a change that needs more processes needs a shared store first.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
@@ -97,43 +85,27 @@ Python 3.12 or newer. The default run and the gate leave out the markers `live`,
 `benchmark`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
 `fail_under = 80` in `backend/pyproject.toml` (DEV-7.5).
 
-Running the service. The stack runs on the system Docker daemon (`/var/run/docker.sock`;
-the agent user is in the `docker` group; rootless Docker does not start here and is not
-used, so leave `DOCKER_HOST` unset): `docker compose up -d` serves the full stack on port
-8080. In development `docker-compose.override.yml` is loaded
-automatically (`--reload`, `./backend:/app` mounted, `read_only` off); production uses
-`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. Never add `user:`
-to the override: it clashes with `cap_drop: ALL` and breaks file operations. Outside access
-goes through a Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:8080`).
+Running the service: the stack runs on the system Docker daemon (the agent user is in the
+`docker` group; rootless Docker does not start here, so leave `DOCKER_HOST` unset).
+`docker compose up -d` serves the stack on port 8080 with `docker-compose.override.yml`
+(`--reload`, `./backend:/app` mounted, `read_only` off); never add `user:` to the override:
+it clashes with `cap_drop: ALL` and breaks file operations. Production and the other
+deployment steps: README "Deploy" and `docs/USAGE.md`.
 
 ## Code map
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, errors.py (the problem responses), traffic.py
-│                        #   (the request limit and the daily totals, ADR-084),
-│                        #   endpoints/ (watershed, network, hydrograph, tiles,
-│                        #   profile, identify, depressions, feedback, gui, site: the pages,
-│                        #   /regulamin.html, /api/terms and /api/downloads, health, admin),
-│                        #   dependencies/ (admin key)
-├── core/                # business logic: watershed_service, catchment_graph, network_* (tree,
-│                        #   delineation, preview), handoff, hydrology, morphometry, cn_calculator,
-│                        #   raster_service, sewer_*, config, database, errors, messages, _errors,
-│                        #   terms (the regulamin from NOGAT_CONFIG), request_limit (fixed
-│                        #   windows per address), usage (stats.jsonl), attribution and
-│                        #   data_sources (the providers' lines), nogat_logging (Nogat's
-│                        #   module of the logs, a copy)
+├── api/                 # FastAPI: main.py, errors.py, traffic.py, endpoints/, dependencies/
+├── core/                # business logic, config, database, errors, messages, _errors
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
-├── utils/               # geometry, raster, sheet-lookup and NMT-coverage helpers, the
-│                        #   Kartograf store, the Archiwista project
+├── utils/               # geometry, raster, sheet and NMT-coverage helpers, the Kartograf
+│                        #   store, the Archiwista project
 ├── migrations/          # Alembic
 └── tests/               # unit, integration, contract, performance, fixtures
 frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
-                         #   admin/ the sections of the admin page (ADR-086);
-                         #   instrukcja/ the guide;
-                         #   nogat/ the copies of Nogat's GUI kit and marks (ADR-082);
-                         #   vendor/ the third-party libraries, as published
+                         #   admin/, instrukcja/, nogat/ (Nogat's copies), vendor/
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
 scripts/                 # gate.sh, check-commits.sh, bump_asset_versions.py, staging-compose.sh
 docs/                    # documentation
@@ -146,6 +118,7 @@ The full module map is in `docs/ARCHITECTURE.md` (backend §2.1, frontend §4.1)
 | For | Read |
 |---|---|
 | Current state, next steps | [docs/PROGRESS.md](docs/PROGRESS.md) |
+| Configuration, admin key, second instance, service logs | [docs/USAGE.md](docs/USAGE.md) |
 | Scope (in and out), product requirements | [docs/SCOPE.md](docs/SCOPE.md), [docs/PRD.md](docs/PRD.md) |
 | Architecture, database schema | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) |
 | Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (index; ADR-001 to 057), [docs/decisions/](docs/decisions/) (ADR-058 and later) |
@@ -169,12 +142,10 @@ Docker notes above); independent pieces run in parallel.
 
 ## Cross-project context
 
-Registry entry:
-[ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml) (Hydrograf).
-Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration time) and
-Obserwator (PMAXTP precipitation; IMGWTools until its v3.0.0) are runtime dependencies used
-as libraries; Hydraulik is a planned compute node. The three producers are pinned by the
-commits of Nogat's release set, then by their tags of the first joint release (ADR-060, ADR-061).
+Registry entry: [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml)
+(Hydrograf). Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration
+time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as libraries
+(Critical rules); Hydraulik is a planned compute node.
 
 ## Deviations
 
