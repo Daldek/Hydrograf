@@ -185,6 +185,8 @@ def _hydrolog_code(warning: Warning) -> str | None:
 
 def _polish(code: str, details: Mapping[str, Any]) -> str | None:
     """Return the Polish text of a notice, None without one for its code or details."""
+    if code == "uh_substeps":
+        return _substeps(details)
     tail = _RANGE_CODES.get(code)
     subject = _METHODS.get(str(details.get("method")))
     named = _INPUTS.get(str(details.get("field")))
@@ -207,6 +209,32 @@ def _polish(code: str, details: Mapping[str, Any]) -> str | None:
     return (
         f"{subject}: {name} = {_value(value, crossed)}{units} – {where} typowego "
         f"zakresu {_number(minimum)}–{_number(maximum)}{units}{tail}"
+    )
+
+
+def _substeps(details: Mapping[str, Any]) -> str | None:
+    """Return the Polish text of ``uh_substeps``, None without its details.
+
+    Hydrolog 0.8.1 computes the SCS unit hydrograph of a step beyond its typical range
+    on sub-steps inside it, so that it keeps its volume (Hydrolog's E5b-07).
+    """
+    numbers = [
+        float(x)
+        for x in (
+            details.get(key) for key in ("timestep_min", "maximum_min", "substep_min")
+        )
+        if isinstance(x, int | float) and math.isfinite(x)
+    ]
+    substeps = details.get("substeps")
+    if not isinstance(substeps, int) or len(numbers) != 3:
+        return None
+    step, maximum, substep = numbers
+    return (
+        f"{_METHODS['scs']}: krok czasowy Δt = {_number(step)}\u00a0min jest dłuższy "
+        f"niż typowy zakres 0–{_number(maximum)}\u00a0min, więc hydrogram policzono na "
+        f"{substeps} krokach pośrednich po {_number(substep)}\u00a0min, z opadem "
+        "każdego kroku rozłożonym na nie równo, i odczytano w chwilach kroków: "
+        "zachowuje objętość."
     )
 
 
