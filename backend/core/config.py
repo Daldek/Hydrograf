@@ -312,7 +312,13 @@ class Settings(BaseSettings):
         )
 
     def warn_if_default_credentials(self) -> None:
-        """Log warning if database credentials are not configured."""
+        """Log a warning when the database URL is built without a password.
+
+        Only the URL built from ``POSTGRES_*`` uses ``postgres_password``: DATABASE_URL
+        (Docker) and ``database_url_override`` give the whole URL with its credentials.
+        """
+        if os.getenv("DATABASE_URL") or self.database_url_override:
+            return
         if not self.postgres_password:
             logger.warning(
                 "POSTGRES_PASSWORD is empty. "
