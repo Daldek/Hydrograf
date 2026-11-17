@@ -420,9 +420,9 @@
   <div class="split">
     <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-v2-hydrogram.png" width="500" height="781" alt="Hydrogram dla własnego opadu 45 mm: Qmax 1,65 m³/s, czas do szczytu 280 min i objętość 34 957 m³.">
     <div class="stack">
-      <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz lub Regresja urban.; Snyder — z długości cieku i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp.</p></div>
-      <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. Każdą liczy Hydrolog z danych, które podaje jej źródło, bez zastępników — najdłuższa droga spływu i jej spadek oraz spływ powierzchniowy pochodzą z wyznaczenia zlewni. FAA wymaga „C (spływ)” z tabeli FAA, obie metody Kerby’ego — „N (opór)” z tabeli Kerby’ego; pola są puste, dopóki ich nie wypełnisz. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub> — wybór metody Tc nie zmienia jego wyniku.</p></div>
-      <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc, Tc, Hydrogram jedn. (dla Nasha także N i K, a dla metody Lutza udział lasów W i terenów zurbanizowanych U z pokrycia terenu zlewni).</p></div>
+      <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz lub Regresja urban.; Snyder — z długości cieku i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp, obok których stoi wtedy pole L<sub>c</sub>.</p></div>
+      <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. Każdą liczy Hydrolog z danych, które podaje jej źródło, bez zastępników — najdłuższa droga spływu i jej spadek oraz spływ powierzchniowy pochodzą z wyznaczenia zlewni. FAA wymaga „C (spływ)” z tabeli FAA, obie metody Kerby’ego — „N (opór)” z tabeli Kerby’ego; pola są puste, dopóki ich nie wypełnisz. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub>, więc przy nim lista jest wyłączona.</p></div>
+      <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc i Tc (nie dla Snydera), Hydrogram jedn. (dla Nasha także N i K, a dla metody Lutza udział lasów W i terenów zurbanizowanych U z pokrycia terenu zlewni).</p></div>
       <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wyborem: dla jakich zlewni powstała metoda (np. Kirpich — małe zlewnie rolnicze, Giandotti — duże). Aplikacja nie ostrzega o przekroczeniu zakresu — oceń to sam.</p></div>
     </div>
   </div>
@@ -454,7 +454,7 @@
       <div class="card"><span class="label">Walidacja</span><p>Przy błędnym polu pojawia się opis, np. „Wartość musi być dodatnia.” albo „CN: liczba od 1 do 100 (np. 68.4).” — do poprawy hydrogram nie jest przeliczany.</p></div>
     </div>
   </div>
-  <p class="hint">Zmiany dotyczą tylko hietogramu i hydrogramu, nie panelu parametrów. Gdy Snyder zgłasza „Model Snydera wymaga …”, wpisz tutaj L<sub>c</sub>.</p>
+  <p class="hint">Zmiany dotyczą tylko hietogramu i hydrogramu, nie panelu parametrów. Przy Snyderze pole L<sub>c</sub> stoi obok Ct i Cp także poza trybem zaawansowanym; gdy zlewnia nie ma L<sub>c</sub>, wpisz je tam.</p>
   <aside class="provider-lines" aria-label="Dane opadowe PMAXTP">
     <p class="provider-title">Dane opadowe PMAXTP</p>
     <p>Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony <a href="https://klimat.imgw.pl/opady-maksymalne">https://klimat.imgw.pl/opady-maksymalne</a></p>

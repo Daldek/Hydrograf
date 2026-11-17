@@ -479,6 +479,10 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .form-grid > .field.wide { grid-column: 1 / -1; }
 .form-grid > .field > :first-child { align-self: end; margin-bottom: var(--space-1); }
 .form-grid > .field > .info-note { margin-top: var(--space-1); }
+/* Snyder ignores Tc: its method is greyed out, with a note why instead of its
+   applicability note (hydrograph.js) */
+.form-grid select:disabled { background: var(--surface-2); color: var(--text-3); cursor: not-allowed; }
+#hydro-tc-method:disabled + .info-note { display: none; }
 
 /* ---------- Own rainfall series, Hietogram section (custom-rain.js) ---------- */
 .custom-rain { margin: 0 0 var(--space-3); }

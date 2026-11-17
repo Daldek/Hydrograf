@@ -49,8 +49,9 @@
             hietogram: document.getElementById('hydro-hietogram-type').value,
             model: model,
             estimation: document.getElementById('hydro-nash-estimation').value,
-            // Tc for SCS and Snyder
-            needsTc: model !== 'nash',
+            // Tc shapes the SCS unit hydrograph alone: Snyder computes its own
+            // lag from L and Lc, and the estimations of Nash do not use it
+            needsTc: model === 'scs',
             tc: document.getElementById('hydro-tc-method').value,
         };
     }
@@ -60,7 +61,8 @@
         var kerby = c.tc === 'kerby' || c.tc === 'kerby_kirpich';
         return {
             'nash-params': c.model === 'nash',
-            'tc-method-params': c.needsTc,
+            // Snyder keeps the method in view, disabled (updateHydrographFields)
+            'tc-method-params': c.model !== 'nash',
             'tc-runoff-coeff-col': c.needsTc && c.tc === 'faa',
             'tc-retardance-col': c.needsTc && kerby,
             'snyder-ct-col': c.model === 'snyder',
@@ -268,7 +270,7 @@
             hideResults();
             // The own series and the advanced mode name their errors in their own section
             showCalcErrors(
-                blockedMessage(invalid.concat(morph.valid ? [] : ['tryb zaawansowany (Hydrogram)'])),
+                blockedMessage(invalid.concat(morph.valid ? [] : [morph.blocked || 'tryb zaawansowany (Hydrogram)'])),
                 blockedMessage(invalid.concat(rain.valid ? [] : ['w\u0142asna seria opadu (Hietogram)']))
             );
             return;
@@ -468,10 +470,11 @@
         }
 
         var rows = [];
-        if (meta.tc_method != null) {
+        // Snyder's lag does not use the Tc the API reports beside it
+        if (meta.tc_method != null && meta.uh_model !== 'snyder') {
             rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method, 'tc_method']);
         }
-        if (meta.tc_min != null) {
+        if (meta.tc_min != null && meta.uh_model !== 'snyder') {
             rows.push(['Tc', meta.tc_min.toFixed(1) + ' min', 'tc_min']);
         }
         rows.push(['Hydrogram jedn.', uhLabel, 'uh_model']);
@@ -523,7 +526,8 @@
     /**
      * Show the fields the selected model uses. The form is one 2-column grid,
      * so the visible fields close up: for Nash its estimation sits next to
-     * "Model UH" and "Metoda Tc" follows only when the estimation needs Tc.
+     * "Model UH". Snyder keeps "Metoda Tc" in view, disabled with a note, as
+     * it ignores Tc, and its Lc joins Ct and Cp (advanced.js).
      */
     function updateHydrographFields() {
         var c = choices();
@@ -531,6 +535,18 @@
         Object.keys(parts).forEach(function (id) {
             document.getElementById(id).classList.toggle('d-none', !parts[id]);
         });
+        var snyder = c.model === 'snyder';
+        var tc = document.getElementById('hydro-tc-method');
+        var note = document.getElementById('tc-snyder-note');
+        tc.disabled = snyder;
+        if (note) {
+            note.hidden = !snyder;
+            // The applicability note of the method (info.js) is hidden meanwhile
+            var described = snyder ? note : document.getElementById('hydro-tc-method-note');
+            if (described) tc.setAttribute('aria-describedby', described.id);
+            else tc.removeAttribute('aria-describedby');
+        }
+        if (Hydrograf.advanced) Hydrograf.advanced.setSnyder(snyder);
     }
 
     // ── Init ───────────────────────────────────────────────────────────
