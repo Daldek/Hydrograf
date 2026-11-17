@@ -36,7 +36,9 @@ services:
 
   nginx:
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      # IPv4: nginx listens on 0.0.0.0:80 only, and busybox wget takes `localhost` for
+      # ::1 first, where nothing answers
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3

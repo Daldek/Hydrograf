@@ -2010,7 +2010,7 @@ def health_check(db: Session = Depends(get_db)) -> HealthResponse:
     )
 ```
 
-The healthcheck of the `api` container calls it, and in production that of nginx through nginx (`wget -q --spider http://localhost/health`, `docker-compose.prod.yml`); the request limit and the daily totals leave it out (§2.2.1b).
+The healthcheck of the `api` container calls it, and in production that of nginx through nginx (`wget -q --spider http://127.0.0.1/health`, `docker-compose.prod.yml`: nginx listens on IPv4 only, and busybox wget takes `localhost` for `::1`); the request limit and the daily totals leave it out (§2.2.1b).
 
 ---
 
@@ -2261,7 +2261,7 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 **Status:** Approved for implementation
 
 **Change history:**
-- 2.22 (2026-11-17): the defect fixes of 0.5.1: §2.2.1b PMAXTP's lines in `GET /api/terms` only with PMAXTP data (E5b-09)
+- 2.22 (2026-11-17): the defect fixes of 0.5.1: §2.2.1b PMAXTP's lines in `GET /api/terms` only with PMAXTP data (E5b-09); §7.3 the healthcheck of nginx asks 127.0.0.1 (HG-E2E-02)
 - 2.21 (2026-11-14): no footer (the author's decision of 2026-11-14, ADR-084 amended): §4.1 `terms.js` shows `#terms-link`; §4.2.0 „Regulamin” at the bottom of the rail and of the bottom bar, under the guide's table of contents, and the welcome window's „Regulamin serwisu”
 - 2.20 (2026-11-14): audit against the code of 2026-11-14: the header 2.20 like this history; §1 the PMAXTP grid, ADR-065 without Bootstrap, ADR-084 without the journal, ADR-085 and ADR-086; §2.1 the module map of the code (`api/errors.py`; `core` `_errors`, `active_run`, `data_sources`, `divide_flow_path`, `errors`, `messages`, `point_info`, `unit_*`, `version`; `utils/archiwista_project.py`, `utils/kartograf_set.py`; the scripts of the units, the backfills and the errors; `download_sewer.py` reads files only, `generate_tiles.py` streams and catchments only, `raster_utils.py` without polygonize; `tests/contract`); §2.2 G and SG in the responses and `layers` of `GET /api/terms`, the watershed request without `display_threshold_m2` and `boundary_geojson` in `watershed`, `GET /api/gui` from NOGAT_CONFIG, `?threshold=` of the tiles, the parameters of `/api/depressions`, the cleanup targets, one API process for the networks; §2.3 `find_catchment_at_point`, the tc and UH of the hydrograph; §2.4.6 `zonal_summary`; §2.5 Kartograf finds the counties, the DEM chain, the streams smoothed in `core/db_bulk.py`, the sewer upload without SSRF; §3 the index names, the columns of migrations 003 and 004, `IMGW_PMAXTP`, `DEM_DERIVED`, `sewer_network.source` VARCHAR(255), no `flow_network`, the examples as the code queries; §4 25 IIFE modules and 5 in `admin/`, `terms.js`, the welcome text, the app menu from NOGAT_CONFIG, the strip's GK and SK, the excerpts of `map.js`, `api.js`, `charts.js` and `app.js`; §5 `docker-compose.yml` and `docker/nginx.conf` as they are, the entrypoint's wait, the environments; §6 no read-only database user; §7 no metrics, `health.py`; §8–§10 one API process, no CDN, the partial indexes, no build step; §11 the test tree and the jobs of `ci.yml`; §12 ISRIC
 - 2.19 (2026-11-13): the providers' terms linked, not restated (Nogat ECO-065; ADR-083 and ADR-084 amended): §2.1 `core/attribution.py` without N, `is_terms`; §2.2.1b and §2.2.3 `terms_notice` [RK] with RK „Regulamin danych PMAXTP: …”, `core/terms.py` without the block `imgw-terms`; §2.2.5, §2.2.5a the manifest's example; §4.1 kit 0.6.0; §4.2.0 the dialog's terms and the manifest's lines

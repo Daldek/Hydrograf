@@ -110,8 +110,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      unable to write; the dry run does not check it), E4-02 (*0.5.1*: `--units` needs the layer
      `pozostale_obszary_jcwp`; the dry run does not check it), E4-03 (*0.5.1*: a one-off script
      without `--entrypoint` waits for the database), HG-E2E-01 (*0.5.1*: untracked `frontend/data`
-     and `frontend/tiles` stop a second nginx), HG-E2E-02 (*0.5.1*: the prod overlay's healthcheck
-     asks `localhost`, nginx listens on IPv4 only), HG-E2E-03 (*fixed*: the warning
+     and `frontend/tiles` stop a second nginx), HG-E2E-02 (*fixed*: the prod overlay's healthcheck
+     asked `localhost`, nginx listens on IPv4 only), HG-E2E-03 (*fixed*: the warning
      `POSTGRES_PASSWORD is empty` beside DATABASE_URL), the `dem_mosaic.vrt` a bootstrap leaves
      (*0.5.1*: found on a staging run, it outranks the cut `dem_mosaic.tif`, so the precise mode
      answers 503), Next 17 (*0.5.1*).
