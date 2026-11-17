@@ -113,8 +113,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      `frontend/data` and `frontend/tiles` stopped a second nginx), HG-E2E-02 (*fixed*: the prod
      overlay's healthcheck asked `localhost`, nginx listens on IPv4 only), HG-E2E-03 (*fixed*: the
      warning `POSTGRES_PASSWORD is empty` beside DATABASE_URL), the `dem_mosaic.vrt` a
-     bootstrap leaves (*0.5.1*: found on a staging run, it outranks the cut `dem_mosaic.tif`, so
-     the precise mode answers 503), Next 17 (*0.5.1*).
+     bootstrap leaves (*fixed*: the DEM on the grid of the flow directions now outranks it, so
+     the precise mode reads the cut `dem_mosaic.tif`), Next 17 (*0.5.1*).
    - *API:* E5b-01 (*0.5.1*: the catchment graph loads on the first request, 504), E5b-02
      (0.6.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
      stream returns 0.0003 km² without a notice), E5b-04 (0.6.0: `generate-hydrograph` with a
