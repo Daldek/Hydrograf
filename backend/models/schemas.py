@@ -1325,6 +1325,26 @@ class HydrographMetadata(BaseModel):
     )
 
 
+class HydrographNotice(BaseModel):
+    """A warning of Hydrolog about the computation of a hydrograph (E5b-06)."""
+
+    level: Literal["info", "warning"] = Field(
+        ..., description="The level of the code in Hydrolog's registry of notices"
+    )
+    code: str = Field(
+        ...,
+        description="The code of Hydrolog's notice (hydrolog.catalog.NOTICES), "
+        "e.g. outside_typical_range for a value outside the typical range of a "
+        "method",
+    )
+    message: str = Field(
+        ...,
+        description="Polish text of the code, filled from the warning's details "
+        "(core/hydrolog_notices.py); Hydrolog's English message for a code "
+        "Hydrograf does not word",
+    )
+
+
 class HydrographResponse(BaseModel):
     """
     Full response for hydrograph generation endpoint.
@@ -1347,6 +1367,8 @@ class HydrographResponse(BaseModel):
         The lines the terms of the providers of its data require (Nogat DEV §20)
     terms_notice : list[str]
         The links to the terms of the same providers (Nogat DEV-20.7)
+    notices : list[HydrographNotice]
+        Hydrolog's warnings about the computation, in Polish
     """
 
     watershed: WatershedResponse | None = Field(
@@ -1385,6 +1407,17 @@ class HydrographResponse(BaseModel):
             "The links to the terms of the same providers, one line each (Nogat "
             "DEV-20.7): for PMAXTP data the link to the PMAXTP terms; shown right "
             "after `attribution`; G and SG need none"
+        ),
+    )
+    notices: list[HydrographNotice] = Field(
+        default_factory=list,
+        description=(
+            "Hydrolog's warnings about this computation, identical ones once, in "
+            "the order it gave them: a value outside the typical range of the "
+            "method of the time of concentration, of the unit hydrograph (the "
+            "area, Ct and Cp, N and K, the time step against its time to peak), of "
+            "Lutz's estimation or of the AMC conversion of the CN; empty without "
+            "warnings"
         ),
     )
 

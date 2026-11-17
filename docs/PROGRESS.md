@@ -125,8 +125,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      (the network preview does not warn of a window above 60 M cells).
    - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
-     (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
-     reach only the log), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an instance without it).
+     (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings
+     reached only the log; the hydrograph's response now carries them as `notices` in Polish and
+     the panel shows them under „Hydrogram”), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an
+     instance without it).
    - *GUI (B8):* G05-1 = B2 (*fixed*: above 250 km² a notice under the sections gives the limit of
      SCS-CN), A2 (*fixed*: with Snyder its Lc stands with Ct and Cp and the Tc method is greyed
      out), B3 (*fixed*: Esc now only hides the panel; the bin alone clears it), G06-1 and G06-2
@@ -161,10 +163,14 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      2 on the graph path (`core/watershed_service.py`).
    - Snyder fails where `length_to_centroid_km` is 0 until the user gives Lc; the shape indices of
      very small catchments fall outside their ranges; `asymmetry_coefficient` is never computed
-     (TECHNICAL_DEBT, TODO in `core/watershed_service.py`); the API gives no warnings about the
-     applicability of the methods (the GUI has static (i) notes).
+     (TECHNICAL_DEBT, TODO in `core/watershed_service.py`).
    - Report to Hydrolog: its conversion of the CN to AMC I/III rounds the CN to an integer
      (`runoff/scs_cn.py`).
+   - Request to Hydrolog (DEV-17.5, label `request`; E5b-06): a public export of
+     `HydrologWarning`, which lives only in its private `hydrolog._warnings`. Until then
+     `core/hydrolog_notices.py` tells Hydrolog's warnings by their `code()` and `details` and the
+     public registry `hydrolog.catalog.NOTICES`, and `install()` sets the filter `always` on
+     `UserWarning`, the class Hydrolog documents for its warnings.
    - The image `hydrograf-api:latest` of 2026-11-14 has `ogr2ogr` (`gdal-bin`) and
      `tippecanoe` but no `pmtiles` CLI, so bootstrap step 8 makes the `.mbtiles` and `.pbf`
      tiles and no `.pmtiles` (optional in `scripts/generate_tiles.py`; checked 2026-11-15).

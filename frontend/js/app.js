@@ -617,6 +617,8 @@
                 }
             });
             showHydrographLimit(data.watershed && !hydroAvail2 ? data.watershed : null);
+            // Hydrolog's warnings about the previous watershed's hydrograph go with it
+            if (Hydrograf.hydrograph) Hydrograf.hydrograph.showNotices([]);
             els.results.classList.remove('d-none');
 
             // Hand-off to Hydrolog: the watershed now, its hydrograph when it comes

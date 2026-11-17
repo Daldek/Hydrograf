@@ -7,7 +7,8 @@
  * request; an invalid field (or a server error at it) shows its message under
  * it, and the result of an earlier calculation is hidden until it is fixed.
  * The lines of the rainfall's provider that a result carries (PMAXTP) go to the
- * view's strip while the result is shown (attribution.js).
+ * view's strip while the result is shown (attribution.js), and Hydrolog's
+ * warnings about it (`notices`) stand under the section Hydrogram.
  */
 (function () {
     'use strict';
@@ -168,11 +169,42 @@
             [document.getElementById('acc-hietogram'), document.getElementById('acc-hydrograph')]);
     }
 
+    var NOTICE_ICONS = {
+        warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/>' +
+            '<path d="M8 6.5v3M8 11.5v.01"/></svg>',
+        info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/>' +
+            '<path d="M8 7.5v4M8 5v.01"/></svg>',
+    };
+
+    /**
+     * Hydrolog's warnings about the hydrograph shown, under the section
+     * Hydrogram: the `notices` of the response, worded in Polish by the API
+     * (e.g. a catchment outside the typical range of the unit hydrograph);
+     * [] takes them away.
+     */
+    function showNotices(notices) {
+        var box = document.getElementById('hydrograph-notices');
+        if (!box) return;
+        box.textContent = '';
+        notices.forEach(function (notice) {
+            var warning = notice.level === 'warning';
+            var p = document.createElement('p');
+            p.className = warning ? 'notice warn' : 'notice';
+            p.innerHTML = warning ? NOTICE_ICONS.warning : NOTICE_ICONS.info;
+            var text = document.createElement('span');
+            text.textContent = notice.message;
+            p.appendChild(text);
+            box.appendChild(p);
+        });
+        box.classList.toggle('d-none', !notices.length);
+    }
+
     /** Hide the result of an earlier calculation: it no longer matches the form. */
     function hideResults() {
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        showNotices([]);
         showProviderLines(null);
         if (Hydrograf.rainExport) Hydrograf.rainExport.clear();
         // The hand-off to Hydrolog keeps the watershed without the hidden result
@@ -380,6 +412,9 @@
                 });
             }
             displayMetadata(result.metadata);
+            // Under the sections, which hide with another watershed: only while the
+            // watershed of the result is the current one
+            showNotices(Hydrograf.app.getCurrentWatershed() === data ? result.notices || [] : []);
             if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
             if (myId !== _requestId) return;
@@ -587,5 +622,6 @@
     window.Hydrograf.hydrograph = {
         init: init,
         generateHydrograph: generateHydrograph,
+        showNotices: showNotices,
     };
 })();
