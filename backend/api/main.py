@@ -56,9 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler.
 
     Starts the logs with a summary of the settings (scalars only: no secret, admin
-    key, database URL or operator's details), loads the in-memory catchment graph,
-    fills the regulamin of the deployment and keeps the request limit and the daily
-    totals (ADR-084), whose last totals it stores at shutdown, before the logs stop.
+    key, database URL or operator's details), starts loading the in-memory catchment
+    graph, fills the regulamin of the deployment and keeps the request limit and the
+    daily totals (ADR-084), whose last totals it stores at shutdown, before the logs
+    stop.
     """
     # First: from here the warnings and errors of the process go to the app log. The
     # summary reads no file, so that nothing is printed before the log starts
@@ -73,14 +74,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         }
     )
 
-    # Load the catchment graph now rather than at the first request; requests
-    # load it again when the network in the database changes
+    # Start loading the catchment graph now rather than at the first request. It
+    # loads in a thread of its own, and until it is loaded the requests that need it
+    # answer 503 catchment_graph_unavailable at once (E5b-01); requests start a load
+    # again when the network in the database changes
     try:
         with get_db_session() as db:
-            if loaded_catchment_graph(db) is None:
-                logger.warning("Catchment graph not loaded at startup")
+            loaded_catchment_graph(db)
     except Exception as e:
-        logger.warning(f"Catchment graph loading failed: {e}")
+        logger.warning("Catchment graph load not started: %s", e)
 
     current_terms()
     traffic: Traffic = app.state.traffic

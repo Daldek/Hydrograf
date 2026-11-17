@@ -998,9 +998,11 @@ def process_dem_from_intermediates(
 def _log_api_reload_hint() -> None:
     """Tell the operator how a running API takes the network just written."""
     logger.info(
-        "The stream network in the database changed: the API reloads its catchment "
-        "graph at its next request. An API that still answers from the previous "
-        "network predates that reload: restart it (docker compose restart api)."
+        "The stream network in the database changed: the API starts loading its "
+        "catchment graph again at its next request and answers 503 to the requests "
+        "that need it until it is loaded. An API that still answers from the "
+        "previous network predates that reload: restart it (docker compose restart "
+        "api)."
     )
 
 

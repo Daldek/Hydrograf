@@ -1,7 +1,6 @@
 """Unit tests for core.catchment_graph module."""
 
 import threading
-import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -12,8 +11,10 @@ from scipy import sparse
 import core.catchment_graph as cg_module
 from core.catchment_graph import (
     CatchmentGraph,
+    catchment_graph_loading,
     get_catchment_graph,
     loaded_catchment_graph,
+    wait_for_catchment_graph,
 )
 
 
@@ -747,63 +748,97 @@ class TestGetCatchmentGraphThreadSafety:
 
 
 class TestLoadedCatchmentGraph:
-    """A new graph once the network in the database changed (network_version)."""
+    """The graph of the network in the database, loaded in a thread (E5b-01)."""
 
     @pytest.fixture
     def network(self, monkeypatch):
-        """The version the database reports and the loads of CatchmentGraph.load."""
+        """The version the database reports and a fake CatchmentGraph.load.
+
+        A load waits while ``release`` is clear (it is set at first), then fails,
+        finds the network empty or loads it; ``loads`` lists the graphs it loaded.
+        """
         state = SimpleNamespace(
-            version=(1, 10, 2, 20), loads=[], fail=False, empty=False, delay_s=0.0
+            version=(1, 10, 2, 20),
+            loads=[],
+            fail=False,
+            empty=False,
+            release=threading.Event(),
         )
+        state.release.set()
 
         def load(graph, db):
-            time.sleep(state.delay_s)
+            state.release.wait(timeout=10)
             if state.fail:
                 raise RuntimeError("stream_catchments changed during the load")
             state.loads.append(graph)
             graph._loaded = not state.empty
 
         monkeypatch.setattr(cg_module, "_catchment_graph", None)
+        monkeypatch.setattr(cg_module, "_loader", None)
         monkeypatch.setattr(cg_module, "network_version", lambda db: state.version)
         monkeypatch.setattr(CatchmentGraph, "load", load)
-        return state
+        yield state
+        state.release.set()
+        wait_for_catchment_graph(timeout_s=10)
 
-    def test_unchanged_network_keeps_the_graph(self, network):
-        first = loaded_catchment_graph(MagicMock())
+    def test_a_request_starts_the_load_and_does_not_wait_for_it(self, network):
+        network.release.clear()
 
-        assert loaded_catchment_graph(MagicMock()) is first
-        assert network.loads == [first]
+        assert loaded_catchment_graph(MagicMock()) is None
+        assert catchment_graph_loading()
+        assert wait_for_catchment_graph(timeout_s=0.01) is None
 
-    def test_changed_network_loads_a_new_graph(self, network):
-        old = loaded_catchment_graph(MagicMock())
+        network.release.set()
+        graph = wait_for_catchment_graph(timeout_s=10)
+
+        assert graph is not None and graph.network_version == (1, 10, 2, 20)
+        assert loaded_catchment_graph(MagicMock()) is graph
+        assert network.loads == [graph]
+        assert not catchment_graph_loading()
+
+    def test_a_changed_network_has_no_graph_until_its_own_is_loaded(self, network):
+        loaded_catchment_graph(MagicMock())
+        old = wait_for_catchment_graph(timeout_s=10)
         network.version = (1, 99, 2, 20)  # a run published new sub-catchments
+        network.release.clear()
 
-        new = loaded_catchment_graph(MagicMock())
+        # Not the old graph: the database no longer holds its network
+        assert loaded_catchment_graph(MagicMock()) is None
+        network.release.set()
+        new = wait_for_catchment_graph(timeout_s=10)
 
-        assert new is not old
-        assert new.loaded and new.network_version == (1, 99, 2, 20)
-        assert get_catchment_graph() is new
+        assert new is not old and new.network_version == (1, 99, 2, 20)
+        assert loaded_catchment_graph(MagicMock()) is new
         # A request that took the old graph keeps it whole
         assert old.loaded
 
-    def test_failed_load_drops_the_previous_graph_and_retries(self, network):
+    def test_a_failed_load_leaves_no_graph_and_the_next_request_loads_again(
+        self, network
+    ):
         loaded_catchment_graph(MagicMock())
+        wait_for_catchment_graph(timeout_s=10)
         network.version = (3, 0, 4, 0)
         network.fail = True
 
         assert loaded_catchment_graph(MagicMock()) is None
+        assert wait_for_catchment_graph(timeout_s=10) is None
         assert not get_catchment_graph().loaded
 
         network.fail = False
-        assert loaded_catchment_graph(MagicMock()).network_version == (3, 0, 4, 0)
+        assert loaded_catchment_graph(MagicMock()) is None
+        assert wait_for_catchment_graph(timeout_s=10).network_version == (3, 0, 4, 0)
 
-    def test_empty_network_has_no_graph(self, network):
+    def test_an_empty_network_has_no_graph_and_is_not_loaded_again(self, network):
         network.empty = True
+        loaded_catchment_graph(MagicMock())
+        assert wait_for_catchment_graph(timeout_s=10) is None
 
         assert loaded_catchment_graph(MagicMock()) is None
+        wait_for_catchment_graph(timeout_s=10)
+        assert len(network.loads) == 1
 
-    def test_concurrent_requests_wait_for_one_load(self, network):
-        network.delay_s = 0.1
+    def test_concurrent_requests_start_one_load_and_none_waits(self, network):
+        network.release.clear()
         start = threading.Barrier(8)
         graphs = []
 
@@ -816,9 +851,28 @@ class TestLoadedCatchmentGraph:
             thread.start()
         for thread in threads:
             thread.join()
+        network.release.set()
+        graph = wait_for_catchment_graph(timeout_s=10)
 
+        assert graphs == [None] * 8
+        assert network.loads == [graph]
+
+    def test_a_change_during_a_load_is_loaded_after_it(self, network):
+        network.release.clear()
+        loaded_catchment_graph(MagicMock())
+        network.version = (1, 11, 2, 20)  # the publication goes on
+
+        assert loaded_catchment_graph(MagicMock()) is None
+        network.release.set()
+        first = wait_for_catchment_graph(timeout_s=10)
+        # One load at a time: that of the version the first request read
+        assert first.network_version == (1, 10, 2, 20)
         assert len(network.loads) == 1
-        assert graphs == [network.loads[0]] * 8
+
+        assert loaded_catchment_graph(MagicMock()) is None
+        second = wait_for_catchment_graph(timeout_s=10)
+        assert second.network_version == (1, 11, 2, 20)
+        assert loaded_catchment_graph(MagicMock()) is second
 
 
 class TestGetSegmentIdx:
