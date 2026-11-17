@@ -79,6 +79,15 @@ network take the project's name (`NAME_postgres_data`, `NAME_default`). nginx mo
 instance's directories at `frontend/data` and `frontend/tiles` inside its read-only
 `./frontend`; every checkout has the two directories (each holds a tracked `.gitkeep`).
 
+## One-off scripts in the image
+
+The entrypoint of the image (`backend/entrypoint.sh`) waits for the database and runs
+`alembic upgrade head` before its command only when the container is given a database:
+`DATABASE_URL`, which Docker Compose gives the API and its one-off containers, or
+`POSTGRES_HOST`. `docker compose run --rm api python -m scripts.<name>` therefore migrates
+first, while `docker run --rm <image> python -m scripts.<name>` without either, for a script
+that needs no database (`scripts.write_instance_info`, `--help`), starts at once.
+
 ## Service logs
 
 The API writes the logs of Nogat DEV-12.4 to DEV-12.9 (`backend/core/nogat_logging.py`, a
