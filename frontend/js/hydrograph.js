@@ -7,7 +7,8 @@
  * request; an invalid field (or a server error at it) shows its message under
  * it, and the result of an earlier calculation is hidden until it is fixed.
  * The lines of the rainfall's provider that a result carries (PMAXTP) go to the
- * view's strip while the result is shown (attribution.js).
+ * view's strip while the result is shown (attribution.js), and Hydrolog's
+ * warnings about it (`notices`) stand under the section Hydrogram.
  */
 (function () {
     'use strict';
@@ -49,8 +50,9 @@
             hietogram: document.getElementById('hydro-hietogram-type').value,
             model: model,
             estimation: document.getElementById('hydro-nash-estimation').value,
-            // Tc for SCS and Snyder
-            needsTc: model !== 'nash',
+            // Tc shapes the SCS unit hydrograph alone: Snyder computes its own
+            // lag from L and Lc, and the estimations of Nash do not use it
+            needsTc: model === 'scs',
             tc: document.getElementById('hydro-tc-method').value,
         };
     }
@@ -60,7 +62,8 @@
         var kerby = c.tc === 'kerby' || c.tc === 'kerby_kirpich';
         return {
             'nash-params': c.model === 'nash',
-            'tc-method-params': c.needsTc,
+            // Snyder keeps the method in view, disabled (updateHydrographFields)
+            'tc-method-params': c.model !== 'nash',
             'tc-runoff-coeff-col': c.needsTc && c.tc === 'faa',
             'tc-retardance-col': c.needsTc && kerby,
             'snyder-ct-col': c.model === 'snyder',
@@ -166,11 +169,42 @@
             [document.getElementById('acc-hietogram'), document.getElementById('acc-hydrograph')]);
     }
 
+    var NOTICE_ICONS = {
+        warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/>' +
+            '<path d="M8 6.5v3M8 11.5v.01"/></svg>',
+        info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/>' +
+            '<path d="M8 7.5v4M8 5v.01"/></svg>',
+    };
+
+    /**
+     * Hydrolog's warnings about the hydrograph shown, under the section
+     * Hydrogram: the `notices` of the response, worded in Polish by the API
+     * (e.g. a catchment outside the typical range of the unit hydrograph);
+     * [] takes them away.
+     */
+    function showNotices(notices) {
+        var box = document.getElementById('hydrograph-notices');
+        if (!box) return;
+        box.textContent = '';
+        notices.forEach(function (notice) {
+            var warning = notice.level === 'warning';
+            var p = document.createElement('p');
+            p.className = warning ? 'notice warn' : 'notice';
+            p.innerHTML = warning ? NOTICE_ICONS.warning : NOTICE_ICONS.info;
+            var text = document.createElement('span');
+            text.textContent = notice.message;
+            p.appendChild(text);
+            box.appendChild(p);
+        });
+        box.classList.toggle('d-none', !notices.length);
+    }
+
     /** Hide the result of an earlier calculation: it no longer matches the form. */
     function hideResults() {
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        showNotices([]);
         showProviderLines(null);
         if (Hydrograf.rainExport) Hydrograf.rainExport.clear();
         // The hand-off to Hydrolog keeps the watershed without the hidden result
@@ -268,7 +302,7 @@
             hideResults();
             // The own series and the advanced mode name their errors in their own section
             showCalcErrors(
-                blockedMessage(invalid.concat(morph.valid ? [] : ['tryb zaawansowany (Hydrogram)'])),
+                blockedMessage(invalid.concat(morph.valid ? [] : [morph.blocked || 'tryb zaawansowany (Hydrogram)'])),
                 blockedMessage(invalid.concat(rain.valid ? [] : ['w\u0142asna seria opadu (Hietogram)']))
             );
             return;
@@ -378,6 +412,9 @@
                 });
             }
             displayMetadata(result.metadata);
+            // Under the sections, which hide with another watershed: only while the
+            // watershed of the result is the current one
+            showNotices(Hydrograf.app.getCurrentWatershed() === data ? result.notices || [] : []);
             if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
             if (myId !== _requestId) return;
@@ -468,10 +505,11 @@
         }
 
         var rows = [];
-        if (meta.tc_method != null) {
+        // Snyder's lag does not use the Tc the API reports beside it
+        if (meta.tc_method != null && meta.uh_model !== 'snyder') {
             rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method, 'tc_method']);
         }
-        if (meta.tc_min != null) {
+        if (meta.tc_min != null && meta.uh_model !== 'snyder') {
             rows.push(['Tc', meta.tc_min.toFixed(1) + ' min', 'tc_min']);
         }
         rows.push(['Hydrogram jedn.', uhLabel, 'uh_model']);
@@ -523,7 +561,8 @@
     /**
      * Show the fields the selected model uses. The form is one 2-column grid,
      * so the visible fields close up: for Nash its estimation sits next to
-     * "Model UH" and "Metoda Tc" follows only when the estimation needs Tc.
+     * "Model UH". Snyder keeps "Metoda Tc" in view, disabled with a note, as
+     * it ignores Tc, and its Lc joins Ct and Cp (advanced.js).
      */
     function updateHydrographFields() {
         var c = choices();
@@ -531,6 +570,18 @@
         Object.keys(parts).forEach(function (id) {
             document.getElementById(id).classList.toggle('d-none', !parts[id]);
         });
+        var snyder = c.model === 'snyder';
+        var tc = document.getElementById('hydro-tc-method');
+        var note = document.getElementById('tc-snyder-note');
+        tc.disabled = snyder;
+        if (note) {
+            note.hidden = !snyder;
+            // The applicability note of the method (info.js) is hidden meanwhile
+            var described = snyder ? note : document.getElementById('hydro-tc-method-note');
+            if (described) tc.setAttribute('aria-describedby', described.id);
+            else tc.removeAttribute('aria-describedby');
+        }
+        if (Hydrograf.advanced) Hydrograf.advanced.setSnyder(snyder);
     }
 
     // ── Init ───────────────────────────────────────────────────────────
@@ -571,5 +622,6 @@
     window.Hydrograf.hydrograph = {
         init: init,
         generateHydrograph: generateHydrograph,
+        showNotices: showNotices,
     };
 })();

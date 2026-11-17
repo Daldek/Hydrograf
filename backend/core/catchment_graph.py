@@ -2,9 +2,9 @@
 In-memory graph of sub-catchments for fast upstream traversal.
 
 Loads the sub-catchment nodes from PostGIS into numpy arrays and a scipy
-sparse matrix at API startup, and again when the network in the database
-changes (loaded_catchment_graph, network_version). Enables BFS traversal +
-stat aggregation in ~5-50ms.
+sparse matrix in a thread of its own, started at API startup and again when the
+network in the database changes (loaded_catchment_graph, network_version).
+Enables BFS traversal + stat aggregation in ~5-50ms.
 
 Memory usage: ~0.5 MB RAM.
 """
@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 from scipy.sparse.csgraph import breadth_first_order
-from sqlalchemy import text
+from sqlalchemy import Connection, Engine, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class CatchmentGraph:
     def __init__(self) -> None:
         self._loaded = False
         # network_version() of the database when the graph was loaded
-        # (set by loaded_catchment_graph)
+        # (set by the load that loaded_catchment_graph starts)
         self.network_version: tuple[int | None, ...] | None = None
         self._n = 0
 
@@ -173,7 +173,8 @@ class CatchmentGraph:
 
         Reads all rows from stream_catchments, builds numpy arrays
         and sparse upstream adjacency matrix. A graph is loaded once:
-        loaded_catchment_graph loads a new one when the network changes.
+        loaded_catchment_graph starts the load of a new one when the network
+        changes.
         """
         if self._loaded:
             return
@@ -1219,12 +1220,18 @@ def hypsometric_curve(
     return curve
 
 
-# Global singleton: the graph requests use. loaded_catchment_graph replaces it
-# with a newly loaded graph when the network in the database changes.
+# Global singleton: the graph requests use. The loader thread replaces it with a
+# newly loaded graph when the network in the database changes.
 _catchment_graph: CatchmentGraph | None = None
 _catchment_graph_lock = threading.Lock()
-# One load at a time: the requests that find the network changed wait for it
-_reload_lock = threading.Lock()
+# The thread that loads a graph, one at a time; no request waits for it
+_loader: threading.Thread | None = None
+_loader_lock = threading.Lock()
+
+# The longest wait of a caller that needs the graph itself (wait_for_catchment_graph):
+# a large network takes minutes to load (163,750 sub-catchments about 6 min while
+# another bootstrap shared the disk, in the scenario test of 2026-11-15/16)
+GRAPH_LOAD_TIMEOUT_S = 1800.0
 
 # (file node, writes) of the two tables the graph is loaded from; NULLs for a
 # table that does not exist
@@ -1285,46 +1292,110 @@ def network_version(db: Session) -> tuple[int | None, ...]:
 def loaded_catchment_graph(db: Session) -> CatchmentGraph | None:
     """Return the graph of the network that the database holds now, or None.
 
-    Reads :func:`network_version` and, when it differs from the version the
-    current graph was loaded at (a run was published, the whole raster processed
-    again, the tables cleaned), loads a new graph and makes it the current one.
-    Each API worker does so at its first request after the change. A request
-    keeps the graph it got until it ends, so a reload never changes the graph
-    under it; the requests that find the network changed wait for one load.
+    Reads :func:`network_version` and returns the current graph when it was loaded
+    at that version. Otherwise (no graph yet, a run was published, the whole raster
+    processed again, the tables cleaned) it starts a load in a daemon thread, unless
+    one runs, and returns None at once: a large network takes minutes to load, longer
+    than a proxy waits for an answer (E5b-01), so the callers answer 503
+    ``catchment_graph_unavailable`` until the new graph is the current one. One load
+    runs at a time: a request that finds the network changed again during a load
+    starts the next one once it has ended. A request keeps the graph it got until it
+    ends, so a reload never changes the graph under it.
 
     Parameters
     ----------
     db : Session
-        Database session the version is read and the graph loaded from.
+        Database session the version is read from. The load opens a session of its
+        own on the same bind, so it outlives the request.
 
     Returns
     -------
     CatchmentGraph | None
-        The loaded graph; None when ``stream_catchments`` is empty or the load
-        failed (logged; the next call loads again).
+        The loaded graph of the current version; None while it loads, when
+        ``stream_catchments`` is empty or after a failed load (logged; the next call
+        loads again).
+    """
+    version = network_version(db)
+    graph = _catchment_graph
+    if graph is not None and graph.network_version == version:
+        # An empty network has a graph of its version too, which is not loaded
+        return graph if graph.loaded else None
+    _start_load(db.get_bind(), version)
+    return None
+
+
+def _start_load(bind: Engine | Connection, version: tuple[int | None, ...]) -> None:
+    """Start the loader thread of the graph of ``version``, unless a load runs."""
+    global _loader
+    with _loader_lock:
+        if _loader is not None and _loader.is_alive():
+            return
+        _loader = threading.Thread(
+            target=_load,
+            args=(bind, version),
+            name="catchment-graph-load",
+            daemon=True,
+        )
+        _loader.start()
+
+
+def _load(bind: Engine | Connection, version: tuple[int | None, ...]) -> None:
+    """Load the graph of ``version`` and make it the current one (the loader thread).
+
+    A failed load is logged and leaves no graph, so no request gets the graph of a
+    network that the database no longer holds and the next request loads again.
     """
     global _catchment_graph
-    version = network_version(db)
-    graph = get_catchment_graph()
-    if graph.loaded and graph.network_version == version:
-        return graph
-    with _reload_lock:
-        graph = get_catchment_graph()
-        if graph.loaded and graph.network_version == version:
-            return graph
-        if graph.loaded:
-            logger.info(
-                "Network in the database changed (version %s, was %s): "
-                "reloading the catchment graph",
-                version,
-                graph.network_version,
-            )
-        fresh = CatchmentGraph()
-        try:
+    current = _catchment_graph
+    if current is not None and current.loaded:
+        logger.info(
+            "Network in the database changed (version %s, was %s): "
+            "reloading the catchment graph",
+            version,
+            current.network_version,
+        )
+    fresh = CatchmentGraph()
+    try:
+        with Session(bind=bind) as db:
             fresh.load(db)
-        except Exception:
-            logger.exception("Catchment graph load failed")
-            fresh = CatchmentGraph()
+    except Exception:
+        logger.exception("Catchment graph load failed")
+        fresh = CatchmentGraph()
+    else:
         fresh.network_version = version
+    with _catchment_graph_lock:
         _catchment_graph = fresh
-    return fresh if fresh.loaded else None
+
+
+def catchment_graph_loading() -> bool:
+    """Whether a load of the catchment graph runs now."""
+    loader = _loader
+    return loader is not None and loader.is_alive()
+
+
+def wait_for_catchment_graph(timeout_s: float) -> CatchmentGraph | None:
+    """Wait for the load that runs, if any, at most ``timeout_s`` seconds.
+
+    For a caller that needs the graph itself, as the admin panel's bootstrap does
+    after a run: :func:`loaded_catchment_graph` starts the load, this waits for it.
+
+    Parameters
+    ----------
+    timeout_s : float
+        The longest wait [s].
+
+    Returns
+    -------
+    CatchmentGraph | None
+        The current graph when it is loaded and no load runs; None when the last
+        load failed or found ``stream_catchments`` empty, or a load still runs after
+        ``timeout_s``. The network may have changed since: the next
+        :func:`loaded_catchment_graph` says whether the graph is that of the database.
+    """
+    loader = _loader
+    if loader is not None:
+        loader.join(timeout_s)
+        if loader.is_alive():
+            return None
+    graph = _catchment_graph
+    return graph if graph is not None and graph.loaded else None

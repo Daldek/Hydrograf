@@ -81,6 +81,9 @@ Thumbs.db
 data/
 cache/
 !cache/.gitkeep
+# The data and tiles of the instance. Their empty .gitkeep files are tracked (added with
+# `git add -f`): Docker mounts the instance's directories at them inside the read-only
+# ./frontend of nginx and cannot create a mountpoint there itself
 frontend/data/
 frontend/tiles/
 !data/.gitkeep

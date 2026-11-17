@@ -502,9 +502,10 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    filled DEM (ADR-070); what cannot be measured stays empty.
 8. Insert the result into PostGIS (COPY) with the matching of the streams against BDOT10k when
    `--burn-streams` is given (ADR-044); `--clear-existing` first deletes the DEM-derived streams and
-   the sub-catchments. After the insert the run logs that a running API loads the new network at
-   its next request (it compares the network on every request that uses the catchment graph; an
-   API that still answers from the previous network predates that: `docker compose restart api`).
+   the sub-catchments. After the insert the run logs that a running API starts loading the new
+   network at its next request and answers 503 to the requests that need it until it is loaded (it
+   compares the network on every request that uses the catchment graph; an API that still answers
+   from the previous network predates that: `docker compose restart api`).
 
 `--from-intermediates` skips stages 1–6: it reads the rasters that an earlier run saved with
 `--save-intermediates` (`*_02_filled`, `*_03_flowdir`, `*_04_flowacc`, `*_04b_stream_distance`,

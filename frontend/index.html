@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="css/chrome.css?v=54f78beb83">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
     <link rel="stylesheet" href="nogat/nogat-sources.css?v=b02762f078">
-    <link rel="stylesheet" href="css/app.css?v=7431a05950">
+    <link rel="stylesheet" href="css/app.css?v=55b8184b37">
 </head>
 <body>
 <div class="shell">
@@ -455,6 +455,7 @@
                                                 <option value="kerby">Kerby</option>
                                                 <option value="kerby_kirpich">Kerby-Kirpich</option>
                                             </select>
+                                            <p id="tc-snyder-note" class="info-note" hidden>Snyder nie używa Tc: opóźnienie liczy z długości cieku i odległości L<sub>c</sub>.</p>
                                         </div>
                                         <div id="tc-runoff-coeff-col" class="field d-none">
                                             <label for="hydro-tc-runoff-coeff">C (spływ) 0–1</label>
@@ -472,6 +473,8 @@
                                             <label for="hydro-snyder-cp">Cp (0.4–0.8)</label>
                                             <input id="hydro-snyder-cp" type="number" value="0.6" min="0.1" max="1.0" step="0.05">
                                         </div>
+                                        <!-- Snyder's Lc while the advanced mode is off (advanced.js) -->
+                                        <div id="snyder-lc-col" class="snyder-lc d-none"></div>
                                     </div>
                                     <div id="advanced-inputs" class="adv">
                                         <label class="adv-switch">
@@ -515,6 +518,15 @@
                                 </div>
                             </details>
                         </div>
+
+                        <!-- Above the limit of SCS-CN: why there is no hietogram and hydrograph (app.js) -->
+                        <p id="hydrograph-limit" class="notice d-none" role="status">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
+                            <span id="hydrograph-limit-text"></span>
+                        </p>
+
+                        <!-- Hydrolog's warnings about the hydrograph shown, e.g. a method outside its typical range (hydrograph.js) -->
+                        <div id="hydrograph-notices" class="hydro-notices d-none" role="status"></div>
                     </div>
 
                     <!-- Hand-off to Hydrolog of the watershed or of the network (js/handoff.js) -->
@@ -634,9 +646,9 @@
 <script defer src="js/profile.js?v=21311f8e10"></script>
 <script defer src="js/info-texts.js?v=fc275bac18"></script>
 <script defer src="js/info.js?v=a985fcf72b"></script>
-<script defer src="js/hydrograph.js?v=17f2662d93"></script>
+<script defer src="js/hydrograph.js?v=4550fafaea"></script>
 <script defer src="js/rain-export.js?v=0bf231af6f"></script>
-<script defer src="js/advanced.js?v=48268e8668"></script>
+<script defer src="js/advanced.js?v=d333694d8b"></script>
 <script defer src="js/custom-rain.js?v=ea6f4793f4"></script>
 <script defer src="js/depressions.js?v=3ff4ef17dc"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
@@ -649,6 +661,6 @@
 <script defer src="js/handoff.js?v=79b2c2e3be"></script>
 <script defer src="js/network.js?v=567f2fc265"></script>
 <script defer src="js/terms.js?v=5b87c2c7ae"></script>
-<script defer src="js/app.js?v=c4da048f67"></script>
+<script defer src="js/app.js?v=24749852c2"></script>
 </body>
 </html>

@@ -97,8 +97,11 @@ def served(outlet_point: Point) -> Iterator[MagicMock]:
         "downstream_y": outlet_point.y,
     }
     target = "api.endpoints.watershed"
+    graph = _graph()
     with (
-        patch(f"{target}.loaded_catchment_graph", return_value=_graph()),
+        # The script has the graph loaded first, then the endpoint takes it
+        patch("core.catchment_graph.loaded_catchment_graph", return_value=graph),
+        patch(f"{target}.loaded_catchment_graph", return_value=graph),
         patch(f"{target}.merge_catchment_boundaries", return_value=boundary),
         patch(f"{target}.get_stream_info_by_segment_idx", return_value=stream),
         patch(

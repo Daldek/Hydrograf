@@ -103,6 +103,19 @@ def test_a_graph_that_is_not_loaded_is_a_warning(app, data_dir, graph):
     assert _checks(_status(app))["catchment_graph"]["status"] == "warning"
 
 
+def test_a_graph_that_loads_is_a_warning_apart_from_a_failed_load(
+    app, data_dir, graph, monkeypatch
+):
+    graph.loaded = False
+    not_loaded = _checks(_status(app))["catchment_graph"]
+    monkeypatch.setattr(admin, "catchment_graph_loading", lambda: True)
+
+    loading = _checks(_status(app))["catchment_graph"]
+
+    assert loading["status"] == "warning"
+    assert loading["detail"] != not_loaded["detail"]
+
+
 def test_a_missing_data_dir_fails_and_has_no_disk(app, data_dir, graph):
     data_dir.rmdir()
 

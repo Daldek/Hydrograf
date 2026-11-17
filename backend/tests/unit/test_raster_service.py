@@ -217,6 +217,21 @@ class TestWindowedDelineation:
         assert not result["polygon"].contains(Point(_centre(101, 88)))
         assert result["polygon"].contains(Point(_centre(110, 90)))
 
+    def test_the_dem_on_the_grid_of_the_flow_directions_is_read(
+        self, valleys, tmp_path
+    ):
+        """A bootstrap leaves its input mosaic ``dem_mosaic.vrt``; once the rasters
+        are cut to the area, the VRT is the larger uncut mosaic and only the cut
+        ``dem_mosaic.tif`` is on the grid of the flow directions."""
+        _, polygon, stats = valleys.whole(*OUTLET)
+        _write_tif(tmp_path / "dem_mosaic.tif", valleys.dem, DEM_NODATA)
+        uncut = np.pad(valleys.dem, 10, constant_values=450.0)
+        _write_dem(tmp_path, uncut, TRANSFORM * Affine.translation(-10, -10))
+
+        result = valleys.delineate(*OUTLET)
+
+        _assert_same(result, polygon, stats)
+
 
 class TestRefusals:
     @pytest.mark.parametrize(

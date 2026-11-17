@@ -157,7 +157,7 @@
     <div class="card"><span class="label">Profil terenu</span><p>Klikaj punkty linii; profil narysuje ponowne kliknięcie ostatniego punktu, dwuklik lub „Rysuj profil”. <kbd>Backspace</kbd> cofa punkt, <kbd>Esc</kbd> porzuca linię. Wykres — w szufladzie u dołu mapy (slajd 31).</p></div>
     <div class="card"><span class="label">Identyfikuj</span><p>Kliknij miejsce: okienko poda współrzędne w trzech układach („Kopiuj”), wysokość, najbliższy ciek, pokrycie terenu z CN dla AMC I–III, glebę i sieć spływu, a z wynikiem SFINCS — głębokość wody.</p></div>
   </div>
-  <p class="hint"><kbd>Esc</kbd> przerywa rysowanie, potem zamyka okienko punktu; gdy nic nie rysujesz, raz zwija panel „Zlewnia”, dwa razy szybko czyści wynik. W „Sieci zlewni” <kbd>Esc</kbd> tylko chowa panel.</p>
+  <p class="hint"><kbd>Esc</kbd> przerywa rysowanie, potem zamyka okienko punktu; gdy nic nie rysujesz, zwija panel „Zlewnia” jak ×, a wynik zostaje na mapie: czyści go tylko kosz. W „Sieci zlewni” <kbd>Esc</kbd> też tylko chowa panel.</p>
   <div class="footer"><span>PRZEGLĄDANIE · WYBIERZ ZLEWNIĘ · PROFIL TERENU · IDENTYFIKUJ</span><span>09 / 33</span></div>
 </section>
 <section class="slide" id="warstwy" aria-label="Slajd 10: panel Warstwy">
@@ -420,13 +420,13 @@
   <div class="split">
     <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-v2-hydrogram.png" width="500" height="781" alt="Hydrogram dla własnego opadu 45 mm: Qmax 1,65 m³/s, czas do szczytu 280 min i objętość 34 957 m³.">
     <div class="stack">
-      <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz lub Regresja urban.; Snyder — z długości cieku i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp.</p></div>
-      <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. Każdą liczy Hydrolog z danych, które podaje jej źródło, bez zastępników — najdłuższa droga spływu i jej spadek oraz spływ powierzchniowy pochodzą z wyznaczenia zlewni. FAA wymaga „C (spływ)” z tabeli FAA, obie metody Kerby’ego — „N (opór)” z tabeli Kerby’ego; pola są puste, dopóki ich nie wypełnisz. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub> — wybór metody Tc nie zmienia jego wyniku.</p></div>
-      <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc, Tc, Hydrogram jedn. (dla Nasha także N i K, a dla metody Lutza udział lasów W i terenów zurbanizowanych U z pokrycia terenu zlewni).</p></div>
-      <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wyborem: dla jakich zlewni powstała metoda (np. Kirpich — małe zlewnie rolnicze, Giandotti — duże). Aplikacja nie ostrzega o przekroczeniu zakresu — oceń to sam.</p></div>
+      <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz lub Regresja urban.; Snyder — z długości cieku i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp, obok których stoi wtedy pole L<sub>c</sub>.</p></div>
+      <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. Każdą liczy Hydrolog z danych, które podaje jej źródło, bez zastępników — najdłuższa droga spływu i jej spadek oraz spływ powierzchniowy pochodzą z wyznaczenia zlewni. FAA wymaga „C (spływ)” z tabeli FAA, obie metody Kerby’ego — „N (opór)” z tabeli Kerby’ego; pola są puste, dopóki ich nie wypełnisz. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub>, więc przy nim lista jest wyłączona.</p></div>
+      <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc i Tc (nie dla Snydera), Hydrogram jedn. (dla Nasha także N i K, a dla metody Lutza udział lasów W i terenów zurbanizowanych U z pokrycia terenu zlewni).</p></div>
+      <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wyborem: dla jakich zlewni powstała metoda (np. Kirpich — małe zlewnie rolnicze, Giandotti — duże). Gdy wartość wychodzi poza typowy zakres metody, pod sekcją „Hydrogram” pojawia się ostrzeżenie Hydrologu.</p></div>
     </div>
   </div>
-  <p class="hint">Hydrogram powstaje tylko dla zlewni do 250&nbsp;km²; dla większych sekcje „Hietogram” i „Hydrogram” nie pojawiają się — bez komunikatu.</p>
+  <p class="hint">Hydrogram powstaje tylko dla zlewni do 250&nbsp;km²; dla większych sekcji „Hietogram” i „Hydrogram” nie ma, a pod sekcjami panel podaje tę granicę metody SCS-CN i powierzchnię zlewni.</p>
   <div class="footer"><span>MODEL UH · METODA TC · QMAX · TP · V</span><span>23 / 33</span></div>
 </section>
 <section class="slide" id="krok-amc" aria-label="Slajd 24: krok po kroku — porównanie AMC">
@@ -454,7 +454,7 @@
       <div class="card"><span class="label">Walidacja</span><p>Przy błędnym polu pojawia się opis, np. „Wartość musi być dodatnia.” albo „CN: liczba od 1 do 100 (np. 68.4).” — do poprawy hydrogram nie jest przeliczany.</p></div>
     </div>
   </div>
-  <p class="hint">Zmiany dotyczą tylko hietogramu i hydrogramu, nie panelu parametrów. Gdy Snyder zgłasza „Model Snydera wymaga …”, wpisz tutaj L<sub>c</sub>.</p>
+  <p class="hint">Zmiany dotyczą tylko hietogramu i hydrogramu, nie panelu parametrów. Przy Snyderze pole L<sub>c</sub> stoi obok Ct i Cp także poza trybem zaawansowanym; gdy zlewnia nie ma L<sub>c</sub>, wpisz je tam.</p>
   <aside class="provider-lines" aria-label="Dane opadowe PMAXTP">
     <p class="provider-title">Dane opadowe PMAXTP</p>
     <p>Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony <a href="https://klimat.imgw.pl/opady-maksymalne">https://klimat.imgw.pl/opady-maksymalne</a></p>

@@ -238,8 +238,12 @@ def _post(run_dir: Path, url: str, request: dict[str, Any]) -> dict[str, Any]:
     """POST a request to an endpoint of the API on the database and its run."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("DEM_DIR", str(run_dir))
-        # The graph of another database must not answer for this one
+        # The graph of another database must not answer for this one; a request
+        # only starts the load of this one (E5b-01), so it is loaded first
         patch.setattr(cg_module, "_catchment_graph", None)
+        with database.get_db_session() as db:
+            cg_module.loaded_catchment_graph(db)
+        assert cg_module.wait_for_catchment_graph(timeout_s=60) is not None
         get_settings.cache_clear()
         try:
             response = TestClient(app).post(url, json=request)

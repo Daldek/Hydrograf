@@ -340,8 +340,8 @@
 
     /**
      * Clear the selection: the result, the error and the map overlays, then
-     * close the panel. Used by the clear button and a double Escape; the ×
-     * of the panel only hides it, so the result stays. In the option „Sieć zlewni”
+     * close the panel. Used by the clear button only; the × of the panel and
+     * Escape only hide it, so the result stays. In the option „Sieć zlewni”
      * the bin removes the points and the network instead (js/network.js).
      */
     function closeResults() {
@@ -603,7 +603,8 @@
                 displayStreamInfo(data.stream);
             }
 
-            // Show/hide hietogram + hydrograph sections based on API response
+            // Show/hide hietogram + hydrograph sections based on API response;
+            // a watershed above the limit of SCS-CN gets a notice instead
             var hydroAvail2 = data.watershed && data.watershed.hydrograph_available;
             ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
                 var section = document.getElementById(id);
@@ -615,6 +616,9 @@
                     }
                 }
             });
+            showHydrographLimit(data.watershed && !hydroAvail2 ? data.watershed : null);
+            // Hydrolog's warnings about the previous watershed's hydrograph go with it
+            if (Hydrograf.hydrograph) Hydrograf.hydrograph.showNotices([]);
             els.results.classList.remove('d-none');
 
             // Hand-off to Hydrolog: the watershed now, its hydrograph when it comes
@@ -636,6 +640,20 @@
         } finally {
             if (isCurrent()) setLoading(false);
         }
+    }
+
+    /**
+     * Say why a watershed above the limit of SCS-CN (250 km², the API's
+     * HYDROGRAPH_AREA_LIMIT_KM2) has no hietogram and hydrograph; null hides it.
+     */
+    function showHydrographLimit(watershed) {
+        var notice = document.getElementById('hydrograph-limit');
+        if (!notice) return;
+        notice.classList.toggle('d-none', !watershed);
+        document.getElementById('hydrograph-limit-text').textContent = watershed
+            ? 'Hietogram i hydrogram są liczone tylko dla zlewni do 250 km², granicy stosowalności ' +
+              'metody SCS-CN; ta zlewnia ma ' + formatValue(watershed.area_km2, 'km²', 2) + '.'
+            : '';
     }
 
     /**
@@ -807,10 +825,9 @@
         els.close.addEventListener('click', hidePanel);
         els.clear.addEventListener('click', closeResults);
 
-        // Escape: cancel drawing first, then close the point card, then
-        // single = hide panel, double = clear result (like the clear button);
-        // in the option „Sieć zlewni” it only hides the panel: the points stay
-        var _escTimer = null;
+        // Escape: cancel drawing first, then close the point card, then hide
+        // the panel; it never clears the result (only the clear button does),
+        // so the watershed or the network stays on the map
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
 
@@ -829,21 +846,7 @@
                 return;
             }
 
-            if (state.view === 'network') {
-                hidePanel();
-                return;
-            }
-
-            if (!state.currentWatershed && !Hydrograf.shell.isOpen('right')) return;
-
-            if (_escTimer) {
-                clearTimeout(_escTimer);
-                _escTimer = null;
-                closeResults();
-            } else {
-                hidePanel();
-                _escTimer = setTimeout(function () { _escTimer = null; }, 400);
-            }
+            hidePanel();
         });
 
         // Profile drawer: closing it leaves profile mode

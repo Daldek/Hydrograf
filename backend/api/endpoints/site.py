@@ -9,15 +9,31 @@ in `X-Accel-Redirect` under nginx's internal location `/_site/`. The regulamin
 (DEV-15.7) is filled by the API (core/terms.py) and sent from memory.
 """
 
-from fastapi import APIRouter, Request, Response
-from fastapi.responses import HTMLResponse
+import logging
 
-from core.attribution import CATCHMENT, LAYER_KINDS, PMAXTP, data_lines, merge
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from core.attribution import (
+    CATCHMENT,
+    LAYER_KINDS,
+    NO_PROVIDER,
+    PMAXTP,
+    ProviderLines,
+    data_lines,
+    merge,
+)
 from core.config import get_settings
 from core.data_sources import read_data_sources
+from core.database import get_db
 from core.errors import NotFoundError
+from core.precipitation import has_pmaxtp
 from core.terms import URL, current_terms
 from models.schemas import LayerLines, TermsInfo
+
+logger = logging.getLogger(__name__)
 
 # nginx's internal location of the front end's files
 SITE = "/_site/"
@@ -43,8 +59,21 @@ def regulamin() -> HTMLResponse:
     return HTMLResponse(terms.page, headers={"Cache-Control": "no-cache"})
 
 
+def _pmaxtp_lines(db: Session) -> ProviderLines:
+    """PMAXTP's lines when the instance holds PMAXTP data (``has_pmaxtp``).
+
+    When the database cannot tell, the lines stay: a product of PMAXTP data must
+    carry them, and ``GET /api/terms`` answers without the database otherwise.
+    """
+    try:
+        return PMAXTP if has_pmaxtp(db) else NO_PROVIDER
+    except SQLAlchemyError as e:
+        logger.warning("Cannot tell whether the instance holds PMAXTP data: %s", e)
+        return PMAXTP
+
+
 @router.get("/terms", response_model=TermsInfo)
-def terms_info() -> TermsInfo:
+def terms_info(db: Session = Depends(get_db)) -> TermsInfo:
     """
     Return the address of the regulamin, the operator's e-mail and the service's lines.
 
@@ -52,14 +81,14 @@ def terms_info() -> TermsInfo:
     (`[nogat.operator]` of the nogat.toml of NOGAT_CONFIG): the front end then shows no
     link „Regulamin” and no e-mail under „Zgłoś uwagę”. `attribution` and `terms_notice`
     are every line of the service's data (core/attribution.py): those of the PMAXTP
-    data every hydrograph is made with, then G and SG of the GUGiK and SoilGrids data
-    of the instance, which the welcome window shows in full (Nogat DEV-20.5).
-    `layers` gives the lines of each kind of data of the map's layers, which the strip
-    of the view shows while a layer of the kind is on the map.
+    data every design storm is made with, when the instance holds them, then G and SG
+    of the GUGiK and SoilGrids data of the instance, which the welcome window shows in
+    full (Nogat DEV-20.5). `layers` gives the lines of each kind of data of the map's
+    layers, which the strip of the view shows while a layer of the kind is on the map.
     """
     terms = current_terms()
     dates = read_data_sources(get_settings().frontend_data_dir)
-    lines = merge([PMAXTP, data_lines(CATCHMENT, dates)])
+    lines = merge([_pmaxtp_lines(db), data_lines(CATCHMENT, dates)])
     layers = {}
     for kind, uses in LAYER_KINDS.items():
         layer = data_lines(uses, dates)
