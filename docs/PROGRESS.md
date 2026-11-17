@@ -107,8 +107,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      at its memory cap; no documented rule or limit). A draft plan is in Nogat,
      `docs/plans/2026-11-16-large-basins.md` on its branch `plan/large-basins`, not approved.
    - *Bootstrap and a second instance:* E4-01 (a bind mount under `/data/nmt` leaves step 3
-     unable to write; the dry run does not check it), E4-02 (*0.5.1*: `--units` needs the layer
-     `pozostale_obszary_jcwp`; the dry run does not check it), E4-03 (*fixed*: a one-off script
+     unable to write; the dry run does not check it), E4-02 (*fixed*: the dry run now refuses a
+     `--units` file without `pozostale_obszary_jcwp`), E4-03 (*fixed*: a one-off script
      without `--entrypoint` waited for the database), HG-E2E-01 (*fixed*: untracked
      `frontend/data` and `frontend/tiles` stopped a second nginx), HG-E2E-02 (*fixed*: the prod
      overlay's healthcheck asked `localhost`, nginx listens on IPv4 only), HG-E2E-03 (*fixed*: the
