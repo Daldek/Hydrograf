@@ -123,7 +123,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
-     reach only the log), E5b-09 (*0.5.1*: `/api/terms` lists PMAXTP for an instance without it).
+     reach only the log), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an instance without it).
    - *GUI (B8):* G05-1 = B2 (*0.5.1*: above 250 km² the hydrograph sections hide without a
      notice), A2 (*0.5.1*: Snyder's Lc only in the advanced mode, the Tc method not disabled for
      Snyder), B3 (*0.5.1*: Esc both hides the panel and clears the watershed), G06-1 and G06-2
