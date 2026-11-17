@@ -97,7 +97,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    the pins stay at the tags of v0.5.0 until the coordinator's pin commit. Known defects, by the
    IDs of the scenario test of 2026-11-15/16 (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4,
    owners §6; none of C1–C7 of Nogat's run of candidate-5 is Hydrograf's) and of the external test
-   report of 2026-11-02 (A2, B2, B3); *0.5.1* marks the scope of the patch:
+   report of 2026-11-02 (A2, B2, B3); *0.5.1* marks the scope of the patch, *fixed* what
+   `fix/0.5.1` fixed (CHANGELOG `[Unreleased]`):
    - *Large basins (0.6.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
      E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
@@ -121,7 +122,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      not warn of a window above 60 M cells).
    - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
-     (*0.5.1*: the full hydrograph path has no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
+     (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
      reach only the log), E5b-09 (*0.5.1*: `/api/terms` lists PMAXTP for an instance without it).
    - *GUI (B8):* G05-1 = B2 (*0.5.1*: above 250 km² the hydrograph sections hide without a
      notice), A2 (*0.5.1*: Snyder's Lc only in the advanced mode, the Tc method not disabled for

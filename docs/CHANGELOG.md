@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Changes since 0.5.0, to be released as 0.5.1: defect fixes only.
 
+### Fixed
+- **ISRIC's line in the hydrograph of a point alone** (E5b-05 of the scenario test of 2026-11-15/16; Nogat DEV §20, ADR-085; `api/endpoints/hydrograph.py`): `POST /api/generate-hydrograph` with a point and no `morphometry` delineates the watershed itself and weighs its CN on the land cover of BDOT10k and the soil groups of SoilGrids, but its `attribution` and that of its hand-off had G alone, since the lines were read from land cover and soil statistics that this path never builds. They now follow the data of the CN: G and SG when the land cover lies on soil groups, G alone when the groups were assumed for all of it, as the delineation of the same watershed and the hydrograph of the panel give them.
+
 ## [0.5.0] - 2026-11-16
 
 ### Added
