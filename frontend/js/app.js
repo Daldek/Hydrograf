@@ -340,8 +340,8 @@
 
     /**
      * Clear the selection: the result, the error and the map overlays, then
-     * close the panel. Used by the clear button and a double Escape; the ×
-     * of the panel only hides it, so the result stays. In the option „Sieć zlewni”
+     * close the panel. Used by the clear button only; the × of the panel and
+     * Escape only hide it, so the result stays. In the option „Sieć zlewni”
      * the bin removes the points and the network instead (js/network.js).
      */
     function closeResults() {
@@ -807,10 +807,9 @@
         els.close.addEventListener('click', hidePanel);
         els.clear.addEventListener('click', closeResults);
 
-        // Escape: cancel drawing first, then close the point card, then
-        // single = hide panel, double = clear result (like the clear button);
-        // in the option „Sieć zlewni” it only hides the panel: the points stay
-        var _escTimer = null;
+        // Escape: cancel drawing first, then close the point card, then hide
+        // the panel; it never clears the result (only the clear button does),
+        // so the watershed or the network stays on the map
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
 
@@ -829,21 +828,7 @@
                 return;
             }
 
-            if (state.view === 'network') {
-                hidePanel();
-                return;
-            }
-
-            if (!state.currentWatershed && !Hydrograf.shell.isOpen('right')) return;
-
-            if (_escTimer) {
-                clearTimeout(_escTimer);
-                _escTimer = null;
-                closeResults();
-            } else {
-                hidePanel();
-                _escTimer = setTimeout(function () { _escTimer = null; }, 400);
-            }
+            hidePanel();
         });
 
         // Profile drawer: closing it leaves profile mode
