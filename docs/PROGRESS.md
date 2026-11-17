@@ -30,7 +30,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | No footer | done | The author's decision of 2026-11-14 (Nogat DEV-15.7, DEV-15.8; ADR-084 amended): the footer and its statement are gone from the map and the guide; „Regulamin” is the last item of the rail (the bottom bar on phones) and of the guide's table of contents, besides the menu and the welcome window's „Regulamin serwisu”. `scripts/gate.sh` on `feat/no-footer`: 2,379 passed, 170 deselected, coverage 87.2 %. Merged into `develop` on 2026-11-14 (`bbd3792`) and deployed (production `1577dbc`). |
 | Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; on `feature/compact-sources` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; on `fix/minimal-provider-texts` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Guide and slide screenshots refreshed from the current live UI on 2026-11-14; the documents of release v0.5.0 (CHANGELOG `[Unreleased]`, the pins → tags in CLAUDE.md, the integration documents and CROSS_PROJECT_ANALYSIS) on 2026-11-16, when README and CLAUDE.md were also brought within their budgets (DOC-1.7) by moving the deployment reference to `docs/USAGE.md`. The documents still in Polish are listed in Next 7, the local paths in Next 18. |
-| Release v0.5.0 | in progress | Frozen by the author on 2026-11-16 as a member of the first joint release of the ecosystem (Nogat release set candidate-6; ECO-074); the steps and the defects deferred to the next release are Next 5. `main` has v0.4.0 (2026-03-03). |
+| Release v0.5.0 | done | Released on 2026-11-16 as a member of the first joint release of the ecosystem (Nogat release set candidate-6; ECO-074): tag `v0.5.0` on `main` (`634fce6`). Its deployment to production is a separate step of the author's. |
+| Release v0.5.1 | in progress | Defect fixes only (the author's approval of 2026-11-17), on `fix/0.5.1` at `0.5.1.dev0`; the scope and the defects left are Next 5. |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
 
 ### Production
@@ -89,46 +90,46 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    later flights may replace them). The report to GUGiK is the author's step: the draft
    `/mnt/magazyn/agent-tmp/Hydroni/sprawdzenie/zgloszenie_gugik_nmt5m.md` (Polish, not proofread;
    the list of the 81 sheets has to be generated again before it is sent).
-5. **Release v0.5.0, closed to changes.** The author froze v0.5.0 on 2026-11-16 as a member of the
-   first joint release of the ecosystem (Nogat release set candidate-6; ECO-074). Hydrograf, an
-   app, is released by its own tag at the set's commits of its producers, after them (REL-6.6:
-   Kartograf, Obserwator, Hydrolog, then Hydrograf and Archiwista). Until the tag the only
-   further changes are the coordinator's pin commit (the producers' commits of candidate-6) and
-   the release commit (REL-2.1): version 0.5.0, the heading `[0.5.0]` of `[Unreleased]`, the pins
-   Kartograf `v0.8.0`, Obserwator `v3.0.0` and Hydrolog `v0.8.0` instead of commits, the ranges
-   narrowed to `kartograf>=0.8.0,<0.9`, `obserwator>=3.0.0,<4` and `hydrolog>=0.8.0,<0.9`
-   (REL-5.3, REL-5.6) and `backend/uv.lock`; then `develop` → `main` and the tag v0.5.0. The
-   deployment of v0.5.0 to production is a separate step of the author's, not part of the tag.
-   Every other change, a defect included, waits for the next release (0.5.1 or 0.6.0). Known
-   defects, all deferred to the next release (the author, 2026-11-16), by the IDs of the scenario
-   test of 2026-11-15/16 (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4, owners §6; none of
-   C1–C6 of Nogat's run of candidate-5 is Hydrograf's):
-   - *Large basins:* E7-08 (a second bootstrap into an instance replaces the first part and mixes
-     its cover and soils; no `--append`, no inflow from the part above), E7-GAP-02 (= E7-08),
-     GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 = G09-3 and E7-GAP-04 (a
-     catchment cut at the area's or the state's edge looks complete; the outlet moves to the
-     segment's end without a notice), E7-09 and HG-E2E-04 (the bootstrap peaks at its memory cap;
-     no documented rule or limit). A draft plan is in Nogat, `docs/plans/2026-11-16-large-basins.md`
-     on its branch `plan/large-basins`, not approved; none of its work is in 0.5.0.
+5. **Release v0.5.1, defect fixes only.** v0.5.0 is released (tag `v0.5.0` on `main`, `634fce6`,
+   2026-11-16). The author approved on 2026-11-17 a patch of defect fixes only, released after
+   Hydrolog 0.8.1 (REL-6.6; Nogat's PROGRESS Next 7): branch `fix/0.5.1` from `develop`, at
+   `0.5.1.dev0`, one commit per fix, nothing merged, tagged or released until the author approves;
+   the pins stay at the tags of v0.5.0 until the coordinator's pin commit. Known defects, by the
+   IDs of the scenario test of 2026-11-15/16 (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4,
+   owners §6; none of C1–C7 of Nogat's run of candidate-5 is Hydrograf's) and of the external test
+   report of 2026-11-02 (A2, B2, B3); *0.5.1* marks the scope of the patch:
+   - *Large basins (0.6.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
+     first part and mixes its cover and soils; no `--append`, no inflow from the part above),
+     E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
+     G09-3 and E7-GAP-04 (a catchment cut at the area's or the state's edge looks complete; the
+     outlet moves to the segment's end without a notice), E7-09 and HG-E2E-04 (the bootstrap peaks
+     at its memory cap; no documented rule or limit). A draft plan is in Nogat,
+     `docs/plans/2026-11-16-large-basins.md` on its branch `plan/large-basins`, not approved.
    - *Bootstrap and a second instance:* E4-01 (a bind mount under `/data/nmt` leaves step 3
-     unable to write; the dry run does not check it), E4-02 (`--units` needs the layer
-     `pozostale_obszary_jcwp`; the dry run does not check it), E4-03 (a one-off script without
-     `--entrypoint` waits for the database), HG-E2E-01 (untracked `frontend/data` and
-     `frontend/tiles` stop a second nginx), HG-E2E-02 (the prod overlay's healthcheck asks
-     `localhost`, nginx listens on IPv4 only), HG-E2E-03 (`POSTGRES_PASSWORD is empty` warning).
-   - *API:* E5b-01 (the catchment graph loads on the first request, 504), E5b-02
-     (`GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a stream
-     returns 0.0003 km² without a notice), E5b-04 (`generate-hydrograph` with a point alone takes
-     about 3 min, 504), E5b-08 (with Hydrolog: the first network beside a hydrograph gives 500),
-     E5b-10 (the network preview does not warn of a window above 60 M cells).
-   - *Lines, rainfall and warnings (B4, B5):* E3-03 (`obserwator-series-csv` is refused as an own
-     series), E3-04 (`custom_precipitation` carries no provider lines), E5b-05 (the full hydrograph
-     path has no ISRIC line), E5b-06 (Hydrolog's warnings reach only the log), E5b-09
-     (`/api/terms` lists PMAXTP for an instance without it).
-   - *GUI (B8):* G05-1 (above 250 km² the hydrograph sections hide without a notice), G06-1 and
-     G06-2 (reach lengths and slope of hand-placed points, to be explained), G06-3 (the clipboard
-     of the test browser; environmental), G06-4 (B8: „Jedna zlewnia” at a network's P1 ends at the
-     segment's end, not at P1), G07-1 = G09-1 (the map and the page title do not name the area).
+     unable to write; the dry run does not check it), E4-02 (*0.5.1*: `--units` needs the layer
+     `pozostale_obszary_jcwp`; the dry run does not check it), E4-03 (*0.5.1*: a one-off script
+     without `--entrypoint` waits for the database), HG-E2E-01 (*0.5.1*: untracked `frontend/data`
+     and `frontend/tiles` stop a second nginx), HG-E2E-02 (*0.5.1*: the prod overlay's healthcheck
+     asks `localhost`, nginx listens on IPv4 only), HG-E2E-03 (*0.5.1*: `POSTGRES_PASSWORD is
+     empty` warning), the `dem_mosaic.vrt` a bootstrap leaves (*0.5.1*: found on a staging run, it
+     outranks the cut `dem_mosaic.tif`, so the precise mode answers 503), Next 17 (*0.5.1*).
+   - *API:* E5b-01 (*0.5.1*: the catchment graph loads on the first request, 504), E5b-02
+     (0.6.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
+     stream returns 0.0003 km² without a notice), E5b-04 (0.6.0: `generate-hydrograph` with a
+     point alone takes about 3 min, 504), E5b-08 (*0.5.1*, Hydrograf's side; Hydrolog 0.8.1 the
+     other: the first network beside a hydrograph gives 500), E5b-10 (the network preview does
+     not warn of a window above 60 M cells).
+   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
+     an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
+     (*0.5.1*: the full hydrograph path has no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
+     reach only the log), E5b-09 (*0.5.1*: `/api/terms` lists PMAXTP for an instance without it).
+   - *GUI (B8):* G05-1 = B2 (*0.5.1*: above 250 km² the hydrograph sections hide without a
+     notice), A2 (*0.5.1*: Snyder's Lc only in the advanced mode, the Tc method not disabled for
+     Snyder), B3 (*0.5.1*: Esc both hides the panel and clears the watershed), G06-1 and G06-2
+     (reach lengths and slope of hand-placed points, to be explained), G06-3 (the clipboard of the
+     test browser; environmental), G06-4 (B8: „Jedna zlewnia” at a network's P1 ends at the
+     segment's end, not at P1), G07-1 = G09-1 (the map and the page title do not name the area),
+     M2 and M3 of the external report (0.6.0, once confirmed).
    - *Owned elsewhere:* E2-03 (the counties of the plan's BDOT10k; Kartograf and Archiwista, B2).
 6. **After the release:** H2 and S5 of [the store migration plan](plans/2026-11-02-store-migration.md):
    the Kaczawa as an Archiwista project (`projects/kaczawa` does not exist yet) and production

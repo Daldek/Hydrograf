@@ -968,13 +968,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.19
-**Date of the last update:** 2026-11-14
-**Current version:** v0.4.0 is the latest release; `develop` carries 0.5.0.dev0 (`backend/pyproject.toml`)
+**Document version:** 1.20
+**Date of the last update:** 2026-11-17
+**Current version:** v0.5.0 is the latest release; `fix/0.5.1` carries 0.5.1.dev0, a patch of defect fixes (`backend/pyproject.toml`)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.20 (2026-11-17): the current version: v0.5.0 released, 0.5.1.dev0 on `fix/0.5.1`
 - 1.19 (2026-11-14): the producers follow the release set candidate-4 of Nogat: Kartograf `c9afdd3`, Obserwator `0394af7`, Hydrolog `9e2cb61`
 - 1.18 (2026-11-14): audit against the code of 2026-11-14: the header version; the data sources (no GIOŚ/RZGW, no CORINE); the point selection of „Wybierz zlewnię”; the sewer import from a file only; `waterbody_mode` in the admin API, not the panel's form; the network of 0–30 points, nodes J/P and two kinds of subcatchment; the base layers and TERYT notes of 2.3; Kartograf 0.8.0.dev0; the vendored libraries, Nogat's kit 0.7.0 and the 26 + 5 JS modules in 5.1; public access in 7.2; the provider lines G, PS/PP/M/RK and SG in 7.3; the current version
 - 1.17 (2026-11-13): the public service (ADR-084): the page `regulamin.html`, the module `terms` instead of `diagnostics`, nginx without its own limit, the request limit, the logs, the daily totals and the form in 5.1
