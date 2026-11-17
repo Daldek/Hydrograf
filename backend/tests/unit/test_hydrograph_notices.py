@@ -49,7 +49,8 @@ def _request(
 # 100 km² is above the typical range of the SCS unit hydrograph (to 52 km²) and of
 # NRCS's lag equation (to 24 km²)
 LARGE = _request(100.0, 10.0, [5.0, 20.0, 10.0, 5.0])
-# A daily step is longer than a quarter of the time to peak of the unit hydrograph
+# A daily step is longer than a quarter of the time to peak of the unit hydrograph:
+# Hydrolog computes it on sub-steps (info) and still warns of the step (warning)
 DAILY = _request(10.0, 1440.0, [10.0, 60.0, 5.0])
 
 SCS_AREA = (
@@ -63,6 +64,12 @@ NRCS_AREA = (
 DAILY_STEP = (
     "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min – powyżej typowego "
     "zakresu 0–255,2\u00a0min. Wynik może być niewiarygodny."
+)
+DAILY_SUBSTEPS = (
+    "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min jest dłuższy niż "
+    "typowy zakres 0–255,2\u00a0min, więc hydrogram policzono na 17 krokach "
+    "pośrednich po 84,71\u00a0min, z opadem każdego kroku rozłożonym na nie równo, "
+    "i odczytano w chwilach kroków: zachowuje objętość."
 )
 
 
@@ -128,4 +135,8 @@ def test_two_requests_at_once_keep_their_own_notices(client, monkeypatch):
         large, daily = pool.map(post, [LARGE, DAILY])
 
     assert _messages(large) == [NRCS_AREA, SCS_AREA]
-    assert _messages(daily) == [DAILY_STEP]
+    assert _messages(daily) == [DAILY_SUBSTEPS, DAILY_STEP]
+    assert [notice["level"] for notice in daily.json()["notices"]] == [
+        "info",
+        "warning",
+    ]
