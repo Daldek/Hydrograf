@@ -28,6 +28,7 @@ from hydrolog.precipitation import (
     HietogramResult,
 )
 from hydrolog.runoff import AMC, SCSCN, HydrographGenerator, NashIUH
+from numba.core.compiler_lock import global_compiler_lock
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
@@ -969,7 +970,14 @@ def generate_hydrograph(
         # Nash (Lutz, urban regression) does not use tc
         if request.uh_model != "nash":
             tc_method = request.tc_method
-            tc_min = _calculate_tc(tc_method, watershed_fields, cn, request)
+            # Hydrolog's computations, which warn (OutsideTypicalRange), hold numba's
+            # compiler lock (E5b-08): a numba compile in another thread swaps the
+            # warning filters and handlers of the whole process while it holds the
+            # lock, takes the warnings of other threads for its own and emits them
+            # again from their text, from which no HydrologWarning can be made, so
+            # the compiling request failed with a TypeError
+            with global_compiler_lock:
+                tc_min = _calculate_tc(tc_method, watershed_fields, cn, request)
             logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
             # FAA's C or Kerby's N, which the hand-off's watershed carries
             watershed_fields = {
@@ -983,60 +991,63 @@ def generate_hydrograph(
         # ===== Generate hydrograph =====
         nash_meta: dict[str, Any] = {}
         uh_params: dict[str, Any] = {}
-        if request.uh_model == "snyder":
-            channel_length = morph_dict.get("channel_length_km")
-            length_to_centroid = morph_dict.get("length_to_centroid_km")
-            if not channel_length or not length_to_centroid:
-                raise UnsupportedError(
-                    "snyder_parameters_missing",
-                    reason="missing_morphometry",
-                    method="snyder",
+        # Under numba's compiler lock, as the time of concentration: the Nash
+        # estimation, the unit hydrographs and the generation warn
+        with global_compiler_lock:
+            if request.uh_model == "snyder":
+                channel_length = morph_dict.get("channel_length_km")
+                length_to_centroid = morph_dict.get("length_to_centroid_km")
+                if not channel_length or not length_to_centroid:
+                    raise UnsupportedError(
+                        "snyder_parameters_missing",
+                        reason="missing_morphometry",
+                        method="snyder",
+                    )
+                uh_params = {
+                    "L_km": channel_length,
+                    "Lc_km": length_to_centroid,
+                    "ct": request.snyder_ct or 1.5,
+                    "cp": request.snyder_cp or 0.6,
+                }
+                generator = HydrographGenerator(
+                    area_km2=area_km2,
+                    cn=cn,
+                    tc_min=tc_min,
+                    uh_model="snyder",
+                    uh_params=uh_params,
                 )
-            uh_params = {
-                "L_km": channel_length,
-                "Lc_km": length_to_centroid,
-                "ct": request.snyder_ct or 1.5,
-                "cp": request.snyder_cp or 0.6,
-            }
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                tc_min=tc_min,
-                uh_model="snyder",
-                uh_params=uh_params,
-            )
-        elif request.uh_model == "nash":
-            # The urban regression needs the event's effective rainfall, so it
-            # uses the same AMC-adjusted CN as the runoff calculation below.
-            cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
-            uh_params, nash_meta = _estimate_nash_params(
-                request,
-                morph_dict,
-                precip_mm=precip_total_mm,
-                cn=cn_effective,
-                duration_min=duration_min,
-                precip_result=precip_result,
-                timestep_min=timestep_min,
-            )
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                uh_model="nash",
-                uh_params=uh_params,
-            )
-        else:
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                tc_min=tc_min,
-                uh_model="scs",
-            )
+            elif request.uh_model == "nash":
+                # The urban regression needs the event's effective rainfall, so it
+                # uses the same AMC-adjusted CN as the runoff calculation below.
+                cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
+                uh_params, nash_meta = _estimate_nash_params(
+                    request,
+                    morph_dict,
+                    precip_mm=precip_total_mm,
+                    cn=cn_effective,
+                    duration_min=duration_min,
+                    precip_result=precip_result,
+                    timestep_min=timestep_min,
+                )
+                generator = HydrographGenerator(
+                    area_km2=area_km2,
+                    cn=cn,
+                    uh_model="nash",
+                    uh_params=uh_params,
+                )
+            else:
+                generator = HydrographGenerator(
+                    area_km2=area_km2,
+                    cn=cn,
+                    tc_min=tc_min,
+                    uh_model="scs",
+                )
 
-        hydro_result = generator.generate(
-            precipitation=precip_result,
-            timestep_min=timestep_min,
-            amc=amc,
-        )
+            hydro_result = generator.generate(
+                precipitation=precip_result,
+                timestep_min=timestep_min,
+                amc=amc,
+            )
 
         # ===== Hand-off to Hydrolog: the values used, unrounded (ADR-068) =====
         name, watershed_origin = _handoff_watershed(request, watershed_resp)

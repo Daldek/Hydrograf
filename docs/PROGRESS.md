@@ -118,9 +118,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - *API:* E5b-01 (*0.5.1*: the catchment graph loads on the first request, 504), E5b-02
      (0.6.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
      stream returns 0.0003 km² without a notice), E5b-04 (0.6.0: `generate-hydrograph` with a
-     point alone takes about 3 min, 504), E5b-08 (*0.5.1*, Hydrograf's side; Hydrolog 0.8.1 the
-     other: the first network beside a hydrograph gives 500), E5b-10 (the network preview does
-     not warn of a window above 60 M cells).
+     point alone takes about 3 min, 504), E5b-08 (*fixed* on Hydrograf's side: the hydrograph's
+     Hydrolog computations hold numba's compiler lock, so a compile no longer catches their
+     warnings; Hydrolog 0.8.1 the other: the first network beside a hydrograph gave 500), E5b-10
+     (the network preview does not warn of a window above 60 M cells).
    - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
