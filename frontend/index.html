@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="css/chrome.css?v=54f78beb83">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
     <link rel="stylesheet" href="nogat/nogat-sources.css?v=b02762f078">
-    <link rel="stylesheet" href="css/app.css?v=13b9602082">
+    <link rel="stylesheet" href="css/app.css?v=87f384f739">
 </head>
 <body>
 <div class="shell">
@@ -518,6 +518,12 @@
                                 </div>
                             </details>
                         </div>
+
+                        <!-- Above the limit of SCS-CN: why there is no hietogram and hydrograph (app.js) -->
+                        <p id="hydrograph-limit" class="notice d-none" role="status">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
+                            <span id="hydrograph-limit-text"></span>
+                        </p>
                     </div>
 
                     <!-- Hand-off to Hydrolog of the watershed or of the network (js/handoff.js) -->
@@ -652,6 +658,6 @@
 <script defer src="js/handoff.js?v=79b2c2e3be"></script>
 <script defer src="js/network.js?v=567f2fc265"></script>
 <script defer src="js/terms.js?v=5b87c2c7ae"></script>
-<script defer src="js/app.js?v=5f059e5817"></script>
+<script defer src="js/app.js?v=44196655f0"></script>
 </body>
 </html>

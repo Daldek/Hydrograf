@@ -342,6 +342,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .notice svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 .steps { display: grid; gap: var(--space-2); counter-reset: step; }
+.steps + .notice { margin-top: var(--space-2); }
 .step { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .step:not(.d-none) { counter-increment: step; }
 .step > summary {
@@ -594,6 +595,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 #results-panel[data-view="network"] #panel-auto-select-info,
 #results-panel[data-view="network"] #acc-hietogram,
 #results-panel[data-view="network"] #acc-hydrograph,
+#results-panel[data-view="network"] #hydrograph-limit,
 #results-panel[data-view="network"]:not([data-element]) #panel-results { display: none !important; }
 #results-panel[data-view="network"][data-element] #panel-results { display: block !important; }
 

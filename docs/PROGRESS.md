@@ -125,8 +125,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*0.5.1*: Hydrolog's warnings
      reach only the log), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an instance without it).
-   - *GUI (B8):* G05-1 = B2 (*0.5.1*: above 250 km² the hydrograph sections hide without a
-     notice), A2 (*fixed*: with Snyder its Lc stands with Ct and Cp and the Tc method is greyed
+   - *GUI (B8):* G05-1 = B2 (*fixed*: above 250 km² a notice under the sections gives the limit of
+     SCS-CN), A2 (*fixed*: with Snyder its Lc stands with Ct and Cp and the Tc method is greyed
      out), B3 (*fixed*: Esc now only hides the panel; the bin alone clears it), G06-1 and G06-2
      (reach lengths and slope of hand-placed points, to be explained), G06-3 (the clipboard of the
      test browser; environmental), G06-4 (B8: „Jedna zlewnia” at a network's P1 ends at the

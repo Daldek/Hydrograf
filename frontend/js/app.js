@@ -603,7 +603,8 @@
                 displayStreamInfo(data.stream);
             }
 
-            // Show/hide hietogram + hydrograph sections based on API response
+            // Show/hide hietogram + hydrograph sections based on API response;
+            // a watershed above the limit of SCS-CN gets a notice instead
             var hydroAvail2 = data.watershed && data.watershed.hydrograph_available;
             ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
                 var section = document.getElementById(id);
@@ -615,6 +616,7 @@
                     }
                 }
             });
+            showHydrographLimit(data.watershed && !hydroAvail2 ? data.watershed : null);
             els.results.classList.remove('d-none');
 
             // Hand-off to Hydrolog: the watershed now, its hydrograph when it comes
@@ -636,6 +638,20 @@
         } finally {
             if (isCurrent()) setLoading(false);
         }
+    }
+
+    /**
+     * Say why a watershed above the limit of SCS-CN (250 km², the API's
+     * HYDROGRAPH_AREA_LIMIT_KM2) has no hietogram and hydrograph; null hides it.
+     */
+    function showHydrographLimit(watershed) {
+        var notice = document.getElementById('hydrograph-limit');
+        if (!notice) return;
+        notice.classList.toggle('d-none', !watershed);
+        document.getElementById('hydrograph-limit-text').textContent = watershed
+            ? 'Hietogram i hydrogram są liczone tylko dla zlewni do 250 km², granicy stosowalności ' +
+              'metody SCS-CN; ta zlewnia ma ' + formatValue(watershed.area_km2, 'km²', 2) + '.'
+            : '';
     }
 
     /**
