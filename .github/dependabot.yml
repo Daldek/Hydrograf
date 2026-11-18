@@ -1,7 +1,7 @@
-# Dependency updates (DEV-13.6), template from Nogat standards/ci/dependabot.yml.
-# Copy to .github/dependabot.yml. GitHub Actions only: weekly, grouped pull
-# requests into develop with Conventional Commit messages (`ci(deps): ...`)
-# that the gate accepts.
+# Dependency updates (DEV-13.6), template from Nogat standards/ci/dependabot.yml,
+# extended by the images of the server (Nogat install contract, rules 9 and 13):
+# weekly, grouped pull requests into develop with Conventional Commit messages that
+# the gate accepts.
 # Python vulnerabilities: enable "Dependabot security updates" in the
 # repository settings (Code security). Third-party versions otherwise change
 # with release sets (REL §6), so there is no uv entry.
@@ -17,4 +17,22 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+      include: scope
+  # The base image of the API.
+  - package-ecosystem: docker
+    directory: /backend
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+  # nginx and PostGIS of the compose file.
+  - package-ecosystem: docker-compose
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
       include: scope
