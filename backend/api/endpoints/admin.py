@@ -34,7 +34,13 @@ from sqlalchemy.pool import QueuePool
 from api.dependencies.admin_auth import verify_admin_key
 from api.errors import problem_responses
 from api.traffic import Traffic
-from core.catchment_graph import get_catchment_graph, loaded_catchment_graph
+from core.catchment_graph import (
+    GRAPH_LOAD_TIMEOUT_S,
+    catchment_graph_loading,
+    get_catchment_graph,
+    loaded_catchment_graph,
+    wait_for_catchment_graph,
+)
 from core.config import get_settings
 from core.database import get_db, get_db_engine
 from core.errors import (
@@ -170,14 +176,23 @@ def _database_check(db: Session) -> StatusCheck:
 def _catchment_graph_check() -> StatusCheck:
     """Whether the in-memory catchment graph of the delineation is loaded."""
     graph = get_catchment_graph()
+    if catchment_graph_loading():
+        return StatusCheck(
+            name="catchment_graph",
+            status="warning",
+            detail=(
+                "Graf zlewni się wczytuje; do końca wczytywania wyznaczanie zlewni i "
+                "sieci oraz hydrogram odpowiadają 503 („Spróbuj ponownie za chwilę.”)."
+            ),
+        )
     if not graph.loaded:
         return StatusCheck(
             name="catchment_graph",
             status="warning",
             detail=(
                 "Graf zlewni nie jest wczytany: baza danych nie ma sieci cieków albo "
-                "wczytanie się nie udało (log aplikacji). Wczyta go następne "
-                "wyznaczenie zlewni."
+                "wczytanie się nie udało (log aplikacji). Następne wyznaczenie "
+                "zlewni zacznie go wczytywać."
             ),
         )
     thresholds = ", ".join(_grouped(t) for t in graph.thresholds_m2())
@@ -636,6 +651,30 @@ def _validate_bbox(bbox_str: str) -> tuple[float, float, float, float]:
     return min_lon, min_lat, max_lon, max_lat
 
 
+def _load_catchment_graph() -> None:
+    """Load the graph of the network in the database and wait for it (E5b-01).
+
+    :func:`loaded_catchment_graph` starts the load in a thread of its own, unless
+    the graph of the database is the current one, and this waits for it.
+
+    Raises
+    ------
+    RuntimeError
+        No graph of the network in the database: the load failed or still runs
+        after ``GRAPH_LOAD_TIMEOUT_S``, ``stream_catchments`` is empty, or the
+        network changed during the load.
+    """
+    from core.database import get_db_session
+
+    with get_db_session() as db:
+        if loaded_catchment_graph(db) is not None:
+            return
+    wait_for_catchment_graph(GRAPH_LOAD_TIMEOUT_S)
+    with get_db_session() as db:
+        if loaded_catchment_graph(db) is None:
+            raise RuntimeError("catchment graph not loaded")
+
+
 def _read_process_output(process: subprocess.Popen[str], state: dict[str, Any]) -> None:
     """Background thread: read stdout lines into state."""
     stdout = process.stdout
@@ -651,17 +690,14 @@ def _read_process_output(process: subprocess.Popen[str], state: dict[str, Any]) 
         if process.returncode == 0:
             state["status"] = "completed"
             # Load the new network into the catchment graph now rather than at
-            # the next request (requests reload it themselves once the network
-            # in the database changed). Retries handle transient pool exhaustion
-            # from concurrent admin-panel polling while bootstrap is winding down.
-            from core.database import get_db_session
-
+            # the next request (requests start its load themselves once the
+            # network in the database changed). Retries handle transient pool
+            # exhaustion from concurrent admin-panel polling while bootstrap is
+            # winding down.
             backoffs_s = (1, 5, 15)
             for attempt, wait_s in enumerate(backoffs_s, start=1):
                 try:
-                    with get_db_session() as db:
-                        if loaded_catchment_graph(db) is None:
-                            raise RuntimeError("catchment graph not loaded")
+                    _load_catchment_graph()
                     state["log_lines"].append("[INFO] CatchmentGraph reloaded")
                     logger.info("CatchmentGraph reloaded after bootstrap")
                     break

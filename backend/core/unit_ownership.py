@@ -149,13 +149,19 @@ def nearest_valid_owners(
             block[missing] = seed_codes[nearest]
 
 
-def _read_pgw_polygons(units_path: Path) -> dict[str, BaseGeometry]:
-    """Read the owner polygons of both PGW layers, joined by their ``MS_KOD``.
+def check_pgw_file(units_path: Path) -> None:
+    """Refuse a units file whose owners step 3 could not read.
 
-    Features that share a code (in one layer or in both) are one owner.
+    Both PGW layers, in EPSG:2180, each with the field ``MS_KOD``. ``scripts.bootstrap``
+    checks the file before step 1 and in its dry run, so a file without a layer is
+    refused at once, not after the mosaic of step 3 (E4-02).
+
+    Raises
+    ------
+    ValueError
+        When a layer is missing, is not in EPSG:2180 or has no field ``MS_KOD``.
     """
     layers = fiona.listlayers(units_path)
-    by_code: dict[str, list[BaseGeometry]] = {}
     for layer in (RIVER_CATCHMENTS_LAYER, REMAINING_AREAS_LAYER):
         if layer not in layers:
             raise ValueError(
@@ -165,6 +171,19 @@ def _read_pgw_polygons(units_path: Path) -> dict[str, BaseGeometry]:
         with fiona.open(units_path, layer=layer) as source:
             if source.crs is None or source.crs.to_epsg() != 2180:
                 raise ValueError(f"PGW layer {layer!r} must be in EPSG:2180")
+            if "MS_KOD" not in source.schema["properties"]:
+                raise ValueError(f"PGW layer {layer!r} has no field 'MS_KOD'")
+
+
+def _read_pgw_polygons(units_path: Path) -> dict[str, BaseGeometry]:
+    """Read the owner polygons of both PGW layers, joined by their ``MS_KOD``.
+
+    Features that share a code (in one layer or in both) are one owner.
+    """
+    check_pgw_file(units_path)
+    by_code: dict[str, list[BaseGeometry]] = {}
+    for layer in (RIVER_CATCHMENTS_LAYER, REMAINING_AREAS_LAYER):
+        with fiona.open(units_path, layer=layer) as source:
             for feature in source:
                 if feature["geometry"] is None:
                     continue

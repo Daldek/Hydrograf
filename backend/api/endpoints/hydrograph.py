@@ -28,12 +28,15 @@ from hydrolog.precipitation import (
     HietogramResult,
 )
 from hydrolog.runoff import AMC, SCSCN, HydrographGenerator, NashIUH
+from numba.core.compiler_lock import global_compiler_lock
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from api.errors import problem_responses
+from core import hydrolog_notices
 from core.attribution import (
     CATCHMENT,
+    DRAINAGE,
     NO_PROVIDER,
     PMAXTP,
     ProviderLines,
@@ -88,7 +91,6 @@ from core.watershed_service import (
     get_segment_outlet,
     get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
-    watershed_lines,
 )
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
@@ -157,11 +159,15 @@ def _compute_watershed(
     point_2180: Point,
     request: HydrographRequest,
     db: Session,
-) -> tuple[dict[str, Any], float, float, WatershedResponse, list[ThiessenCell]]:
+) -> tuple[
+    dict[str, Any], float, float, WatershedResponse, list[ThiessenCell], ProviderLines
+]:
     """Full watershed computation path (steps 3-9).
 
-    Returns (morph_dict, cn, area_km2, watershed_response, pmaxtp_cells): the cells
-    weigh the PMAXTP grid over the watershed (ADR-069).
+    Returns (morph_dict, cn, area_km2, watershed_response, pmaxtp_cells, lines): the
+    cells weigh the PMAXTP grid over the watershed (ADR-069); the lines are those of
+    the data of the watershed, G of its NMT and BDOT10k and SG when its CN is weighted
+    on SoilGrids' soil groups, as the delineation of the watershed gives them.
     """
     cg = loaded_catchment_graph(db)
     if cg is None:
@@ -197,12 +203,16 @@ def _compute_watershed(
 
     imperviousness = None
     lutz_shares: dict[str, float] = {}
+    # The land cover lies on soil groups of soil_hsg (SoilGrids), unless they were
+    # assumed for the whole of it
+    uses = DRAINAGE
     try:
         lc_data = get_land_cover_for_boundary(boundary_2180, db)
         if lc_data:
             cn = lc_data["weighted_cn"]
             imperviousness = lc_data.get("weighted_imperviousness")
             lutz_shares = {key: lc_data[key] for key in ("forest_pct", "urban_pct")}
+            uses = CATCHMENT if lc_data["hsg_assumed_pct"] < 100 else DRAINAGE
             logger.info(f"CN={cn} calculated from land cover")
         else:
             cn = DEFAULT_CN
@@ -212,6 +222,7 @@ def _compute_watershed(
         cn = DEFAULT_CN
         imperviousness = None
         lutz_shares = {}
+        uses = DRAINAGE
 
     outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
     if outlet_info is not None:
@@ -263,7 +274,8 @@ def _compute_watershed(
         pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
     )
 
-    return morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells
+    lines = instance_lines(uses, get_settings().frontend_data_dir)
+    return morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells, lines
 
 
 def _design_depth(
@@ -643,7 +655,7 @@ def _handoff_watershed(
 
 
 def _watershed_data_lines(
-    request: HydrographRequest, watershed_resp: WatershedResponse | None
+    request: HydrographRequest, delineated: ProviderLines | None
 ) -> ProviderLines:
     """Return the lines of the GUGiK and SoilGrids data of the hydrograph's watershed.
 
@@ -651,8 +663,9 @@ def _watershed_data_lines(
     ----------
     request : HydrographRequest
         The request.
-    watershed_resp : WatershedResponse or None
-        The watershed the endpoint delineated, None for a given morphometry.
+    delineated : ProviderLines or None
+        The lines of the watershed the endpoint delineated (``_compute_watershed``),
+        None for a given morphometry.
 
     Returns
     -------
@@ -661,11 +674,10 @@ def _watershed_data_lines(
         its ``morphometry_origin``, a delineation of Hydrograf, those of a catchment
         (its morphometry and CN); none for the user's own watershed.
     """
-    frontend_data_dir = get_settings().frontend_data_dir
-    if watershed_resp is not None:
-        return watershed_lines(watershed_resp, frontend_data_dir)
+    if delineated is not None:
+        return delineated
     if request.morphometry_origin is not None:
-        return instance_lines(CATCHMENT, frontend_data_dir)
+        return instance_lines(CATCHMENT, get_settings().frontend_data_dir)
     return NO_PROVIDER
 
 
@@ -808,7 +820,8 @@ def generate_hydrograph(
     Returns
     -------
     HydrographResponse
-        Complete hydrograph with watershed info, precipitation, and results
+        Complete hydrograph with watershed info, precipitation, and results;
+        Hydrolog's warnings about the computation as Polish ``notices``
 
     Raises
     ------
@@ -858,6 +871,7 @@ def generate_hydrograph(
 
         # ===== Fast path: use pre-computed morphometry =====
         watershed_resp = None
+        delineated_lines: ProviderLines | None = None
         pmaxtp_cells: list[ThiessenCell] | None = None
         if request.morphometry is not None:
             morph_dict = request.morphometry.model_dump(exclude_none=True)
@@ -875,9 +889,14 @@ def generate_hydrograph(
                 ]
         else:
             # ===== Full path: compute watershed from scratch =====
-            morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells = _compute_watershed(
-                point_2180, request, db
-            )
+            (
+                morph_dict,
+                cn,
+                area_km2,
+                watershed_resp,
+                pmaxtp_cells,
+                delineated_lines,
+            ) = _compute_watershed(point_2180, request, db)
 
         # ===== Precipitation: own series or PMAXTP design storm =====
         depth: DesignDepth | None = None
@@ -947,85 +966,104 @@ def generate_hydrograph(
         precip_total_mm = float(precip_result.total_mm)
 
         # ===== Time of concentration (Hydrolog, from the method's own inputs) =====
-        # The area the generator used: the full path takes it from the catchment graph
-        # unrounded, while the morphometry carries it to 0.01 km2
-        watershed_fields = {**morph_dict, "area_km2": area_km2}
-        # Nash (Lutz, urban regression) does not use tc
-        if request.uh_model != "nash":
-            tc_method = request.tc_method
-            tc_min = _calculate_tc(tc_method, watershed_fields, cn, request)
-            logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
-            # FAA's C or Kerby's N, which the hand-off's watershed carries
-            watershed_fields = {
-                **watershed_fields,
-                **_tc_coefficients(request, tc_method),
-            }
-        else:
-            tc_method = None
-            tc_min = None
+        # Hydrolog's warnings of the time of concentration and of the hydrograph are
+        # the notices of the response (E5b-06): the process's warnings hook collects
+        # those this request's context issues
+        with hydrolog_notices.collect() as caught:
+            # The area the generator used: the full path takes it from the catchment
+            # graph unrounded, while the morphometry carries it to 0.01 km2
+            watershed_fields = {**morph_dict, "area_km2": area_km2}
+            # Nash (Lutz, urban regression) does not use tc
+            if request.uh_model != "nash":
+                tc_method = request.tc_method
+                # Hydrolog's computations, which warn (OutsideTypicalRange), hold
+                # numba's compiler lock (E5b-08): a numba compile in another thread
+                # swaps the warning filters and handlers of the whole process while it
+                # holds the lock, takes the warnings of other threads for its own and
+                # emits them again from their text, from which no HydrologWarning can
+                # be made, so the compiling request failed with a TypeError; under the
+                # lock the warnings also reach the hook that collects them
+                with global_compiler_lock:
+                    tc_min = _calculate_tc(tc_method, watershed_fields, cn, request)
+                if request.uh_model == "snyder":
+                    # Snyder takes its lag from L and Lc, not from this tc: the
+                    # warnings of the tc are no notices of its hydrograph
+                    caught.clear()
+                logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
+                # FAA's C or Kerby's N, which the hand-off's watershed carries
+                watershed_fields = {
+                    **watershed_fields,
+                    **_tc_coefficients(request, tc_method),
+                }
+            else:
+                tc_method = None
+                tc_min = None
 
-        # ===== Generate hydrograph =====
-        nash_meta: dict[str, Any] = {}
-        uh_params: dict[str, Any] = {}
-        if request.uh_model == "snyder":
-            channel_length = morph_dict.get("channel_length_km")
-            length_to_centroid = morph_dict.get("length_to_centroid_km")
-            if not channel_length or not length_to_centroid:
-                raise UnsupportedError(
-                    "snyder_parameters_missing",
-                    reason="missing_morphometry",
-                    method="snyder",
+            # ===== Generate hydrograph =====
+            nash_meta: dict[str, Any] = {}
+            uh_params: dict[str, Any] = {}
+            # Under numba's compiler lock, as the time of concentration: the Nash
+            # estimation, the unit hydrographs and the generation warn
+            with global_compiler_lock:
+                if request.uh_model == "snyder":
+                    channel_length = morph_dict.get("channel_length_km")
+                    length_to_centroid = morph_dict.get("length_to_centroid_km")
+                    if not channel_length or not length_to_centroid:
+                        raise UnsupportedError(
+                            "snyder_parameters_missing",
+                            reason="missing_morphometry",
+                            method="snyder",
+                        )
+                    uh_params = {
+                        "L_km": channel_length,
+                        "Lc_km": length_to_centroid,
+                        "ct": request.snyder_ct or 1.5,
+                        "cp": request.snyder_cp or 0.6,
+                    }
+                    generator = HydrographGenerator(
+                        area_km2=area_km2,
+                        cn=cn,
+                        tc_min=tc_min,
+                        uh_model="snyder",
+                        uh_params=uh_params,
+                    )
+                elif request.uh_model == "nash":
+                    # The urban regression needs the event's effective rainfall, so it
+                    # uses the same AMC-adjusted CN as the runoff calculation below.
+                    cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
+                    uh_params, nash_meta = _estimate_nash_params(
+                        request,
+                        morph_dict,
+                        precip_mm=precip_total_mm,
+                        cn=cn_effective,
+                        duration_min=duration_min,
+                        precip_result=precip_result,
+                        timestep_min=timestep_min,
+                    )
+                    generator = HydrographGenerator(
+                        area_km2=area_km2,
+                        cn=cn,
+                        uh_model="nash",
+                        uh_params=uh_params,
+                    )
+                else:
+                    generator = HydrographGenerator(
+                        area_km2=area_km2,
+                        cn=cn,
+                        tc_min=tc_min,
+                        uh_model="scs",
+                    )
+
+                hydro_result = generator.generate(
+                    precipitation=precip_result,
+                    timestep_min=timestep_min,
+                    amc=amc,
                 )
-            uh_params = {
-                "L_km": channel_length,
-                "Lc_km": length_to_centroid,
-                "ct": request.snyder_ct or 1.5,
-                "cp": request.snyder_cp or 0.6,
-            }
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                tc_min=tc_min,
-                uh_model="snyder",
-                uh_params=uh_params,
-            )
-        elif request.uh_model == "nash":
-            # The urban regression needs the event's effective rainfall, so it
-            # uses the same AMC-adjusted CN as the runoff calculation below.
-            cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
-            uh_params, nash_meta = _estimate_nash_params(
-                request,
-                morph_dict,
-                precip_mm=precip_total_mm,
-                cn=cn_effective,
-                duration_min=duration_min,
-                precip_result=precip_result,
-                timestep_min=timestep_min,
-            )
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                uh_model="nash",
-                uh_params=uh_params,
-            )
-        else:
-            generator = HydrographGenerator(
-                area_km2=area_km2,
-                cn=cn,
-                tc_min=tc_min,
-                uh_model="scs",
-            )
-
-        hydro_result = generator.generate(
-            precipitation=precip_result,
-            timestep_min=timestep_min,
-            amc=amc,
-        )
 
         # ===== Hand-off to Hydrolog: the values used, unrounded (ADR-068) =====
         name, watershed_origin = _handoff_watershed(request, watershed_resp)
         # The rainfall's lines, then those of a watershed of Hydrograf's data
-        lines = merge([rain_lines, _watershed_data_lines(request, watershed_resp)])
+        lines = merge([rain_lines, _watershed_data_lines(request, delineated_lines)])
         runoff, runoff_origin = _handoff_runoff(
             request, tc_min, tc_method, uh_params, nash_meta
         )
@@ -1113,6 +1151,7 @@ def generate_hydrograph(
             handoff=handoff,
             attribution=list(lines.attribution),
             terms_notice=list(lines.terms_notice),
+            notices=hydrolog_notices.notices(caught),
         )
 
         logger.info(

@@ -134,3 +134,19 @@ class TestSettingsSecurityWarnings:
 
         assert "hydro_password" not in caplog.text
         get_settings.cache_clear()
+
+    def test_no_warning_when_database_url_gives_the_credentials(
+        self, caplog, monkeypatch
+    ):
+        """Docker gives the API DATABASE_URL, not POSTGRES_PASSWORD (HG-E2E-03)."""
+        import logging
+
+        from core.config import Settings
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://hydro_user:secret@db:5432/db")
+        monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+
+        with caplog.at_level(logging.WARNING):
+            Settings().warn_if_default_credentials()
+
+        assert "POSTGRES_PASSWORD" not in caplog.text

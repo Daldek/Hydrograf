@@ -1,8 +1,9 @@
 """The catchment graph follows the network in PostGIS (marker ``db``).
 
 A publication, the stream matching after it and a clean-up change
-``network_version``, so ``loaded_catchment_graph`` loads the network of the database
-at the next request. The tests commit and truncate, so they use a private database.
+``network_version``, so ``loaded_catchment_graph`` starts the load of the network of
+the database at the next request and answers None until it is loaded (E5b-01). The
+tests commit and truncate, so they use a private database.
 """
 
 from collections.abc import Iterator
@@ -14,13 +15,19 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 import core.catchment_graph as cg_module
-from core.catchment_graph import CatchmentGraph, loaded_catchment_graph
+from core.catchment_graph import (
+    CatchmentGraph,
+    loaded_catchment_graph,
+    wait_for_catchment_graph,
+)
 from tests.conftest_db import requires_db
 from tests.scratch_db import scratch_database
 
 pytestmark = [requires_db, pytest.mark.db]
 
 THRESHOLD_M2 = 10_000
+# The longest wait for a load of the tiny networks of the tests
+LOAD_TIMEOUT_S = 60.0
 
 
 @pytest.fixture(scope="module")
@@ -35,10 +42,13 @@ def engine() -> Iterator[Engine]:
 
 
 @pytest.fixture(autouse=True)
-def _no_network(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_network(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(cg_module, "_catchment_graph", None)
+    monkeypatch.setattr(cg_module, "_loader", None)
     with engine.begin() as connection:
         connection.execute(text("TRUNCATE stream_network, stream_catchments CASCADE"))
+    yield
+    wait_for_catchment_graph(timeout_s=LOAD_TIMEOUT_S)
 
 
 def _commit(engine: Engine, *statements: tuple[str, dict[str, Any]]) -> None:
@@ -92,9 +102,17 @@ def _publish(engine: Engine, areas_km2: list[float]) -> None:
 
 
 def _graph(engine: Engine) -> CatchmentGraph | None:
-    """The graph a request gets: a session of its own, as the API opens one."""
+    """The graph a request gets once the load that it started has ended.
+
+    Each request has a session of its own, as the API opens one.
+    """
     with Session(engine) as db:
-        return loaded_catchment_graph(db)
+        graph = loaded_catchment_graph(db)
+    if graph is None:
+        wait_for_catchment_graph(timeout_s=LOAD_TIMEOUT_S)
+        with Session(engine) as db:
+            graph = loaded_catchment_graph(db)
+    return graph
 
 
 def _watershed(graph: CatchmentGraph, outlet_segment: int) -> dict[str, Any]:
@@ -109,6 +127,9 @@ def test_a_publication_reloads_the_graph(engine):
     assert _graph(engine) is old
 
     _publish(engine, [1.0, 2.0, 4.0])
+    # The request that finds the network changed starts the load and does not wait
+    with Session(engine) as db:
+        assert loaded_catchment_graph(db) is None
     new = _graph(engine)
 
     assert new is not old

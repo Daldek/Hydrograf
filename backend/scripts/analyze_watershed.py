@@ -385,6 +385,11 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
     from shapely.geometry import Polygon, shape
 
     from api.endpoints.watershed import delineate_watershed as delineate_endpoint
+    from core.catchment_graph import (
+        GRAPH_LOAD_TIMEOUT_S,
+        loaded_catchment_graph,
+        wait_for_catchment_graph,
+    )
     from models.schemas import DelineateRequest
     from utils.geometry import (
         transform_polygon_wgs84_to_pl1992,
@@ -393,6 +398,10 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
 
     logger.info(f"Punkt: ({config.latitude}, {config.longitude}) WGS84")
     logger.info(f"Próg akumulacji: {config.threshold_m2} m²")
+    # The endpoint answers 503 while the catchment graph loads, and a request only
+    # starts its load (E5b-01), so the script loads it first and waits for it
+    if loaded_catchment_graph(db) is None:
+        wait_for_catchment_graph(GRAPH_LOAD_TIMEOUT_S)
 
     start = time.time()
     delineation = delineate_endpoint(

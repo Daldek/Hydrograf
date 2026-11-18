@@ -360,6 +360,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | Moduł | Importy z Hydrologa | Zastosowanie |
 |-------|---------------------|--------------|
 | `api/endpoints/hydrograph.py` | `InvalidParameterError`, `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `Hietogram`, `HietogramResult`, `AMC`, `SCSCN`, `HydrographGenerator`, `NashIUH` | Endpoint API generowania hydrogramu; tc through `WatershedParameters.calculate_tc` |
+| `core/hydrolog_notices.py` | `NOTICES` (`hydrolog.catalog`) | Hydrolog's warnings of a hydrograph as the `notices` of its response, in Polish (E5b-06): a warning of Hydrolog is a `Warning` with `code()` and `details` whose code `NOTICES` lists, since its class `HydrologWarning` is only in the private `hydrolog._warnings` |
 | `core/precipitation.py` | `Station`, `thiessen_polygons`, `inverse_distance_weighting` | The PMAXTP design depth: the watershed mean, IDW at a point (ADR-069) |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/cn_tables.py` | `AMC`, `SCSCN`, `HydrologicCondition`, `LandCover`, `get_cn` | The CN of the land cover rows from Hydrolog's TR-55 table, the AMC conversion |
@@ -578,6 +579,15 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 The response also carries `handoff` (above) and the provider lines `attribution` and
 `terms_notice` (`core/attribution.py`): with a PMAXTP rainfall the PMAXTP lines and the link
 to its terms, then G and SG of the watershed's data.
+
+It also carries `notices` (E5b-06): the warnings Hydrolog gave while it computed the
+hydrograph (`outside_typical_range`, `outside_unverified_range`), each `level`, `code` and a
+Polish `message` from their details, e.g. „Hydrogram jednostkowy SCS: powierzchnia zlewni =
+100 km² – powyżej typowego zakresu 0–52 km². Wynik może być niewiarygodny.”. One
+`warnings.showwarning` hook of the API (`core/hydrolog_notices.py`, put in by the lifespan
+after the log starts) collects them into a list of the request's context and passes every
+warning on to the log; the hydrograph's Hydrolog computations hold numba's compiler lock
+(E5b-08), so a numba compile never takes them away from the hook.
 
 ---
 

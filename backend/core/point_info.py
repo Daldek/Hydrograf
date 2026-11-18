@@ -271,16 +271,16 @@ def main_channel_at(
     Parameters
     ----------
     db : Session
-        Database session the graph is loaded from (``loaded_catchment_graph``)
+        Database session the graph's version is read from (``loaded_catchment_graph``)
     threshold_m2, segment_idx : int
         Network and segment of the sub-catchment (``subcatchment_at``)
 
     Returns
     -------
     dict
-        ``channel_length_km`` and ``distance_to_outlet_km``, None when the graph
-        cannot be loaded or lacks the segment (and the distance without the flow
-        distances)
+        ``channel_length_km`` and ``distance_to_outlet_km``, None while the graph
+        loads, when it cannot be loaded or lacks the segment (and the distance
+        without the flow distances)
     """
     cg = loaded_catchment_graph(db)
     if cg is None:

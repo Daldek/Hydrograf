@@ -342,6 +342,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .notice svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 .steps { display: grid; gap: var(--space-2); counter-reset: step; }
+.steps + .notice, .hydro-notices { margin-top: var(--space-2); }
 .step { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .step:not(.d-none) { counter-increment: step; }
 .step > summary {
@@ -479,6 +480,10 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .form-grid > .field.wide { grid-column: 1 / -1; }
 .form-grid > .field > :first-child { align-self: end; margin-bottom: var(--space-1); }
 .form-grid > .field > .info-note { margin-top: var(--space-1); }
+/* Snyder ignores Tc: its method is greyed out, with a note why instead of its
+   applicability note (hydrograph.js) */
+.form-grid select:disabled { background: var(--surface-2); color: var(--text-3); cursor: not-allowed; }
+#hydro-tc-method:disabled + .info-note { display: none; }
 
 /* ---------- Own rainfall series, Hietogram section (custom-rain.js) ---------- */
 .custom-rain { margin: 0 0 var(--space-3); }
@@ -590,6 +595,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 #results-panel[data-view="network"] #panel-auto-select-info,
 #results-panel[data-view="network"] #acc-hietogram,
 #results-panel[data-view="network"] #acc-hydrograph,
+#results-panel[data-view="network"] #hydrograph-limit,
+#results-panel[data-view="network"] #hydrograph-notices,
 #results-panel[data-view="network"]:not([data-element]) #panel-results { display: none !important; }
 #results-panel[data-view="network"][data-element] #panel-results { display: block !important; }
 

@@ -166,7 +166,7 @@ Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową*
 ## Faza 1b: Graf zlewni cząstkowych (startup API)
 
 **Moduł:** `backend/core/catchment_graph.py` (ADR-021)
-**Loading:** at the start of the API, and by each worker again at its first request after the network in the database changed (`loaded_catchment_graph()` compares `network_version()`, the write counters of `stream_catchments` and `stream_network`; a run published from the command line needs no restart of the API)
+**Loading:** in a thread of its own, started at the start of the API and again by the first request after the network in the database changed (`loaded_catchment_graph()` compares `network_version()`, the write counters of `stream_catchments` and `stream_network`; a run published from the command line needs no restart of the API); until the graph of the current network is loaded, the requests that need it answer 503 `catchment_graph_unavailable` at once (E5b-01)
 
 ### Kontekst
 

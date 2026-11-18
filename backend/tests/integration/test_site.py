@@ -8,12 +8,16 @@ A page of the front end is sent by nginx from the file the API names in
 no link to it when the deployment names no operator (Nogat DEV-15.7).
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 import api.endpoints.site
 from api.main import app
 from core.attribution import PMAXTP, SOILGRIDS_SOURCE
+from core.database import get_db
 from core.terms import Terms
 
 TERMS = Terms(page="<!doctype html><h1>Regulamin</h1>", operator_email="op@example.pl")
@@ -59,6 +63,22 @@ def terms(monkeypatch):
     return serve
 
 
+@pytest.fixture
+def pmaxtp():
+    """Answer whether `precipitation_data` has rows; None: the database fails."""
+
+    def held(rows: bool | None) -> None:
+        session = MagicMock()
+        if rows is None:
+            session.execute.side_effect = OperationalError("SELECT", {}, Exception())
+        else:
+            session.execute.return_value.scalar.return_value = rows
+        app.dependency_overrides[get_db] = lambda: session
+
+    yield held
+    app.dependency_overrides.pop(get_db, None)
+
+
 @pytest.mark.parametrize(
     "page", ["index.html", "admin/index.html", "instrukcja/index.html"]
 )
@@ -76,8 +96,9 @@ def test_an_unknown_page_is_not_found(client, page):
     assert client.get(page).status_code == 404
 
 
-def test_regulamin_of_a_public_deployment(client, terms):
+def test_regulamin_of_a_public_deployment(client, terms, pmaxtp):
     terms(TERMS)
+    pmaxtp(True)
 
     response = client.get("/regulamin.html")
 
@@ -92,8 +113,9 @@ def test_regulamin_of_a_public_deployment(client, terms):
     }
 
 
-def test_without_an_operator_there_is_no_regulamin(client, terms):
+def test_without_an_operator_there_is_no_regulamin(client, terms, pmaxtp):
     terms(None)
+    pmaxtp(True)
 
     response = client.get("/regulamin.html")
 
@@ -104,3 +126,25 @@ def test_without_an_operator_there_is_no_regulamin(client, terms):
         "operator_email": None,
         **LINES,
     }
+
+
+def test_an_instance_without_pmaxtp_names_no_pmaxtp_line(client, terms, pmaxtp):
+    # Bootstrapped with --skip-precipitation: no design storm, no product of PMAXTP
+    terms(TERMS)
+    pmaxtp(False)
+
+    info = client.get("/api/terms").json()
+
+    assert info["attribution"] == [_gugik("NMT, BDOT10k"), SOILGRIDS_SOURCE]
+    assert info["terms_notice"] == []
+    assert info["layers"] == LINES["layers"]
+
+
+def test_the_pmaxtp_lines_stay_when_the_database_cannot_tell(client, terms, pmaxtp):
+    terms(TERMS)
+    pmaxtp(None)
+
+    info = client.get("/api/terms").json()
+
+    assert info["attribution"] == LINES["attribution"]
+    assert info["terms_notice"] == LINES["terms_notice"]

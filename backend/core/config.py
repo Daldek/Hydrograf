@@ -17,9 +17,11 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import platformdirs
+import rasterio
 import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from rasterio.errors import RasterioError
 
 from core.active_run import active_run_raster
 from utils.kartograf_store import DEFAULT_HSG_DEPTH_RULE
@@ -154,6 +156,15 @@ def state_dir(settings: "Settings") -> Path:
     return platformdirs.user_state_path("nogat")
 
 
+def _raster_grid(path: str) -> tuple[tuple[int, int], Any] | None:
+    """Return the shape and the transform of a raster, or None if it cannot be read."""
+    try:
+        with rasterio.open(path) as source:
+            return source.shape, source.transform
+    except (RasterioError, OSError):
+        return None
+
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
@@ -232,8 +243,11 @@ class Settings(BaseSettings):
         """Find the best available DEM raster, checking candidates in order.
 
         Priority: DEM_PATH env override → the active unit run's VRT mosaic
-        (``core.active_run``) → input VRT mosaic → raw DEM TIF → filled DEM.
-        Returns None if no DEM found.
+        (``core.active_run``) → the first of the input VRT mosaic, the raw DEM TIF,
+        the DEM TIF and the filled DEM that lies on the grid (transform and shape) of
+        the flow directions → the first of them that exists. A bootstrap leaves its
+        input mosaic ``dem_mosaic.vrt``, which is no longer on that grid once the
+        rasters are cut to the area. Returns None if no DEM found.
         """
         if self.dem_path and os.path.exists(self.dem_path):
             return self.dem_path
@@ -241,15 +255,23 @@ class Settings(BaseSettings):
         if active is not None:
             return active
         candidates = [
-            os.path.join(self.dem_dir, "dem_mosaic.vrt"),
-            os.path.join(self.dem_dir, "dem_mosaic_01_dem.tif"),
-            os.path.join(self.dem_dir, "dem_mosaic.tif"),
-            os.path.join(self.dem_dir, "dem_mosaic_02_filled.tif"),
+            path
+            for path in (
+                os.path.join(self.dem_dir, "dem_mosaic.vrt"),
+                os.path.join(self.dem_dir, "dem_mosaic_01_dem.tif"),
+                os.path.join(self.dem_dir, "dem_mosaic.tif"),
+                os.path.join(self.dem_dir, "dem_mosaic_02_filled.tif"),
+            )
+            if os.path.exists(path)
         ]
-        for path in candidates:
-            if os.path.exists(path):
-                return path
-        return None
+        if len(candidates) > 1:
+            flowdir = self.resolve_flowdir_path()
+            grid = _raster_grid(flowdir) if flowdir is not None else None
+            if grid is not None:
+                for path in candidates:
+                    if _raster_grid(path) == grid:
+                        return path
+        return candidates[0] if candidates else None
 
     def resolve_stream_distance_path(self) -> str | None:
         """Find stream distance raster.
@@ -312,7 +334,13 @@ class Settings(BaseSettings):
         )
 
     def warn_if_default_credentials(self) -> None:
-        """Log warning if database credentials are not configured."""
+        """Log a warning when the database URL is built without a password.
+
+        Only the URL built from ``POSTGRES_*`` uses ``postgres_password``: DATABASE_URL
+        (Docker) and ``database_url_override`` give the whole URL with its credentials.
+        """
+        if os.getenv("DATABASE_URL") or self.database_url_override:
+            return
         if not self.postgres_password:
             logger.warning(
                 "POSTGRES_PASSWORD is empty. "

@@ -2,8 +2,10 @@
 
 import sys
 
+import geopandas as gpd
 import pytest
 from kartograf import SheetParser
+from shapely.geometry import box
 
 from scripts.bootstrap import main, parse_bbox, resolve_sheets
 
@@ -78,3 +80,38 @@ class TestMainRejectsBadBbox:
 
         assert exc.value.code == 2
         assert "abc" in capsys.readouterr().err
+
+
+class TestMainChecksTheUnitsFile:
+    def test_a_units_file_without_a_pgw_layer_is_refused_by_the_dry_run(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Step 3 reads both PGW layers; the dry run refuses the file (E4-02)."""
+        units = tmp_path / "pgw.gpkg"
+        gpd.GeoDataFrame(
+            {"MS_KOD": ["RW600010144549"]},
+            geometry=[box(400_000, 300_000, 410_000, 310_000)],
+            crs="EPSG:2180",
+        ).to_file(units, layer="zlewnie_jcwp_rzecznych", driver="GPKG")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "bootstrap",
+                "--bbox",
+                "16.90,51.40,16.95,51.45",
+                "--units",
+                str(units),
+                "--output",
+                str(tmp_path / "data"),
+                "--cache-dir",
+                str(tmp_path / "cache"),
+                "--dry-run",
+            ],
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 2
+        assert "pozostale_obszary_jcwp" in capsys.readouterr().err

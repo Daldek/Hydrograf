@@ -40,6 +40,22 @@ GRID_POINT_TOLERANCE_M = 1.0
 IDW_NEIGHBOURS = 4
 IDW_POWER = 2.0
 
+_ANY_PMAXTP = text("SELECT EXISTS (SELECT 1 FROM precipitation_data)")
+
+
+def has_pmaxtp(db: Session) -> bool:
+    """Whether the instance holds PMAXTP depths: ``precipitation_data`` has rows.
+
+    An instance bootstrapped with ``--skip-precipitation`` has none, so it has no
+    design storm and no product of PMAXTP data.
+
+    Parameters
+    ----------
+    db : Session
+        Database session.
+    """
+    return bool(db.execute(_ANY_PMAXTP).scalar())
+
 
 @dataclass(frozen=True)
 class ThiessenCell:

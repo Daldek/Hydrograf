@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
+from core.attribution import SOILGRIDS_SOURCE
 from core.database import get_db
 
 # Module path for patching
@@ -393,6 +394,7 @@ class TestGenerateHydrographEndpoint:
             "weighted_imperviousness": 0.08,
             "forest_pct": 40.0,
             "urban_pct": 5.0,
+            "hsg_assumed_pct": 0.0,
         }
         payload = {
             **self._DEFAULT_PAYLOAD,
@@ -413,6 +415,37 @@ class TestGenerateHydrographEndpoint:
             assert (meta["nash_forest_pct"], meta["nash_urban_pct"]) == (40.0, 5.0)
             assert (morph["forest_pct"], morph["urban_pct"]) == (40.0, 5.0)
             assert (handed["forest_pct"], handed["urban_pct"]) == (40.0, 5.0)
+        finally:
+            app.dependency_overrides.clear()
+
+    # ---- 6b. test_full_path_lines_follow_the_soil_groups_of_its_cn ----
+
+    @pytest.mark.parametrize(("assumed_pct", "with_sg"), [(0.0, True), (100.0, False)])
+    def test_full_path_lines_follow_the_soil_groups_of_its_cn(
+        self, client, assumed_pct, with_sg
+    ):
+        """The CN on SoilGrids' soil groups gives SG, as the delineation does."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        land_cover = {
+            "categories": [],
+            "total_area_m2": 10_000_000.0,
+            "weighted_cn": 70.0,
+            "weighted_imperviousness": 0.08,
+            "forest_pct": 40.0,
+            "urban_pct": 5.0,
+            "hsg_assumed_pct": assumed_pct,
+        }
+
+        try:
+            with _HappyPathContext() as mocks:
+                mocks["lc"].return_value = land_cover
+                response = self._post(client)
+
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert (SOILGRIDS_SOURCE in data["attribution"]) == with_sg
+            assert data["handoff"]["attribution"] == data["attribution"]
         finally:
             app.dependency_overrides.clear()
 

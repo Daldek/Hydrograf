@@ -75,9 +75,18 @@ its names: `HYDROGRAF_CONTAINER_PREFIX` (containers `<prefix>_db`, `<prefix>_api
 `HYDROGRAF_FRONTEND_TILES_PATH` (defaults `./cache`, `./data`, `./frontend/data`,
 `./frontend/tiles`), and its own `NOGAT_STATE_DIR` with a `hydrograf` directory writable by
 UID 999, so that its logs stay apart from the first instance's. The database volume and the
-network take the project's name (`NAME_postgres_data`, `NAME_default`). The checkout needs
-the empty directories `frontend/data` and `frontend/tiles`: nginx mounts the instance's
-directories there inside its read-only `./frontend`.
+network take the project's name (`NAME_postgres_data`, `NAME_default`). nginx mounts the
+instance's directories at `frontend/data` and `frontend/tiles` inside its read-only
+`./frontend`; every checkout has the two directories (each holds a tracked `.gitkeep`).
+
+## One-off scripts in the image
+
+The entrypoint of the image (`backend/entrypoint.sh`) waits for the database and runs
+`alembic upgrade head` before its command only when the container is given a database:
+`DATABASE_URL`, which Docker Compose gives the API and its one-off containers, or
+`POSTGRES_HOST`. `docker compose run --rm api python -m scripts.<name>` therefore migrates
+first, while `docker run --rm <image> python -m scripts.<name>` without either, for a script
+that needs no database (`scripts.write_instance_info`, `--help`), starts at once.
 
 ## Service logs
 

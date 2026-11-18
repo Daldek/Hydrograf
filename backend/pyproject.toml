@@ -1,6 +1,6 @@
 [project]
 name = "hydrograf"
-version = "0.5.0"
+version = "0.5.1"
 description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
@@ -97,11 +97,11 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The releases of Nogat's first joint release set: Kartograf v0.8.0, Obserwator v3.0.0
-# and Hydrolog v0.8.0, Git tags (REL-5.1).
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.0.0" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.0" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.8.0" }
+# The releases of Nogat's release set of the patch releases: Kartograf v0.8.1, Obserwator
+# v3.0.1 and Hydrolog v0.8.1, Git tags (REL-5.1).
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.0.1" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.1" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.8.1" }
 
 [tool.ruff]
 target-version = "py312"

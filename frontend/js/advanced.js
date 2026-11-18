@@ -5,6 +5,8 @@
  * The delineated watershed object is never modified: "Parametry podstawowe"
  * keep the original values, edits only change the request payload.
  * State lives per watershed; a new delineation reloads the form.
+ * Snyder's Lc is needed outside the mode too: while Snyder is chosen and the
+ * mode is off, its field stands with Ct and Cp and the request takes it.
  */
 (function () {
     'use strict';
@@ -45,6 +47,8 @@
     var _timer = null;
     var _areaLimit = null;   // km², area_limit_km2 of GET /api/scenarios
     var els = {};
+    var SNYDER_KEY = 'length_to_centroid_km';
+    var _snyder = false;     // the UH model is Snyder (hydrograph.js)
 
     // ── Values ─────────────────────────────────────────────────────────
 
@@ -78,9 +82,13 @@
     function validateRow(row, values, edited) {
         var f = row.field;
         var v = values[f.key];
+        // Snyder's lag needs Lc, which a watershed may lack (none or 0)
+        var required = f.key === SNYDER_KEY && _snyder;
         // Values delivered by Hydrograf are sent as they are
-        if (!edited[f.key] && !(f.key === 'elevation_max_m' && edited.elevation_min_m)) return '';
-        if (v === null) return row.shown === null ? '' : 'Podaj wartość.';
+        if (!edited[f.key] && !(f.key === 'elevation_max_m' && edited.elevation_min_m)) {
+            return required && !(v > 0) ? 'Model Snydera wymaga Lc: podaj wartość.' : '';
+        }
+        if (v === null) return row.shown === null && !required ? '' : 'Podaj wartość.';
         if (!isFinite(v)) return 'Podaj liczbę.';
         if (f.kind === 'pos' && v <= 0) return 'Wartość musi być dodatnia.';
         if (f.kind === 'cn' && (v < 1 || v > 100)) {
@@ -100,7 +108,10 @@
         return '';
     }
 
-    /** Validate every field, refresh marks and errors. Returns the form state. */
+    /**
+     * Validate every field, refresh marks and errors. Returns the form state:
+     * the values, the changed fields and the fields with an error.
+     */
     function evaluate() {
         var values = {};
         var edited = {};
@@ -110,12 +121,12 @@
         });
 
         var changed = [];
-        var errors = 0;
+        var invalid = [];
         FIELDS.forEach(function (f) {
             var row = _rows[f.key];
             var msg = validateRow(row, values, edited);
             if (edited[f.key]) changed.push(f);
-            if (msg) errors++;
+            if (msg) invalid.push(f);
 
             row.wrap.classList.toggle('is-edited', edited[f.key]);
             row.wrap.classList.toggle('is-invalid', !!msg);
@@ -130,18 +141,27 @@
         });
 
         els.resetAll.disabled = changed.length === 0;
-        els.invalid.classList.toggle('d-none', errors === 0);
+        els.invalid.classList.toggle('d-none', invalid.length === 0);
         els.count.textContent = changed.length
             ? 'Zmienione: ' + changed.length
             : '';
-        return { values: values, changed: changed, valid: errors === 0 };
+        return { values: values, changed: changed, invalid: invalid };
     }
 
-    /** Request morphometry: original copy with edited fields applied. */
-    function buildMorphometry(state) {
+    /**
+     * The fields the request takes: every field in the advanced mode, else
+     * Snyder's Lc alone while Snyder is chosen.
+     */
+    function fieldsInUse() {
+        if (els.toggle.checked) return FIELDS;
+        return _snyder ? [_rows[SNYDER_KEY].field] : [];
+    }
+
+    /** Request morphometry: original copy with the given edited fields applied. */
+    function buildMorphometry(values, changed) {
         var morph = Object.assign({}, _original);
-        state.changed.forEach(function (f) {
-            var v = state.values[f.key];
+        changed.forEach(function (f) {
+            var v = values[f.key];
             if (v === null) {
                 delete morph[f.key];
             } else {
@@ -185,25 +205,61 @@
 
     /**
      * Morphometry for the hydrograph request of the given watershed.
-     * Returns { valid, morphometry, changed }; valid is false while the advanced
-     * form is on and has errors (the caller must not send the request), changed
-     * lists the keys of the fields the person changed (the hand-off names them).
+     * Returns { valid, morphometry, changed, blocked }; valid is false while a
+     * field the request takes has an error (the caller must not send the
+     * request; blocked names the place to fix), changed lists the keys of the
+     * fields the person changed (the hand-off names them).
      */
     function requestMorphometry(data) {
         if (data !== _watershed) load(data);
         var original = _original;
-        if (!els.toggle || !els.toggle.checked || !original) {
+        var fields = els.toggle && original ? fieldsInUse() : [];
+        if (!fields.length) {
             updateNotice([]);
             return { valid: true, morphometry: original, changed: [] };
         }
         var state = evaluate();
-        if (!state.valid) return { valid: false, morphometry: null, changed: [] };
-        updateNotice(state.changed);
+        function used(f) { return fields.indexOf(f) >= 0; }
+        if (state.invalid.some(used)) {
+            return {
+                valid: false,
+                morphometry: null,
+                changed: [],
+                blocked: els.toggle.checked ? 'tryb zaawansowany (Hydrogram)' : 'Lc (Hydrogram)',
+            };
+        }
+        var changed = state.changed.filter(used);
+        updateNotice(changed);
         return {
             valid: true,
-            morphometry: state.changed.length ? buildMorphometry(state) : original,
-            changed: state.changed.map(function (f) { return f.key; }),
+            morphometry: changed.length ? buildMorphometry(state.values, changed) : original,
+            changed: changed.map(function (f) { return f.key; }),
         };
+    }
+
+    /**
+     * Snyder's Lc stands with Ct and Cp while Snyder is chosen and the
+     * advanced mode is off, else in its place among the advanced fields.
+     */
+    function placeSnyderField() {
+        var row = _rows[SNYDER_KEY];
+        if (!row || !els.snyderSlot) return;
+        var outside = _snyder && !els.toggle.checked;
+        if (outside) {
+            els.snyderSlot.appendChild(row.wrap);
+        } else {
+            var next = FIELDS[FIELDS.indexOf(row.field) + 1];
+            els.fields.insertBefore(row.wrap, next ? _rows[next.key].wrap : null);
+        }
+        els.snyderSlot.classList.toggle('d-none', !outside);
+    }
+
+    /** The UH model is (not) Snyder, whose lag needs Lc (hydrograph.js). */
+    function setSnyder(on) {
+        _snyder = !!on;
+        if (!_rows[SNYDER_KEY]) return;
+        placeSnyderField();
+        evaluate();
     }
 
     /**
@@ -247,8 +303,9 @@
         sync();
         var on = els.toggle.checked;
         els.form.classList.toggle('d-none', !on);
+        placeSnyderField();
         var state = evaluate();
-        // Edits change the payload only while the mode is on
+        // Edits change the payload only while the mode is on (Lc also while Snyder is chosen)
         if (state.changed.length) regenerate();
     }
 
@@ -334,6 +391,7 @@
         els.count = document.getElementById('adv-count');
         els.notice = document.getElementById('adv-notice');
         els.noticeList = document.getElementById('adv-notice-list');
+        els.snyderSlot = document.getElementById('snyder-lc-col');
         if (!els.toggle || !els.form || !els.fields) return;
 
         FIELDS.forEach(function (f) {
@@ -344,6 +402,7 @@
 
         els.toggle.addEventListener('change', onToggle);
         els.resetAll.addEventListener('click', onResetAll);
+        placeSnyderField();
         load(null);
     }
 
@@ -352,5 +411,6 @@
     window.Hydrograf.advanced = {
         requestMorphometry: requestMorphometry,
         setAreaLimit: setAreaLimit,
+        setSnyder: setSnyder,
     };
 })();

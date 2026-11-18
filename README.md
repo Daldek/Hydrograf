@@ -178,8 +178,9 @@ stay under the request limit.
 
 A GET of `/api/admin/status` gives the app, its version, start and uptime, `data_dir`
 (`HYDROGRAF_DATA_DIR`) with its free disk, and three checks: `database` (PostGIS answers),
-`catchment_graph` (the graph of the delineation is in memory; `warning` when it is not)
-and `data_dir` (`<data_dir>/hydrograf`, where the statistics are written, is writable).
+`catchment_graph` (the graph of the delineation is in memory; `warning` while it loads and
+when it is not) and `data_dir` (`<data_dir>/hydrograf`, where the statistics are written,
+is writable).
 A GET of `/api/admin/stats?from=&to=` gives the days of `stats.jsonl` between the two UTC days
 (default the last 30) with the current day as counted so far, and the sums of every total
 but `visitors`.

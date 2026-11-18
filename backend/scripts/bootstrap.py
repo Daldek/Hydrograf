@@ -1873,6 +1873,14 @@ def main():
         parser.error("--project and --set go together")
     if args.units is not None and not args.units.is_file():
         parser.error(f"PGW units GeoPackage does not exist: {args.units}")
+    if args.units is not None:
+        # The layers step 3 reads, refused now and in the dry run, not after the mosaic
+        from core.unit_ownership import check_pgw_file
+
+        try:
+            check_pgw_file(args.units)
+        except ValueError as e:
+            parser.error(str(e))
     if args.units is None and (
         args.units_catchments or args.units_scratch_dir or args.no_resume
     ):

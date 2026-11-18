@@ -1160,15 +1160,20 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
   },
   "handoff": {...},
   "attribution": [...],
-  "terms_notice": [...]
+  "terms_notice": [...],
+  "notices": [
+    {"level": "warning", "code": "outside_typical_range", "message": "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej typowego zakresu 0–52 km². Wynik może być niewiarygodny."}
+  ]
 }
 ```
 
-`watershed` is the `WatershedResponse` of 6.2, `null` on the fast path (`morphometry` given). Models: `HydrographResponse`, `PrecipitationInfo`, `HydrographInfo`, `WaterBalance`, `HydrographMetadata` (the `nash_*` fields with the Nash model).
+`watershed` is the `WatershedResponse` of 6.2, `null` on the fast path (`morphometry` given). Models: `HydrographResponse`, `PrecipitationInfo`, `HydrographInfo`, `WaterBalance`, `HydrographMetadata` (the `nash_*` fields with the Nash model), `HydrographNotice`.
 
 Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`morphometry.cn`, `land_cover_stats.weighted_cn`). W aktualnym schemacie: `water_balance.cn_used` (float, CN po przeliczeniu wg AMC), `metadata.amc`, `precipitation.source` (`"pmaxtp"`/`"custom"`); dla własnej serii `precipitation.probability_percent` i `metadata.hietogram_type` są `null`. Schemat bazy danych bez zmian.
 
 The response also has `attribution` and `terms_notice` (ADR-083): the lines the PMAXTP terms require (Nogat DEV-20.2, DEV-20.7) for a PMAXTP rainfall and for an own series with `derived_from: "pmaxtp"`, empty lists for the user's own data; the hand-off `handoff` carries the same two fields when they are not empty.
+
+`notices` (E5b-06; `[]` without warnings) are the warnings Hydrolog gave while it computed this hydrograph, identical ones once: `level` and `code` of Hydrolog's registry `hydrolog.catalog.NOTICES` (`outside_typical_range`, `outside_unverified_range` for the ranges of Nash's N and K, which await a source) and `message` in Polish, worded by `core/hydrolog_notices.py` from the warning's details (the method or model, the input, its value and the typical range); a code without a Polish text keeps Hydrolog's English message. A Snyder hydrograph leaves out the warnings of the tc it does not use.
 
 ---
 
