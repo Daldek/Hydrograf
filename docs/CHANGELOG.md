@@ -5,6 +5,14 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-11-20
+
+### Security
+- **The images of the server are pinned and nginx is 1.31.9** (nginx2root, five remote code executions fixed in nginx 1.31.9, published 2026-11-18; Nogat install contract, rules 9 and 13): `docker-compose.yml` named `nginx:alpine`, a floating tag, so an instance ran whatever nginx it had pulled last (1.31.1 on the author's machine) and changed version silently when a container was recreated, and `postgis/postgis:16-3.4` and the API's `python:3.12-slim` floated the same way. They are now `nginx:1.31.9-alpine`, `postgis/postgis:16-3.4` and `python:3.12.16-slim`, each with its digest, and Dependabot proposes their updates weekly (`docker` for `backend/Dockerfile`, `docker-compose` for the compose file). Each service has a process limit (`db` 512, `api` 2048, `nginx` 128). Hydrograf's configuration was not exposed to the known attack paths (HTTP/2, HTTP/3, `mirror` and the mail proxy are not used, and nginx listens on 127.0.0.1); on the author's instances nginx was moved to 1.31.9 the same day.
+
+### Changed
+- **Kartograf re-pinned to Nogat's release set candidate-10** (`backend/pyproject.toml`, `backend/uv.lock`): from `v0.8.1` to `v0.8.2`, whose USDA texture classes on the lines clay = 20 % and clay = 27 % follow the Soil Survey Manual, so the soil groups Kartograf computes for Hydrograf (`calculate_hsg` of the bootstrap and of `core/cn_calculator.py`) give C instead of B on those cells, and the CN of such a cell moves by one group (Kartograf CHANGELOG `[0.8.2]`). An instance keeps the soil groups of its bootstrap until it is processed again. `develop` opens 0.5.2 at `0.5.2.dev0` (REL-1.1). The supported ranges are unchanged.
+
 ## [0.5.1] - 2026-11-18
 
 Changes since 0.5.0, to be released as 0.5.1: defect fixes only.

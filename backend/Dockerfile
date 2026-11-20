@@ -1,7 +1,8 @@
 # ============================================================
 # Stage 1: builder — install build tools and compile deps
 # ============================================================
-FROM python:3.12-slim AS builder
+# The base image is pinned by version and digest; Dependabot proposes updates.
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS builder
 
 WORKDIR /build
 
@@ -44,7 +45,7 @@ RUN uv sync --locked --no-dev --no-install-project && \
 # ============================================================
 # Stage 2: runtime — lean production image
 # ============================================================
-FROM python:3.12-slim
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 WORKDIR /app
 
