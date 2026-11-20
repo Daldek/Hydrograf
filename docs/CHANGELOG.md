@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.2] - 2026-11-20
 
 ### Security
 - **The images of the server are pinned and nginx is 1.31.9** (nginx2root, five remote code executions fixed in nginx 1.31.9, published 2026-11-18; Nogat install contract, rules 9 and 13): `docker-compose.yml` named `nginx:alpine`, a floating tag, so an instance ran whatever nginx it had pulled last (1.31.1 on the author's machine) and changed version silently when a container was recreated, and `postgis/postgis:16-3.4` and the API's `python:3.12-slim` floated the same way. They are now `nginx:1.31.9-alpine`, `postgis/postgis:16-3.4` and `python:3.12.16-slim`, each with its digest, and Dependabot proposes their updates weekly (`docker` for `backend/Dockerfile`, `docker-compose` for the compose file). Each service has a process limit (`db` 512, `api` 2048, `nginx` 128). Hydrograf's configuration was not exposed to the known attack paths (HTTP/2, HTTP/3, `mirror` and the mail proxy are not used, and nginx listens on 127.0.0.1); on the author's instances nginx was moved to 1.31.9 the same day.
