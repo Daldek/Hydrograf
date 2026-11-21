@@ -59,7 +59,7 @@ PMAXTP_MONOGRAPH: Final = (
 PMAXTP_TERMS: Final = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
 # CP: ČHMÚ's data were processed, never how (DEV §20, ECO-071). Hydrograf has no ČHMÚ
 # data, but a result of the manifest or an older ATTRIBUTION.txt may carry the line
-CHMI_PROCESSED: Final = "Dane ČHMÚ zostały przetworzone"
+CHMU_PROCESSED: Final = "Dane ČHMÚ zostały przetworzone"
 # G: the source of GUGiK data, with the products used, the years in which their data
 # were created and the days on which they were downloaded (DEV §20)
 GUGIK_SOURCE: Final = (
@@ -100,7 +100,7 @@ LAYER_KINDS: Final = {
 _TERMS_LINE = re.compile(r"Regulamin [^:]+: \S+")
 # CP as a product written before ECO-071 carried it, naming the processing in
 # parentheses: whatever the parentheses say, it is CP
-_OLD_CHMI_PROCESSED = re.compile(r"Dane ČHMÚ zostały przetworzone \(.*\)")
+_OLD_CHMU_PROCESSED = re.compile(r"Dane ČHMÚ zostały przetworzone \(.*\)")
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ def canonical(line: str) -> str:
     „Dane ČHMÚ zostały przetworzone (…)” of a product written before ECO-071, whatever
     the words in parentheses, is CP; every other line is returned unchanged.
     """
-    return CHMI_PROCESSED if _OLD_CHMI_PROCESSED.fullmatch(line) else line
+    return CHMU_PROCESSED if _OLD_CHMU_PROCESSED.fullmatch(line) else line
 
 
 def is_terms(line: str) -> bool:

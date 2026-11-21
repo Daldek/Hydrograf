@@ -9,7 +9,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from core.analysis_results import provider_lines, sample_water_levels
-from core.attribution import CHMI_PROCESSED, ProviderLines
+from core.attribution import CHMU_PROCESSED, ProviderLines
 
 NODATA = -9999.0
 X0, Y_TOP, CELL = 500000.0, 600000.0, 5.0
@@ -163,7 +163,7 @@ class TestProviderLines:
         )
 
         assert provider_lines(str(tmp_path), ["old", "new"]) == ProviderLines(
-            (CHMI_PROCESSED,), ()
+            (CHMU_PROCESSED,), ()
         )
 
     def test_only_the_parenthetical_form_is_read_as_cp(self, tmp_path):
