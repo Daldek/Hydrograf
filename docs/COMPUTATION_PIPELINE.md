@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.9 | Data: 2026-11-14
+> Wersja: 1.10 | Data: 2026-11-21
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -248,7 +248,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 
 **Moduły:** `backend/core/watershed_service.py` (`build_morph_dict_from_graph()`), `backend/core/catchment_graph.py` (`aggregate_stats()`, `trace_main_channel()`, `aggregate_hypsometric()`), `backend/core/morphometry.py` (`calculate_shape_indices()`)
 
-Parametry liczy `build_morph_dict_from_graph()` z wartości wstępnie policzonych w grafie zlewni cząstkowych; w runtime nie ma operacji na rastrach (poza próbkowaniem `stream_distance.tif` dla długości ścieżek spływu).
+Parametry liczy `build_morph_dict_from_graph()` z wartości wstępnie policzonych w grafie zlewni cząstkowych; at request time it reads only windows of the rasters the pipeline saved: `stream_distance.tif` sampled for the centroid flow path, and the labels, the flow distances, the D8 directions and the filled DEM `dem_mosaic_02_filled` for the flow-path lines and the equal-area slope (`get_flow_paths` → `core/divide_flow_path.compute_flow_paths`, §3.2a).
 
 ### 3.1 Parametry podstawowe
 
@@ -274,6 +274,18 @@ Parametry liczy `build_morph_dict_from_graph()` z wartości wstępnie policzonyc
 
 **Uwaga:** `aggregate_stats()["stream_length_km"]` zwraca sumę CAŁEJ sieci. Długość głównego cieku pochodzi wyłącznie z `trace_main_channel()`.
 
+### 3.2a Longest flow path and its equal-area slope (Lutz's Jg, ADR-088)
+
+**Functions:** `get_flow_paths()` (`core/watershed_service.py`) → `compute_flow_paths()`, `watershed_flow_paths()` and `profile_equal_area_slope()` (`core/divide_flow_path.py`)
+
+`flow_path_length_km` is the longest flow path from the hydraulically most distant point of the watershed to the outlet (`hydraulic_length_km` of the graph, ADR-070) and `flow_path_slope_m_per_m` (the elevation of its head − the outlet elevation) / its length. `flow_path_equal_area_slope_m_per_m` is the equal-area slope of the longitudinal profile of the same D8 path (Hydrolog ADR-0053), the slope Jg of Lutz's estimation (§6.5a):
+
+1. `compute_flow_paths()` reads, at request time, the window of the watershed of the labels, the flow distances (`stream_distance`), the D8 directions and the filled DEM `dem_mosaic_02_filled` that the pipeline saved (`settings.resolve_pipeline_raster("02_filled")`); `trace_flow_path()` follows the D8 directions from the head of the longest path to the outlet.
+2. `profile_equal_area_slope()` puts each cell of the path, from its end cell (the cell below the outlet, outside the watershed; the cell above it when that one has no elevation or flow distance) up to its head, at its flow distance from the end and its elevation on the filled DEM.
+3. Hydrolog's `equal_area_slope` (`hydrolog.morphometry`, spec `equal_area_slope`) gives S = 2A/L²: A the area of the profile above the elevation of its first point by the trapezoid rule, L its flow length (KZGW 2017, annex 2, p. 97); rounded to 6 decimals.
+
+It is null without the saved filled DEM (or with one off the grid of the labels), for a path of fewer than two cells with values or a gap in its profile, and for a profile without positive area (Hydrolog's precondition `positive_area`, a slope of 0 to 6 decimals included): never 0. The elements of a network and the parameters export measure it alike on their cells (`flow_path_parameters`, `core/cell_parameters.py`, §7.5). The watershed response's `formula_versions` names `equal_area_slope` when it was measured and `tr55_cn` when the CN came from the land cover (`watershed_specs`, `core/formula_versions.py`).
+
 ### 3.3 Wskaźniki kształtu
 
 **Funkcja:** `morphometry.calculate_shape_indices()`
@@ -296,7 +308,7 @@ Gdzie: A = area_km2, P = perimeter_km, L = length_km
 |----------|-------|--------------|
 | **Relief Ratio (R)** | `R = (H_max - H_min) / √A` [‰] | A w km² |
 | **Spadek działu wodnego (Rp)** | `Rp = (H_max - H_min) / P` [‰] | P w km |
-| **Całka hipsometryczna (HI)** | `HI = (H_mean - H_min) / (H_max - H_min)` | >0.6 młoda, 0.3-0.6 dojrzała, <0.3 stara |
+| **Całka hipsometryczna (HI)** | `HI = (H_mean - H_min) / (H_max - H_min)` | Strahler's (1952) rough limits: about 0.60 and above the inequilibrium (youthful) stage, 0.35–0.60 the equilibrium (mature) stage, below 0.35 the monadnock phase (Hydrolog `hydrolog/morphometry/hypsometry.py`) |
 
 ### 3.5 Krzywa hipsometryczna
 
@@ -327,6 +339,10 @@ Klucze wyjściowe (wybór):
     "elevation_min_m", "elevation_max_m", "elevation_mean_m",
     "mean_slope_m_per_m",
     "channel_length_km", "channel_slope_m_per_m",
+    "length_to_centroid_km",                 # Lc
+    "flow_path_length_km", "flow_path_slope_m_per_m",
+    "flow_path_equal_area_slope_m_per_m",    # Jg (§3.2a)
+    "overland_length_km", "overland_slope_m_per_m",
     "cn",
     "compactness_coefficient",      # Kc
     "circularity_ratio",            # Rc
@@ -513,7 +529,7 @@ none), converted to AMC I and III as for the hydrograph.
 
 ### 6.1 Flow procesu
 
-1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo — wymagane tylko bez `custom_precipitation`; `amc` I/II/III, domyślnie II)
+1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo — wymagane tylko bez `custom_precipitation`; `amc` I/II/III, domyślnie II). A PMAXTP design storm is checked before the watershed is delineated (`_design_storm`; Hydrolog ADR-0046, ADR-0042): its duration must be a whole number of steps of `timestep_min` (to 1e-9 of the duration), else 400 `storm_not_whole_steps` (`details.reason` `not_multiple`); Euler II needs a step of at least 5 min, the first PMAXTP duration (`EULER_II_SHORTEST_MIN`), else 400 `euler_ii_step_below_curve` (`details.reason` `not_covered`). The GUI sends no step: the default 5 min divides every PMAXTP duration
 2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022) albo szybka ścieżka z `morphometry` (tryb zaawansowany, CN ułamkowe)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
 4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
@@ -543,11 +559,13 @@ Przekazanie do Hydrologa (ADR-068) niesie w zlewni te same pola (z `runoff_coeff
 
 | Typ | Opis | Parametry |
 |-----|------|-----------|
-| **Beta** | Rozkład Beta | α=2.0, β=5.0 |
+| **Beta** | Rozkład Beta | `hietogram_alpha`, `hietogram_beta` of the request (default α=2.0, β=5.0) |
 | **Block** | Opad równomierny | — |
-| **Euler II** | Krzywa Eulera typu II | peak_position=0.33 |
+| **Euler II** | Euler type II of ATV-DVWK-A 118, built by Hydrolog from the PMAXTP depth–duration curve of the probability (Hydrolog ADR-0042, ADR-088) | the curve of `_depth_duration_mm` |
 
-Wszystkie implementują: `generate(total_mm, duration_min, timestep_min) → HietogramResult`
+Hydrograf builds the hyetograph in `_hietogram()` and calls `generate(total_mm, duration_min, timestep_min) → HietogramResult`; every storm is n = D/Δt whole steps (Hydrolog ADR-0046, checked up front, §6.1).
+
+**Euler II:** `_depth_duration_mm()` weighs the depth of each of the 16 PMAXTP durations (5 min–72 h) at the probability as the design depth (`_design_depth`: the Thiessen mean over the watershed, IDW at the point without a boundary, §4.2) and multiplies the whole curve by the user's own `areal_reduction_factor` when given; `EulerIIHietogram(curve)` then takes the increments of the curve Δh_j = h(jΔt) − h((j−1)Δt), h(0) = 0. The first (largest) goes to the block starting at 0.3·D rounded down to the step (k = floor(0.3·n), n = D/Δt), the next ones before it back to t = 0, the rest after it, in the order of their durations, so every m blocks around the peak hold h(mΔt) and the whole storm h(D). Depths between the PMAXTP durations are interpolated linearly in ln D and nothing is extrapolated, so Δt ≥ 5 min. Its `generate` also takes `total_mm` and refuses one that differs from h(D) by more than 0.005 mm; Hydrograf passes the curve's own depth of D (the design depth × ARF). There is no `peak_position` (the storm of Hydrolog 0.8.x: alternating blocks of weights r^-0.7, the peak at 1/3 of the duration). The hand-off's `rainfall` carries the curve as `depth_duration_mm`.
 
 ### 6.4 Metoda SCS-CN
 
@@ -584,6 +602,14 @@ Where: qp [m³/s per mm of effective rainfall], A [km²], tp [h] (the triangular
 
 **Ordinates:** `q(t) = qp × (q/qp)(t/tp)`, the ratio interpolated in the NRCS dimensionless unit hydrograph table (t/tp from 0 to 5, q/qp 1 at t/tp = 1), up to `5 × tp` (Hydrolog `SCSUnitHydrograph`).
 
+### 6.5a Hydrogramy jednostkowe Snydera i Nasha
+
+- **Snyder** (`uh_model: snyder`): L = `flow_path_length_km`, the longest flow path to the divide (Hydrolog ADR-0043; not `channel_length_km`), Lc = `length_to_centroid_km`, Ct and Cp of the request (default 1.5 and 0.6); without L or Lc 422 `snyder_parameters_missing` (`details.reason` `missing_morphometry`).
+- **Nash by Lutz** (`nash_estimation: from_lutz`, `_estimate_nash_params` → `NashIUH.from_lutz`): L = `flow_path_length_km`, Jg = `flow_path_equal_area_slope_m_per_m` (§3.2a; Hydrolog ADR-0053), Lc = `length_to_centroid_km` (along the main channel), Manning's n 0.035 and the shares of urbanised land and forest of the land cover; without L, Lc or Jg 422 `lutz_parameters_missing` (`details.reason` `missing_morphometry`).
+- **Nash by the urban regression** (`from_urban_regression`): the area, the imperviousness of the land cover and the effective rainfall of SCS-CN and its duration.
+
+A refusal of Hydrolog (`InvalidParameterError`) becomes a 400 `validation_error` by the reason of Nogat's computation standard (`refusal()`, `core/hydrolog_refusals.py`): `outside_physical_range`, `invalid_type` or `precondition_failed`, with the formula and the constraint or input it names; Hydrolog's warnings become the Polish `notices` of the response (`outside_applicability`, `outside_unverified_range`; `core/hydrolog_notices.py`).
+
 ### 6.6 Splot (convolution)
 
 ```
@@ -610,6 +636,8 @@ Generowane kombinatorycznie:
 | `peak_discharge_m3s` | m³/s |
 | `time_to_peak_min` | min |
 | `total_volume_m3` | m³ |
+
+The response also gives `hydrolog_version` and `formula_versions`: the `formula_version` of each of Hydrolog's formulas the hydrograph depends on, by the name of its spec, sorted (Nogat CMP-2.8; `formula_versions(hydrograph_specs(...))`, `core/formula_versions.py`), on the full path joined by those of the delineated watershed (§3.2a). The hand-off carries both in `result.computed_with`.
 
 ---
 
@@ -806,4 +834,5 @@ CREATE TABLE land_cover (
 ---
 
 **Change history:**
+- 1.10 (2026-11-21): Hydrolog 0.9.0.dev5: the equal-area slope `flow_path_equal_area_slope_m_per_m` of the longest flow path on the filled DEM read at request time (§3.2a, §3.7); Strahler's HI stages in 3.4; the up-front checks of a design storm in 6.1; Euler II from the PMAXTP depth–duration curve, no `peak_position` (6.3); Snyder's L and Lutz's L and Jg on the longest flow path (6.5a); `hydrolog_version` and `formula_versions` (6.8)
 - 1.9 (2026-11-14): audit against the code of 2026-11-14: Phase 1 names the module of each function instead of line numbers of the former monolith, `process_dem.py` ~1,960 lines without re-exports, no `temp_flow_import`, no simplification of the sub-catchment polygons (`zonal_summary`); the graph's attributes without `perimeter_km`; `select_stream.py` merged into `watershed.py` (ADR-050); 4.1 the 16 durations and 27 probabilities of PMAXTP; 6.3 `HietogramResult`; 6.5 and 6.6 the SCS unit hydrograph and the convolution of Hydrolog (qp = 0.208 A/tp, the dimensionless table, no `× A`); the migration numbers of before the squash dropped; `HYDROGRAPH_AREA_LIMIT_KM2` in `core/constants.py`
