@@ -119,6 +119,9 @@ class MorphometricParameters(BaseModel):
         outlet [km]
     flow_path_slope_m_per_m : float, optional
         (Elevation of its head − outlet elevation) / its length [m/m]
+    flow_path_equal_area_slope_m_per_m : float, optional
+        Equal-area slope of the longitudinal profile of the longest flow path,
+        S = 2A/L² (Lutz's Jg) [m/m]
     overland_length_km, overland_slope_m_per_m : float, optional
         Length [km] and slope [m/m] of the overland segment of the longest flow
         path, from its head to the DEM stream network of the delineation threshold
@@ -279,6 +282,18 @@ class MorphometricParameters(BaseModel):
             "outlet elevation) / flow_path_length_km [m/m]"
         ),
     )
+    flow_path_equal_area_slope_m_per_m: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Equal-area slope of the longitudinal profile of the longest flow path, "
+            "the same D8 path as flow_path_length_km on the filled DEM: S = 2A/L², A "
+            "the area of the profile above the outlet elevation (trapezoid rule), "
+            "Hydrolog's equal_area_slope; Lutz's Jg (KZGW 2017, annex 2, p. 97) "
+            "[m/m]; null without the filled DEM or for a profile without positive "
+            "area"
+        ),
+    )
     overland_length_km: float | None = Field(
         None,
         gt=0,
@@ -431,6 +446,14 @@ class WatershedResponse(BaseModel):
         "areas of their Thiessen polygons inside it (ADR-069); send them back as "
         "`pmaxtp_grid` of POST /api/generate-hydrograph with `morphometry`; null "
         "without grid data around the watershed",
+    )
+    formula_versions: dict[str, int] = Field(
+        default_factory=dict,
+        description="The formula_version of each of Hydrolog's formulas the "
+        "parameters were computed with, by the name of its spec (Nogat CMP-2.8): "
+        "tr55_cn for a CN of the soil-cover complexes of the land cover, "
+        "equal_area_slope for flow_path_equal_area_slope_m_per_m; empty without "
+        "them",
     )
 
 
@@ -1028,7 +1051,8 @@ class HydrographRequest(BaseModel):
     probability : float, optional
         Exceedance probability [%]; required unless custom_precipitation is given
     timestep_min : float, optional
-        Time step for calculations [min], default 5.0 (ignored for a custom series)
+        Time step for calculations [min], default 5.0 (ignored for a custom series);
+        it divides the duration, and with Euler II it is at least 5 min
     tc_method : str, optional
         Time of concentration method ('kirpich', 'nrcs', 'giandotti', 'faa', 'kerby',
         'kerby_kirpich'), default 'nrcs'; Hydrolog computes it from the inputs the
@@ -1038,7 +1062,8 @@ class HydrographRequest(BaseModel):
     tc_retardance : float, optional
         Kerby's retardance N, required by 'kerby' and 'kerby_kirpich'; never derived
     hietogram_type : str, optional
-        Hietogram type ('beta', 'block', 'euler_ii'), default 'beta'
+        Hietogram type ('beta', 'block', 'euler_ii'), default 'beta'; Euler II is
+        built from the PMAXTP depth-duration curve of the probability
     uh_model : str, optional
         Unit hydrograph model ('scs', 'snyder', 'nash'), default 'scs'
     snyder_ct : float, optional
@@ -1087,7 +1112,14 @@ class HydrographRequest(BaseModel):
         examples=[10],
     )
     timestep_min: float = Field(
-        5.0, ge=1, le=60, description="Time step for calculations [min]"
+        5.0,
+        ge=1,
+        le=60,
+        description="Time step for calculations [min]. The duration of the design "
+        "storm must be a whole number of steps (Hydrolog ADR-0046; the default 5 "
+        "min divides every PMAXTP duration), and with hietogram_type euler_ii the "
+        "step is at least 5 min, where the PMAXTP depth-duration curve starts; "
+        "otherwise 400 storm_not_whole_steps or euler_ii_step_below_curve",
     )
     tc_method: str = Field(
         "nrcs",
@@ -1097,7 +1129,11 @@ class HydrographRequest(BaseModel):
     hietogram_type: str = Field(
         "beta",
         pattern=r"^(beta|block|euler_ii)$",
-        description="Hietogram distribution type",
+        description="Hietogram distribution type: Beta (hietogram_alpha, "
+        "hietogram_beta), block, or Euler type II of ATV-DVWK-A 118 built from the "
+        "PMAXTP depth-duration curve of the probability (the depths of every PMAXTP "
+        "duration, weighed over the watershed as the design depth and reduced by "
+        "areal_reduction_factor)",
     )
     hietogram_alpha: float = Field(
         2.0, gt=0, le=20, description="Beta hietogram alpha parameter"
@@ -1334,8 +1370,8 @@ class HydrographNotice(BaseModel):
     code: str = Field(
         ...,
         description="The code of Hydrolog's notice (hydrolog.catalog.NOTICES), "
-        "e.g. outside_typical_range for a value outside the typical range of a "
-        "method",
+        "e.g. outside_applicability for a value outside the applicability range "
+        "of a method",
     )
     message: str = Field(
         ...,
@@ -1369,6 +1405,10 @@ class HydrographResponse(BaseModel):
         The links to the terms of the same providers (Nogat DEV-20.7)
     notices : list[HydrographNotice]
         Hydrolog's warnings about the computation, in Polish
+    hydrolog_version : str
+        The version of Hydrolog that computed it
+    formula_versions : dict[str, int]
+        The formula_version of each of Hydrolog's formulas it depends on
     """
 
     watershed: WatershedResponse | None = Field(
@@ -1413,11 +1453,26 @@ class HydrographResponse(BaseModel):
         default_factory=list,
         description=(
             "Hydrolog's warnings about this computation, identical ones once, in "
-            "the order it gave them: a value outside the typical range of the "
+            "the order it gave them: a value outside the applicability range of the "
             "method of the time of concentration, of the unit hydrograph (the "
             "area, Ct and Cp, N and K, the time step against its time to peak), of "
-            "Lutz's estimation or of the AMC conversion of the CN; empty without "
-            "warnings"
+            "Lutz's estimation or of the AMC conversion of the CN, or outside a "
+            "range that awaits a published source; empty without warnings"
+        ),
+    )
+    hydrolog_version: str = Field(
+        ..., description="The version of Hydrolog that computed the hydrograph"
+    )
+    formula_versions: dict[str, int] = Field(
+        ...,
+        description=(
+            "The formula_version of each of Hydrolog's formulas the hydrograph "
+            "depends on, by the name of its spec, sorted (Nogat CMP-2.8): the "
+            "weighting of the PMAXTP grid, the hyetograph, the SCS-CN retention and "
+            "runoff, the AMC conversion, the time of concentration and the unit "
+            "hydrograph or the estimation of Nash's n and K, the convolution, and on "
+            "the full path those of the delineated watershed "
+            "(`watershed.formula_versions`)"
         ),
     )
 

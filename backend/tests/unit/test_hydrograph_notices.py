@@ -55,19 +55,19 @@ DAILY = _request(10.0, 1440.0, [10.0, 60.0, 5.0])
 
 SCS_AREA = (
     "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100\u00a0km² – powyżej "
-    "typowego zakresu 0–52\u00a0km². Wynik może być niewiarygodny."
+    "zakresu stosowania 0–51,8\u00a0km². Wynik może być niewiarygodny."
 )
 NRCS_AREA = (
     "Czas koncentracji (NRCS): powierzchnia zlewni = 100\u00a0km² – powyżej "
-    "typowego zakresu 0,005–24\u00a0km². Wynik może być niewiarygodny."
+    "zakresu stosowania 0,005–24\u00a0km². Wynik może być niewiarygodny."
 )
 DAILY_STEP = (
-    "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min – powyżej typowego "
-    "zakresu 0–255,2\u00a0min. Wynik może być niewiarygodny."
+    "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min – powyżej zakresu "
+    "stosowania 0–255,1\u00a0min. Wynik może być niewiarygodny."
 )
 DAILY_SUBSTEPS = (
     "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min jest dłuższy niż "
-    "typowy zakres 0–255,2\u00a0min, więc hydrogram policzono na 17 krokach "
+    "typowy zakres 0–255,1\u00a0min, więc hydrogram policzono na 17 krokach "
     "pośrednich po 84,71\u00a0min, z opadem każdego kroku rozłożonym na nie równo, "
     "i odczytano w chwilach kroków: zachowuje objętość."
 )
@@ -99,7 +99,7 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
         assert response.status_code == 200
         assert {
             "level": "warning",
-            "code": "outside_typical_range",
+            "code": "outside_applicability",
             "message": SCS_AREA,
         } in response.json()["notices"]
     # The server log keeps Hydrolog's warning, in English
@@ -108,7 +108,7 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
         for record in log_records()
         if record["kind"] == "app" and record["event"] == "py.warnings"
     ]
-    scs = "scs: area_km2=100.0 is outside typical range [0.0, 52.0]"
+    scs = "scs: area_km2=100.0 is outside its applicability range [0.0, 51.8]"
     assert sum(scs in message for message in logged) == 2
 
 
@@ -140,3 +140,52 @@ def test_two_requests_at_once_keep_their_own_notices(client, monkeypatch):
         "info",
         "warning",
     ]
+
+
+def _with(request: dict[str, Any], **morphometry: Any) -> dict[str, Any]:
+    """The request with these values of its morphometry."""
+    return {**request, "morphometry": {**request["morphometry"], **morphometry}}
+
+
+# Hydrolog 0.9.0 checks the CN of the SCS-CN runoff (40–100), after the AMC
+# conversion, and the inputs of Nash's urban regression (to 52 km², from 5 % of
+# impervious area); a dry AMC turns the CN 35 of a forest on group A soils into 19
+DRY_FOREST = {
+    **_with(_request(10.0, 10.0, [5.0, 20.0, 10.0, 5.0]), cn=35.0),
+    "amc": "I",
+}
+RURAL_URBAN_REGRESSION = {
+    **_with(_request(60.0, 10.0, [5.0, 20.0, 10.0, 5.0]), imperviousness=0.02),
+    "uh_model": "nash",
+    "nash_estimation": "from_urban_regression",
+}
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            DRY_FOREST,
+            "Opad efektywny SCS-CN: CN użyty w obliczeniu = 19 – poniżej zakresu "
+            "stosowania 40–100. Wynik może być niewiarygodny.",
+        ),
+        (
+            RURAL_URBAN_REGRESSION,
+            "Estymacja Nasha regresją urbanizacyjną: wskaźnik urbanizacji U = "
+            "2\u00a0% – poniżej zakresu stosowania 5–100\u00a0%. Wynik może być "
+            "niewiarygodny.",
+        ),
+        (
+            RURAL_URBAN_REGRESSION,
+            "Estymacja Nasha regresją urbanizacyjną: powierzchnia zlewni = "
+            "60\u00a0km² – powyżej zakresu stosowania 0–52\u00a0km². Wynik może być "
+            "niewiarygodny.",
+        ),
+    ],
+)
+def test_the_ranges_hydrolog_090_checks_are_worded_in_polish(client, body, expected):
+    messages = _messages(client.post(URL, json=body))
+
+    assert expected in messages
+    # None keeps Hydrolog's English template
+    assert not [message for message in messages if "Results may be" in message]

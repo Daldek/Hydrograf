@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.21
-**Date:** 2026-11-14
+**Version:** 2.23
+**Date:** 2026-11-21
 **Status:** Approved
 
 ---
@@ -177,10 +177,12 @@ backend/
 │   ├── data_sources.py            # The products of the instance's data and when they were made and downloaded: `sources` of frontend/data/instance.json (ADR-085)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── divide_flow_path.py        # The longest flow paths of a watershed from its farthest cell and from its boundary, on the saved rasters (ADR-048, ADR-070)
+│   ├── divide_flow_path.py        # The longest flow paths of a watershed from its farthest cell and from its boundary, on the saved rasters (ADR-048, ADR-070); the equal-area slope of the longest one's profile on the filled DEM, Lutz's Jg (ADR-088)
 │   ├── errors.py                  # HydrografError and its subclasses, one code of the registry each (ERR-1, ERR-4)
+│   ├── formula_versions.py        # The formula_version of each of Hydrolog's formulas a hydrograph or a delineated watershed depends on, read from Hydrolog's specs (Nogat CMP-2.8)
 │   ├── handoff.py                 # The hand-off nogat-handoff/1 to Hydrolog's GUI: build_handoff (a watershed, ADR-068), build_network_handoff (a network, ADR-080)
 │   ├── hydrolog_notices.py        # Hydrolog's warnings of a hydrograph as the Polish notices of its response: one warnings.showwarning hook (api/main.py, after the log starts), a collector per request in a context variable (E5b-06)
+│   ├── hydrolog_refusals.py       # Hydrolog's refusals of a hydrograph's inputs as problem documents by the standard's details.reason and details.constraint, in Polish (Nogat CMP-3.1, CMP-3.2)
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── messages.py                # The message catalogue of the errors, English and Polish (ERR-6)
@@ -530,14 +532,36 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   the watershed's data (delineated, or with morphometry_origin); terms_notice: [RK] with PMAXTP;
   [] and [] for your own rainfall on your own morphometry (ADR-083, ADR-085); the hand-off has
   the same fields, without them when they are empty
-  notices: [{"level": "warning", "code": "outside_typical_range", "message": "Hydrogram
-  jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej typowego zakresu 0–52 km². …"}]:
+  notices: [{"level": "warning", "code": "outside_applicability", "message": "Hydrogram
+  jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej zakresu stosowania 0–51,8 km². …"}]:
   Hydrolog's warnings while it computed this hydrograph, identical ones once, in Polish from
-  core/hydrolog_notices.py (Hydrolog's English message for a code it does not word); [] without
-  warnings; a Snyder hydrograph leaves out those of the tc it does not use (E5b-06)
-Response: 400 validation_error (application/problem+json), e.g. for the rainfall series
+  core/hydrolog_notices.py (`outside_applicability` for the applicability range of a formula,
+  `outside_unverified_range` for a typical range without a published source; Hydrolog's English
+  message for a code it does not word); [] without warnings; a Snyder hydrograph leaves out
+  those of the tc it does not use (E5b-06)
+  hydrolog_version, formula_versions: Hydrolog's version and {spec name: formula_version} of
+  each of its formulas the hydrograph depends on (core/formula_versions.py, Nogat CMP-2.8): the
+  weighting of the PMAXTP grid, the hyetograph, the SCS-CN retention and runoff, the AMC
+  conversion, the tc and the unit hydrograph or Nash's estimation, the convolution, and, for a
+  delineated watershed, its tr55_cn and equal_area_slope; the hand-off's result.computed_with
+  carries both
+Response: 400 validation_error (application/problem+json), e.g. for the rainfall series; before
+          anything is computed, storm_not_whole_steps (reason not_multiple) for a duration that
+          is not a whole number of timestep_min, euler_ii_step_below_curve (reason not_covered)
+          for an Euler II step under 5 min (Hydrolog ADR-0046, ADR-0042); Hydrolog's refusals of
+          an input by the standard's reason (outside_physical_range, invalid_type,
+          precondition_failed with details.constraint; core/hydrolog_refusals.py)
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
-          delineated catchment and for one given in morphometry alike
+          delineated catchment and for one given in morphometry alike; lutz_parameters_missing
+          and snyder_parameters_missing (reason missing_morphometry) without the longest flow
+          path, its equal-area slope (Lutz) or Lc
+```
+
+Euler II is built from the PMAXTP depth–duration curve of the probability: each of the 16
+durations weighed as the design depth and multiplied by the user's areal reduction factor
+(ADR-088, Hydrolog ADR-0042); the hand-off's rainfall carries it as `depth_duration_mm`. Lutz's
+estimation reads `flow_path_length_km` and `flow_path_equal_area_slope_m_per_m` (ADR-088,
+Hydrolog ADR-0053), Snyder's L `flow_path_length_km` (Hydrolog ADR-0043).
 ```
 
 `attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M) and the link to the PMAXTP terms (RK, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”); no summary of the terms (Nogat ECO-065); then G of the GUGiK data of the watershed with the dates of `instance.json` and SG with its soil groups (ADR-085). A product made with the result shows them visibly and carries them on (ADR-083).
@@ -839,6 +863,8 @@ Matching of the streams derived from the DEM to the reference streams of BDOT10k
 
 #### Divide flow path (ADR-048)
 Determination of the flow path from the watershed divide (the longest path from the watershed boundary to the outlet). It complements the longest flow path as an additional morphometric parameter. The geometries of both paths are stored per sub-catchment in `stream_catchments` (columns `longest_flow_path_geom`, `divide_flow_path_geom`). For a delineated watershed, `core/divide_flow_path.py` reads the cells of the watershed itself (cells of its sub-catchments in `dem_mosaic_10_subcatchments_<threshold>.tif`) once and draws both paths from them: the longest flow path starts at the cell farthest along the flow (`dem_mosaic_04b_stream_distance.tif`), the divide flow path at the farthest boundary cell (a 4-neighbour outside); both follow `dem_mosaic_03_flowdir.tif` to the outlet, so the drawn longest flow path has the length of `flow_path_length_km` (D8 steps of 5 m or 5√2 m), and the divide flow path, with the same baseline, is never longer. The lines join the cell centres where the direction changes, as `stream_network` joins them, so they lie on the streams they follow. Neither `longest_flow_path_geom` nor `divide_flow_path_geom` is read for a watershed; without the rasters the response has no flow path lines.
+
+The same window of the filled DEM (`dem_mosaic_02_filled`, on the grid of the labels) gives the longest flow path the equal-area slope of its longitudinal profile, `flow_path_equal_area_slope_m_per_m`, Lutz's Jg (ADR-088, Hydrolog ADR-0053): the cells of the traced path from its end cell up to its head, each at its flow distance from the end cell and its elevation, S = 2A/L² by Hydrolog's `equal_area_slope` (`profile_equal_area_slope`); null without the saved filled DEM, for a gap in the profile or a profile without positive area. The elements of a network and the parameters export get it from their own cells (`core/cell_parameters.py::flow_path_parameters`).
 
 #### Monotonic stream smoothing (ADR-041, ADR-072, ADR-077)
 The DEM along every burned BDOT10k line descends strictly in the direction of its flow (`smooth_streams_monotonic`, `core/hydrology.py`). The direction of a line is the first of: towards the mouth of its MPHP watercourse; down the DEM of its whole watercourse for the blocks of lines digitized against the rest of it (a block whose own DEM falls more than 2 m the way it is digitized keeps it); the digitized direction, reversed only where the DEM rises along the line by more than 2 m over at least 200 m (ADR-072). An artificial connector never takes its direction from the DEM along it. `classify_endorheic_lakes` takes the burned lines in the directions the smoothing returns. The diagnostic `scripts/check_stream_directions.py` writes for each line the rule that decides it and whether it is reversed (`regula`, `odwraca`, `blok_zachowany`) to a GeoPackage, without changing the pipeline.
@@ -1230,7 +1256,7 @@ frontend/
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
     ├── rain-export.js        # Export of the hietogram (CSV, JSON) and of its PMAXTP points with weights (GeoJSON)
     ├── info.js               # (i) explanations: markers, shared panel, MathML formulas; opened by a click, a tap, Enter or Space, closed by the same (i), Esc or a click outside
-    ├── info-texts.js         # 86 explanations (formula, variables, unit, meaning) keyed by an API field, a control id or a kind of the network's elements
+    ├── info-texts.js         # 87 explanations (formula, variables, unit, meaning) keyed by an API field, a control id or a kind of the network's elements
     ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
@@ -1271,7 +1297,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
 - **The providers' lines** (`attribution.js`, ADR-083 and its amendment, ADR-085, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry and the short forms GK and SK of G and SG (for PMAXTP: PS and PP, two rows at 1440 px), and „Źródła i warunki”, a dialog with every line (PS, PP, M, G, SG), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the delineated watershed and of the network, of the layers of Hydrograf's data that are on (the kinds of `layers` of `GET /api/terms`), of the results whose layer is on, of the point card and of the profile. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/terms` under its text (the kit's `fillSources`), ending on a public deployment with „Regulamin serwisu”, the welcome window's link to the regulamin. The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Snyder computes its own lag from L and Lc, so for Snyder „Metoda Tc” stays in view, disabled, with the note „Snyder nie używa Tc: …” instead of its applicability note, the request carries no `tc_method`, C or N, and the result table leaves out the Tc that the API still reports. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
-- **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. While Snyder is chosen and the mode is off, the field Lc stands with Ct and Cp (`#snyder-lc-col`) and the request takes it, the other fields only in the mode; a catchment without Lc (none or 0) gets „Model Snydera wymaga Lc: podaj wartość.” at the field, and Snyder's request waits for the user's value.
+- **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`), 16 fields: area, perimeter, length, elevations, mean slope, stream length and slope, the longest flow path, its slope and its equal-area slope (Lutz's Jg, ADR-088), the overland segment's length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km (the overland segment 0.001 km), elevations 0.1 m, slopes 0.01 % (the equal-area slope 0.001 %), CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. While Snyder is chosen and the mode is off, the field Lc stands with Ct and Cp (`#snyder-lc-col`) and the request takes it, the other fields only in the mode; a catchment without Lc (none or 0) gets „Model Snydera wymaga Lc: podaj wartość.” at the field, and Snyder's request waits for the user's value.
 - **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
 - **Sewer layer** — the entry „Kanalizacja deszczowa” of the „Warstwy” panel appears only when `GET /api/layers` returns `sewer: true`; without data no `/api/tiles/sewer` tiles are requested.
 - **External analysis results** — `results.js` reads the manifest `/data/results/index.json` once at startup (`frontend/data/results/`, served by `location ^~ /data/`):
@@ -2261,11 +2287,12 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.22
-**Date of the last update:** 2026-11-17
+**Document version:** 2.23
+**Date of the last update:** 2026-11-21
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.23 (2026-11-21): Hydrolog 0.9.0 (ADR-088; Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): §2.1 `core/formula_versions.py`, `core/hydrolog_refusals.py` and the equal-area slope of `core/divide_flow_path.py`; §2.2.3 the notice `outside_applicability`, `hydrolog_version` and `formula_versions`, the whole-step refusals, Hydrolog's refusals by the standard's reasons, Lutz and Snyder on the longest flow path, Euler II from the PMAXTP curve; §2.5 the equal-area slope on the filled DEM beside the flow path lines; §4.1 87 info texts; §4.2.0 the advanced mode's 16 fields with the equal-area slope; the header 2.23 like this history
 - 2.22 (2026-11-17): the defect fixes of 0.5.1: §2.2.1b PMAXTP's lines in `GET /api/terms` only with PMAXTP data (E5b-09); §5 the entrypoint waits and migrates only with a database (E4-03); §7.3 the healthcheck of nginx asks 127.0.0.1 (HG-E2E-02); §2.1 `core/hydrolog_notices.py`, §2.2.3 `notices` of the hydrograph and §4.2.0 `#hydrograph-notices` under the sections: Hydrolog's warnings in Polish (E5b-06)
 - 2.21 (2026-11-14): no footer (the author's decision of 2026-11-14, ADR-084 amended): §4.1 `terms.js` shows `#terms-link`; §4.2.0 „Regulamin” at the bottom of the rail and of the bottom bar, under the guide's table of contents, and the welcome window's „Regulamin serwisu”
 - 2.20 (2026-11-14): audit against the code of 2026-11-14: the header 2.20 like this history; §1 the PMAXTP grid, ADR-065 without Bootstrap, ADR-084 without the journal, ADR-085 and ADR-086; §2.1 the module map of the code (`api/errors.py`; `core` `_errors`, `active_run`, `data_sources`, `divide_flow_path`, `errors`, `messages`, `point_info`, `unit_*`, `version`; `utils/archiwista_project.py`, `utils/kartograf_set.py`; the scripts of the units, the backfills and the errors; `download_sewer.py` reads files only, `generate_tiles.py` streams and catchments only, `raster_utils.py` without polygonize; `tests/contract`); §2.2 G and SG in the responses and `layers` of `GET /api/terms`, the watershed request without `display_threshold_m2` and `boundary_geojson` in `watershed`, `GET /api/gui` from NOGAT_CONFIG, `?threshold=` of the tiles, the parameters of `/api/depressions`, the cleanup targets, one API process for the networks; §2.3 `find_catchment_at_point`, the tc and UH of the hydrograph; §2.4.6 `zonal_summary`; §2.5 Kartograf finds the counties, the DEM chain, the streams smoothed in `core/db_bulk.py`, the sewer upload without SSRF; §3 the index names, the columns of migrations 003 and 004, `IMGW_PMAXTP`, `DEM_DERIVED`, `sewer_network.source` VARCHAR(255), no `flow_network`, the examples as the code queries; §4 25 IIFE modules and 5 in `admin/`, `terms.js`, the welcome text, the app menu from NOGAT_CONFIG, the strip's GK and SK, the excerpts of `map.js`, `api.js`, `charts.js` and `app.js`; §5 `docker-compose.yml` and `docker/nginx.conf` as they are, the entrypoint's wait, the environments; §6 no read-only database user; §7 no metrics, `health.py`; §8–§10 one API process, no CDN, the partial indexes, no build step; §11 the test tree and the jobs of `ci.yml`; §12 ISRIC

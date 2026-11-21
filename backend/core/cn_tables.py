@@ -210,13 +210,14 @@ def complex_cn(category: str, bdot_class: str | None, hsg: str) -> int:
     return get_cn(hsg, cover.land_cover, cover.condition)
 
 
-def cn_for_amc(cn: float, amc: AMC) -> int:
+def cn_for_amc(cn: float, amc: AMC) -> float:
     """CN of a watershed for an antecedent runoff condition, by Hydrolog's conversion.
 
     The conversion of the hydrograph (``SCSCN.adjust_cn_for_amc``: Hawkins et al.
-    1985, approximating NEH 630 chapter 10, table 10-1), applied to the CN of the
-    watershed for AMC II as the hydrograph applies it; Hydrolog rounds the result to an
-    integer and warns (``OutsideTypicalRange``) for a CN outside 55-95.
+    1985, approximating NEH 630 chapter 10, table 10-1, Hydrolog's spec
+    ``scs_cn_amc``), applied to the CN of the watershed for AMC II as the hydrograph
+    applies it; Hydrolog rounds the result to an integer and warns
+    (``outside_applicability``) for a CN outside 55-95.
 
     Parameters
     ----------
@@ -227,12 +228,10 @@ def cn_for_amc(cn: float, amc: AMC) -> int:
 
     Returns
     -------
-    int
-        CN for ``amc``.
+    float
+        CN for ``amc``: a whole number for AMC I and III.
     """
-    # Hydrolog annotates the CN as int; its formulas take the weighted CN of a
-    # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
-    return SCSCN(cn=cn).adjust_cn_for_amc(amc)  # type: ignore[arg-type]
+    return SCSCN(cn=cn).adjust_cn_for_amc(amc)
 
 
 def runoff_mm(cn: float, precipitation_mm: float) -> float:
@@ -253,9 +252,7 @@ def runoff_mm(cn: float, precipitation_mm: float) -> float:
     float
         Runoff depth Q [mm].
     """
-    # Hydrolog annotates the CN as int; its equation takes the weighted CN of a
-    # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
-    scs = SCSCN(cn=cn)  # type: ignore[arg-type]
+    scs = SCSCN(cn=cn)
     return scs.effective_precipitation(precipitation_mm, AMC.II).total_effective_mm
 
 

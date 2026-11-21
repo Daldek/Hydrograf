@@ -181,6 +181,7 @@
             ['Spadek cieku głównego', formatSlope(m.channel_slope_m_per_m), 'channel_slope_m_per_m'],
             ['Najdłuższa droga spływu', formatValue(m.flow_path_length_km, 'km', 2), 'flow_path_length_km'],
             ['Spadek najdłuższej drogi spływu', formatSlope(m.flow_path_slope_m_per_m), 'flow_path_slope_m_per_m'],
+            ['Spadek wyrównany najdłuższej drogi spływu', formatSlope(m.flow_path_equal_area_slope_m_per_m), 'flow_path_equal_area_slope_m_per_m'],
             ['Spływ powierzchniowy – długość', formatValue(m.overland_length_km, 'km', 3), 'overland_length_km'],
             ['Spływ powierzchniowy – spadek', formatSlope(m.overland_slope_m_per_m), 'overland_slope_m_per_m'],
             ['Najdłuższa droga spływu od granicy zlewni', formatValue(m.divide_flow_path_km, 'km', 2), 'divide_flow_path_km'],

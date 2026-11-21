@@ -16,14 +16,17 @@ behind or modified:
   deviations AGI-4.1 and AGI-4.2 in `CLAUDE.md`).
 
 And, outside the standard, the envelope of the hand-offs, copied from Nogat's `develop`
-`b29eada` (item 6 of Nogat's `docs/plans/2026-11-01-nogat-gui-platform.md`, with the optional
-`node_provenance` of step 1 of its `docs/plans/2026-11-10-node-provenance-in-handoff.md`: the
-origin of each node of a network, and the optional `attribution` and `terms_notice` of its
+`2bbb507` (the merge of its `fix/handoff-example-beta`; unchanged at `263e83c`): item 6 of
+Nogat's `docs/plans/2026-11-01-nogat-gui-platform.md`, with the optional `node_provenance` of
+step 1 of its `docs/plans/2026-11-10-node-provenance-in-handoff.md`: the origin of each node
+of a network, and the optional `attribution` and `terms_notice` of its
 `docs/plans/2026-11-13-provider-attribution.md`: the lines the providers' terms require, DEV §20,
 ECO-060, with the description and examples of ECO-065: `terms_notice` holds the links to the
-terms only); SHA-256 `c26ce043b292284fa7e8f995589fee09fd5ffa046efb61c4b3736619b8b71d08`. The
-pinned Hydrolog `3ce7ee8` reads the same copy (the same SHA-256), with `node_provenance`,
-`attribution` and `terms_notice`:
+terms only; its first example records the result of Hydrolog 0.9.0 (57.9 m³/s and
+1 046 737.6 m³, the exact Beta storm and Kirpich's 0.0078). SHA-256
+`10de3e18aafe37d413d19bd849730a2bee2b64603eb5d2c01c992f80c662c62f`. The pinned Hydrolog
+`dbbbdb5` reads the same copy (the same SHA-256), with `node_provenance`, `attribution` and
+`terms_notice`:
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
   `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the

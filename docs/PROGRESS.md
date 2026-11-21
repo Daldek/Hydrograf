@@ -15,7 +15,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Hydrographs | done | SCS-CN (AMC I–III, own rainfall series), SCS, Snyder and Nash (Lutz, urban regression) unit hydrographs of Hydrolog; tc only from Hydrolog on the inputs each method defines (C and N from the user); the hand-off to Hydrolog (ADR-068); PMAXTP design depth as the Thiessen mean of the watershed (ADR-069); limit 250 km². |
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
 | Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, in `develop` since `b38b657`; Hydroni's run 4 and, since 2026-11-12, production have them); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
-| Producers | done | The pins follow Nogat's release set candidate-5 (2026-11-15, the first joint release): Kartograf `e14bc78` (its `develop` after its documentation fixes; `c9afdd3` before), Obserwator `f4f6a8d`, Hydrolog `3ce7ee8` (0.8.0.dev0, the author's version of 2026-11-14); the calls of Hydrograf are unchanged (CHANGELOG). Production's checkout (`1577dbc`) runs Kartograf `c9afdd3`, Obserwator `0394af7` and Hydrolog `e5df06d`; Hydroni (`a46adb4`) runs candidate-3 (Hydrolog `930915d`, Kartograf `d0990c8`, Obserwator `f9f4ee7`). The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`, its checkout at `e5df06d`, which routes a reach that Muskingum-Cunge cannot grid as linear reservoirs with the warning `diffusion_dominated`, Hydrolog ADR-0026). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
+| Producers | done | `develop` (0.5.2) pins the tags of Nogat's release set candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`. The branch `feat/hydrolog-0.9.0` (Next 19) pins the development heads of the release round of 2026-11-21, Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), with Kartograf `v0.8.2`; the release commit replaces them with the tags of Hydrolog 0.9.0 and Obserwator 3.1.0. On 2026-11-21 (read only) production's checkout was `a86e8ce` (release v0.5.1: Kartograf `v0.8.1`, Obserwator `v3.0.1`, Hydrolog `v0.8.1` in `hydro_api`) and Hydroni's `a46adb4` (candidate-3: Hydrolog `930915d`, Kartograf `d0990c8`, Obserwator `f9f4ee7`). The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
 | Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię (options „Jedna zlewnia” and „Sieć zlewni” over the map) / Profil terenu / Identyfikuj. The top-bar „Instrukcja” button opens the welcome dialog; the user guide is a scrolling page with a TOC and chapters, while `docs/Hydrograf-prezentacja.html` remains a slide deck. The welcome text and guide name the data area from `frontend/data/instance.json`; external analyses come from `frontend/data/results/index.json` (SFINCS), alongside the MZP overlay and `?v=` asset versions. Nogat's GUI kit 1.0.0 in `frontend/nogat/` (ADR-082 to ADR-086): the top-bar menu „Aplikacje” of the GUIs in `HYDROGRAF_GUI` or the table `gui` of NOGAT_CONFIG's file (`GET /api/gui`), the hand-off through `nogat-handoff.js`, the providers' strip, the regulamin template and the admin panel. |
 | Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the option „Sieć zlewni” of „Wybierz zlewnię” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended on 2026-11-11 by the plan `2026-11-11-network-nodes`: every point is a node, `J` at a confluence it is drawn to within 50 m up or down, `P` elsewhere, numbered from the closing section up, the outlet `O`; ADR-081); the plans `2026-11-10-network-delineation`, `2026-11-11-network-preview` and `2026-11-11-network-nodes` are done. Merged into `develop` with `feat/network-nodes` on 2026-11-11; networks above 60 M cells stay refused. Open methodology: Next 10. |
 | Admin panel | done | Step 3 of Nogat's plan `2026-11-13-admin-panel` (DEV-15.13, ECO-067, kit 0.7.0; ADR-086): `/admin/` is the kit's `<nogat-admin>` („Zgłoszenia”, „Statystyki”, „Stan”, then „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”), `/admin` answers 308, `/admin.html` and Bootstrap are gone; `status` (database, catchment graph, data directory) replaces `dashboard`, `stats` reads `stats.jsonl`; no generated key (`admin_key_not_configured`); admin answers `no-store`, the panel's requests limited, not counted. The reports of the old form keep their `legacy` member, which the kit's view does not show (Next 14). Merged into `develop` on 2026-11-14 (`aa975b0`) and deployed; Next 13. |
@@ -262,6 +262,23 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     name directories of the author's machines (`~/workspace/…`, `~/data/…`, `/mnt/magazyn/…`,
     `/data/nmt/…`). The accepted ADRs keep them (DOC-8.1); the other documents are to name
     such places by role, with the machine's paths kept outside Git.
+19. **Hydrolog 0.9.0 and Obserwator 3.1.0** (step 2 of Nogat's plan
+    `2026-11-19-hydrolog-0.9.0-consumers`, branch `feat/hydrolog-0.9.0`, pushed, not merged;
+    CHANGELOG `[Unreleased]`; ADR-088 proposed): done on the branch. The pins `dbbbdb5` and
+    `1a11df5` (Kartograf `v0.8.2` kept); the equal-area slope Jg on the saved filled DEM at
+    request time; Lutz and Snyder on the longest flow path; Euler II from the PMAXTP curve,
+    scaled as a whole by the own ARF; whole steps in the API and in `analyze_watershed.py`;
+    Hydrolog's refusals and its notices in Polish (also the new `scs_cn_runoff` and
+    `nash_urban_regression` ranges); `formula_versions` and `hydrolog_version`, tested against
+    the envelope of Hydrolog's `run_command`; the schema copy of Nogat `2bbb507`; the GUI (the
+    row and the advanced field of Jg, „Euler II”, the (i) texts, guide and slides of Euler II,
+    Lutz and Snyder, Hydrolog's constants and ranges, `docs/INFO_TEXTS_SOURCES.md`); the
+    documents (COMPUTATION_PIPELINE with Strahler's HI stages 0.35/0.60, ARCHITECTURE,
+    DATA_MODEL, the integrations, CROSS_PROJECT_ANALYSIS, SCOPE). Waiting for the author: the
+    merge, ADR-088, the version (still 0.5.2) and Nogat's kit copy. Deployment: Lutz needs the
+    saved `dem_mosaic_02_filled` of the instance's run; production and Hydroni have it on the
+    grid of their labels (checked read only on 2026-11-21), so both compute Lutz once deployed.
+    Hydroni's parameter exports for the author lack Jg until they are made again.
 
 ## Open questions
 
@@ -289,3 +306,17 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     now that the regulamin is in effect (`terms_effective` 2026-11-14), as Nogat's plan
     `2026-11-13-gui-terms` proposes (§ 8 of the regulamin deletes a report once it is handled)?
     The operator decides; until then they stay.
+13. Nogat's `handoff-1.schema.json` does not name `result.computed_with.formula_versions`,
+    which Hydrograf's hand-offs carry since the branch of Next 19 (the object accepts
+    additional properties, so the copy validates). Should Nogat's schema describe it?
+14. `negative_quantiles` (Hydrolog 0.9.0's notice of low-flow quantiles below zero) has no
+    Polish text in `core/hydrolog_notices.py`: Hydrograf computes no low flows, so no request
+    can get it. Confirm that it needs none.
+15. A hydrograph on the fast path (the GUI sends the delineation's morphometry) lists the
+    `formula_versions` of the formulas it ran, not `tr55_cn` and `equal_area_slope` of the
+    delineation, which the request cannot prove (the morphometry may be the person's own).
+    Should `morphometry_origin` carry them, so the hand-off names every formula of its CN and
+    Jg?
+16. ADR-088 (proposed): Jg measured at request time on the traced flow path, and the Euler II
+    curve scaled as a whole by the own areal reduction factor (Hydrolog ADR-0042: whoever
+    chooses another total scales the curve). Accept?

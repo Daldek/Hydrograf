@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.18
-**Date:** 2026-11-14
+**Version:** 1.21
+**Date:** 2026-11-21
 **Status:** Approved
 
 ---
@@ -68,7 +68,7 @@ This document defines precisely:
 - Length of the main stream [km]
 - Hydraulic length of the watershed (hydraulic_length_km) [km]
 - Actual length of the main channel (real_channel_length_km) [km]
-- Flow paths: the longest one, from the hydraulically most distant point (usually on the divide), from the centroid [km]
+- Flow paths: the longest one, from the hydraulically most distant point (usually on the divide), from the centroid [km]; the slope and the equal-area slope of the longest one (Lutz's Jg) [m/m]
 - Weighted imperviousness (weighted_imperviousness) [-]
 
 **Geometric characteristics:**
@@ -355,7 +355,7 @@ This document defines precisely:
 
 #### 3.1.1 Digital Elevation Model (DEM, Polish NMT)
 
-**Source:** GUGiK through Kartograf 0.8.0.dev0 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
+**Source:** GUGiK through Kartograf 0.8.2 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
 **Format:** ARC/INFO ASCII GRID → VRT mosaic
 **Resolution:** 5 m (Kartograf `GugikProvider(resolution="5m")`, vertical datum EVRF2007; `bootstrap --resolution 1m` selects 1 m)
 **Coordinate system:** EPSG:2180 (PL-1992)
@@ -377,7 +377,7 @@ This document defines precisely:
 
 #### 3.1.2 Land Cover
 
-**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.0.dev0, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
+**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.2, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
 **Format:** GeoPackage
 **Coordinate system:** EPSG:2180
 **Extent:** The districts that cover the bbox
@@ -423,7 +423,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `f4f6a8d`, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `1a11df5`, 3.1.0.dev0, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -442,7 +442,7 @@ This document defines precisely:
 
 #### 3.1.5 Soil Data (HSG)
 
-**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.0.dev0, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
+**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.2, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
 **Format:** GeoTIFF (the HSG raster of Poland, a version of the Kartograf store) → polygons → PostGIS (table `soil_hsg`)
 **Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
@@ -533,9 +533,10 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 0.8.0.dev0 (commit `3ce7ee8` of `develop`, the release set candidate-5 of Nogat, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `e14bc78` of `develop`, the release set candidate-5 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f4f6a8d`, the release set candidate-5 of Nogat, package `obserwator`; design precipitation from IMGW)
+- Hydrolog 0.9.0.dev5 (commit `dbbbdb5` of `develop`, the development pin of the release round of 2026-11-21, range `>=0.9.0.dev5,<0.10`; hydrological calculations)
+- Kartograf 0.8.2 (tag `v0.8.2`, the release set candidate-10 of Nogat, range `>=0.8.0,<0.9`; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.1.0.dev0 (IMGWTools until its v3.0.0; commit `1a11df5` of `develop`, the development pin of the release round of 2026-11-21, range `>=3.0.0,<4`, package `obserwator`; design precipitation from IMGW)
+- The release commit replaces the two commits with the tags of Hydrolog 0.9.0 and Obserwator 3.1.0 (REL-5.3, REL-5.6); Hydrograf 0.5.2 pinned Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1`
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -968,13 +969,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.20
-**Date of the last update:** 2026-11-17
-**Current version:** v0.5.0 is the latest release; `fix/0.5.1` carries 0.5.1.dev0, a patch of defect fixes (`backend/pyproject.toml`)
+**Document version:** 1.21
+**Date of the last update:** 2026-11-21
+**Current version:** v0.5.2 is the latest release (`backend/pyproject.toml`); the release round of 2026-11-21 computes with Hydrolog 0.9.0.dev5 and Obserwator 3.1.0.dev0
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.21 (2026-11-21): the producers of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), Kartograf the tag `v0.8.2`; Hydrograf 0.5.0 to 0.5.2 pinned tags, 0.5.2 Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1` of Nogat's release set candidate-10; the equal-area slope of the longest flow path in 2.1.2; v0.5.2 the latest release
 - 1.20 (2026-11-17): the current version: v0.5.0 released, 0.5.1.dev0 on `fix/0.5.1`
 - 1.19 (2026-11-14): the producers follow the release set candidate-4 of Nogat: Kartograf `c9afdd3`, Obserwator `0394af7`, Hydrolog `9e2cb61`
 - 1.18 (2026-11-14): audit against the code of 2026-11-14: the header version; the data sources (no GIOŚ/RZGW, no CORINE); the point selection of „Wybierz zlewnię”; the sewer import from a file only; `waterbody_mode` in the admin API, not the panel's form; the network of 0–30 points, nodes J/P and two kinds of subcatchment; the base layers and TERYT notes of 2.3; Kartograf 0.8.0.dev0; the vendored libraries, Nogat's kit 0.7.0 and the 26 + 5 JS modules in 5.1; public access in 7.2; the provider lines G, PS/PP/M/RK and SG in 7.3; the current version

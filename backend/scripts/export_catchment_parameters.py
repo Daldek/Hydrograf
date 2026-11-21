@@ -250,6 +250,17 @@ COLUMNS: tuple[Column, ...] = (
         "its length; empty when not positive",
     ),
     Column(
+        "flow_path_equal_area_slope_m_per_m",
+        "m/m",
+        _BASIC,
+        "Spadek wyrównany najdłuższej drogi spływu",
+        "Equal-area slope of the longitudinal profile of the longest flow path, "
+        "S = 2A/L² with A the area of the profile above the elevation of the cell "
+        "below the outlet (Hydrolog's equal_area_slope, spec equal_area_slope; "
+        "core.divide_flow_path.profile_equal_area_slope), Lutz's Jg; empty when "
+        "the profile does not rise above it",
+    ),
+    Column(
         "overland_length_km",
         "km",
         _BASIC,

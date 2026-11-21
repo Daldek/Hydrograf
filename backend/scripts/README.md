@@ -9,8 +9,8 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
   `.venv/bin/python -m scripts.<name>` (or `uv run python -m scripts.<name>`).
 - A running PostgreSQL/PostGIS database with the Alembic migrations applied (`bootstrap.py` does
   both).
-- [Kartograf](https://github.com/Daldek/Kartograf), pinned by commit in `backend/pyproject.toml`
-  (0.8.0.dev0, installed by `uv sync --locked`; details in
+- [Kartograf](https://github.com/Daldek/Kartograf), pinned by its tag `v0.8.2` in `backend/pyproject.toml`
+  (range `>=0.8.0,<0.9`, installed by `uv sync --locked`; details in
   [docs/integrations/KARTOGRAF.md](../../docs/integrations/KARTOGRAF.md)):
   - NMT (DEM): elevation data from GUGiK
   - BDOT10k: one GeoPackage package per county (*powiat*) from GUGiK, every layer; the land cover
@@ -767,7 +767,7 @@ also one line per row in the table `<output layer>_attribution` and in the log):
 
 | Section | Columns |
 |---|---|
-| Parametry podstawowe | `area_km2`, `perimeter_km`, `elevation_min_m`, `elevation_max_m`, `elevation_mean_m`, `mean_slope_m_per_m`, `channel_length_km`, `real_channel_length_km`, `channel_slope_m_per_m`, `flow_path_length_km`, `flow_path_slope_m_per_m`, `overland_length_km`, `overland_slope_m_per_m`, `divide_flow_path_km`, `cn`, `outlet_latitude_deg`, `outlet_longitude_deg`, `outlet_elevation_m` |
+| Parametry podstawowe | `area_km2`, `perimeter_km`, `elevation_min_m`, `elevation_max_m`, `elevation_mean_m`, `mean_slope_m_per_m`, `channel_length_km`, `real_channel_length_km`, `channel_slope_m_per_m`, `flow_path_length_km`, `flow_path_slope_m_per_m`, `flow_path_equal_area_slope_m_per_m` (the equal-area slope S = 2A/L² of the longitudinal profile of the longest flow path on the filled DEM, Lutz's Jg: Hydrolog's `equal_area_slope` through `core.divide_flow_path.profile_equal_area_slope`; empty when the profile does not rise above its end), `overland_length_km`, `overland_slope_m_per_m`, `divide_flow_path_km`, `cn`, `outlet_latitude_deg`, `outlet_longitude_deg`, `outlet_elevation_m` |
 | Hydrogram | `cn_amc_i`, `cn_amc_ii`, `cn_amc_iii`: the CN of the watershed for AMC I (dry), II (average, equal to `cn`) and III (wet); I and III are Hydrolog's conversion of II (Hawkins et al. 1985, which approximates NEH 630 ch. 10, table 10-1; integers), as the hydrograph converts it. The CN is the area-weighted composite CN, not a weighting of the runoff |
 | Wskaźniki kształtu | `compactness_coefficient`, `circularity_ratio` |
 | Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` (AMC II, over the soil-cover complexes of the class) of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
@@ -1022,7 +1022,7 @@ them group D (ADR-078).
 ### `preprocess_precipitation.py`: IMGW precipitation
 
 Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator, the package `obserwator`
-at the pinned commit `f4f6a8d`) for a grid of points inside a
+at the pinned commit `1a11df5`, 3.1.0.dev0) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 
