@@ -49,7 +49,7 @@ class TestFill:
     TEMPLATE = (
         "<h1>{{service_name}}</h1>\n"
         "<!-- block: gugik -->\n<h3>GUGiK</h3>\n<!-- /block -->\n"
-        "<!-- block: chmi -->\n<h3>ČHMÚ</h3>\n<!-- /block -->\n"
+        "<!-- block: chmu -->\n<h3>ČHMÚ</h3>\n<!-- /block -->\n"
         "<!-- block: pmaxtp -->\n<h3>PMAXTP</h3>\n<!-- /block -->\n"
         "<p>{{processor_transfer}}</p>\n"
     )
