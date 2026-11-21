@@ -93,6 +93,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted | 2026-11-13 |
 | [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted | 2026-11-14 |
 | [ADR-087](decisions/0087-a-sheet-missing-at-the-run-resolution-from-a-finer-nmt-of-the-set.md) | A sheet the source lacks at the run's resolution comes from a finer NMT of the set | accepted | 2026-11-15 |
+| [ADR-088](decisions/0088-lutz-jg-at-request-time-and-the-euler-ii-curve-scaled-by-the-areal-reduction-factor.md) | Lutz's Jg measured at request time on the traced flow path; Euler II's PMAXTP curve scaled by the areal reduction factor | proposed | 2026-11-21 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
