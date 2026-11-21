@@ -284,9 +284,11 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     Hydroni's parameter exports for the author lack Jg until they are made again.
 20. **The sources strip folded on a phone** (step 4 of Nogat's plan
     `2026-11-21-phone-sources-strip`, Nogat ECO-080; branch `feat/phone-sources-strip`, pushed,
-    not merged): Nogat's kit 1.1.0 copied whole from Nogat `c2507fa` (ECO-080 to ECO-082:
-    `nogat-sources.js` and `.css` of `5f8cce0`, the regulamin's ČHMÚ block `chmu`, the draft
-    `nogat-terms-operator.md`, which no page links, and `nogat-kit.json`), and
+    not merged): Nogat's kit 1.1.0 copied whole from Nogat `4d755ee` (`develop`; ECO-080 to
+    ECO-083: `nogat-sources.js` and `.css` of `5f8cce0`, the regulamin's ČHMÚ block `chmu`,
+    the draft `nogat-terms-operator.md`, which no page links, the hand-off file
+    `hydrograf_handoff_<subject>.json` and the statistics file
+    `hydrograf_stats_<first>_<last>.csv` of DEV-19.21, and `nogat-kit.json`), and
     `error_registry.json` from Nogat `975136e` (standard 1.1, only `standard_version`
     changes; `core/_errors.py` generated again). Up to 860 px the strip is one line with
     „więcej”; at 390 × 844 px the foot of the view is 26 px with PS, PP and GK folded, 127 px

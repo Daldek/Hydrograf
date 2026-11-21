@@ -18,7 +18,7 @@
  * kit is on window.Hydrograf before the scripts after it run.
  */
 import { entries } from '../nogat/nogat-app-menu.js?v=951a2798ee';
-import * as handoff from '../nogat/nogat-handoff.js?v=605cda9ff5';
+import * as handoff from '../nogat/nogat-handoff.js?v=ee555c209f';
 import { fillSources } from '../nogat/nogat-sources.js?v=de5a9d8f4a';
 
 window.Hydrograf = window.Hydrograf || {};
