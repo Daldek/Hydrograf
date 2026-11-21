@@ -99,7 +99,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    owners §6; none of C1–C7 of Nogat's run of candidate-5 is Hydrograf's) and of the external test
    report of 2026-11-02 (A2, B2, B3); *0.5.1* marks the scope of the patch, *fixed* what
    `fix/0.5.1` fixed (CHANGELOG `[Unreleased]`):
-   - *Large basins (0.6.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
+   - *Large basins (0.7.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
      E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
      G09-3 and E7-GAP-04 (a catchment cut at the area's or the state's edge looks complete; the
@@ -117,13 +117,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      the precise mode reads the cut `dem_mosaic.tif`), Next 17 (*0.5.1*).
    - *API:* E5b-01 (*fixed*: the catchment graph loaded inside the first request, 504; it now
      loads in a thread of its own and the requests answer 503 at once until it is loaded), E5b-02
-     (0.6.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
-     stream returns 0.0003 km² without a notice), E5b-04 (0.6.0: `generate-hydrograph` with a
+     (0.7.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
+     stream returns 0.0003 km² without a notice), E5b-04 (0.7.0: `generate-hydrograph` with a
      point alone takes about 3 min, 504), E5b-08 (*fixed* on Hydrograf's side: the hydrograph's
      Hydrolog computations hold numba's compiler lock, so a compile no longer catches their
      warnings; Hydrolog 0.8.1 the other: the first network beside a hydrograph gave 500), E5b-10
      (the network preview does not warn of a window above 60 M cells).
-   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.6.0: `obserwator-series-csv` is refused as
+   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings
      reached only the log; the hydrograph's response now carries them as `notices` in Polish and
@@ -135,7 +135,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      (reach lengths and slope of hand-placed points, to be explained), G06-3 (the clipboard of the
      test browser; environmental), G06-4 (B8: „Jedna zlewnia” at a network's P1 ends at the
      segment's end, not at P1), G07-1 = G09-1 (the map and the page title do not name the area),
-     M2 and M3 of the external report (0.6.0, once confirmed).
+     M2 and M3 of the external report (0.7.0, once confirmed).
    - *Owned elsewhere:* E2-03 (the counties of the plan's BDOT10k; Kartograf and Archiwista, B2).
 6. **After the release:** H2 and S5 of [the store migration plan](plans/2026-11-02-store-migration.md):
    the Kaczawa as an Archiwista project (`projects/kaczawa` does not exist yet) and production
@@ -276,7 +276,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     documents (COMPUTATION_PIPELINE with Strahler's HI stages 0.35/0.60, ARCHITECTURE,
     DATA_MODEL, the integrations, CROSS_PROJECT_ANALYSIS, SCOPE). Merged into `develop`
     (`d23cb02`). Waiting for the author: ADR-088 and the version (still 0.5.2); Nogat's kit
-    copy is Next 20. Deployment: Lutz needs the
+    copy is Next 20. The author decided on 2026-11-21 that release 0.6.0 holds only this
+    adaptation to Hydrolog 0.9.0, with the pins and the kit copy of this round; what was
+    planned for 0.6.0 before moves to 0.7.0 (Next 5). Deployment: Lutz needs the
     saved `dem_mosaic_02_filled` of the instance's run; production and Hydroni have it on the
     grid of their labels (checked read only on 2026-11-21), so both compute Lutz once deployed.
     Hydroni's parameter exports for the author lack Jg until they are made again.
