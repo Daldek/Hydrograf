@@ -1220,7 +1220,7 @@ frontend/
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
 │   ├── nogat-sources.js      # <nogat-sources>: the view's strip of provider lines and its dialog, fillSources() for the welcome window (ES module)
 │   ├── nogat-sources.css     # Its styles, in the tokens
-│   ├── nogat-handoff.js      # The hand-off: labels, <subject>.handoff.json, text, clipboard with its fallback, download (ES module)
+│   ├── nogat-handoff.js      # The hand-off: labels, hydrograf_handoff_<subject>.json (nameSlug, Nogat DEV-19.21), text, clipboard with its fallback, download (ES module)
 │   ├── nogat-terms.html      # The regulamin template with its blocks, which core/terms.py fills (ADR-084)
 │   ├── nogat-terms.css       # Its styles, in the tokens
 │   ├── nogat-terms.md        # The regulamin's text for review

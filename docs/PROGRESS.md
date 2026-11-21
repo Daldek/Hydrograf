@@ -294,7 +294,11 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     „więcej”; at 390 × 844 px the foot of the view is 26 px with PS, PP and GK folded, 127 px
     unfolded, and the sheets follow it; 1440 px is unchanged (checked in Chromium on the
     static pages). Hydrograf has no browser tests; the kit's hashes are checked by
-    `tests/contract/test_frontend_kit.py`. Waiting for the author: the merge and a deployment.
+    `tests/contract/test_frontend_kit.py`. The same branch takes step 4 of Nogat's plan
+    `2026-11-21-download-file-names` (DEV-19.21; ADR-082 amended): the files of „Hietogram”
+    are `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>].csv`/`.json` and
+    `hydrograf_pmaxtp-points_<…>.geojson`, with a decimal point, and ČHMÚ's CP is
+    `CHMU_PROCESSED` (ECO-082). Waiting for the author: the merge and a deployment.
 
 ## Open questions
 

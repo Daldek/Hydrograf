@@ -22,12 +22,15 @@
     var _current = null; // { result, context } of the hietogram shown
     var els = {};
 
-    /** "1h, p = 10%" in a file name: "1h_p10" ("1h_p10_arf0,9" with a factor); a custom series: "wlasna_seria". */
+    /**
+     * The qualifiers of a file name (Nogat DEV-19.21): "1h, p = 10%" is "1h_p10", with a
+     * factor "1h_p10_arf0.9" (a decimal point, a comma is not allowed); a custom series "custom".
+     */
     function fileStem(c) {
         var p = c.result.precipitation;
-        if (p.source === 'custom') return 'wlasna_seria';
-        var stem = c.context.duration + '_p' + String(p.probability_percent).replace('.', ',');
-        if (p.areal_reduction_factor != null) stem += '_arf' + String(p.areal_reduction_factor).replace('.', ',');
+        if (p.source === 'custom') return 'custom';
+        var stem = c.context.duration + '_p' + String(p.probability_percent);
+        if (p.areal_reduction_factor != null) stem += '_arf' + String(p.areal_reduction_factor);
         return stem;
     }
 
@@ -74,7 +77,7 @@
         });
         var table = Hydrograf.attribution.csvTable(header, rows, _current.result);
         var text = table.map(function (row) { return row.join(','); }).join('\r\n') + '\r\n';
-        save('hietogram_' + fileStem(_current) + '.csv', text, 'text/csv');
+        save('hydrograf_hyetograph_' + fileStem(_current) + '.csv', text, 'text/csv');
     }
 
     function json() {
@@ -103,7 +106,7 @@
             steps: steps(p),
             pmaxtp_points: p.pmaxtp_points || [],
         });
-        save('hietogram_' + fileStem(_current) + '.json', JSON.stringify(doc, null, 2) + '\n', 'application/json');
+        save('hydrograf_hyetograph_' + fileStem(_current) + '.json', JSON.stringify(doc, null, 2) + '\n', 'application/json');
     }
 
     function geojson() {
@@ -145,7 +148,7 @@
             },
             features: features,
         });
-        save('punkty_PMAXTP_' + fileStem(_current) + '.geojson', JSON.stringify(doc) + '\n', 'application/geo+json');
+        save('hydrograf_pmaxtp-points_' + fileStem(_current) + '.geojson', JSON.stringify(doc) + '\n', 'application/geo+json');
     }
 
     /** A new hietogram of a hydrograph response; context: duration, hietogram, alpha, beta, point, boundary. */
