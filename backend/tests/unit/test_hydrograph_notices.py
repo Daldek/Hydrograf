@@ -140,3 +140,52 @@ def test_two_requests_at_once_keep_their_own_notices(client, monkeypatch):
         "info",
         "warning",
     ]
+
+
+def _with(request: dict[str, Any], **morphometry: Any) -> dict[str, Any]:
+    """The request with these values of its morphometry."""
+    return {**request, "morphometry": {**request["morphometry"], **morphometry}}
+
+
+# Hydrolog 0.9.0 checks the CN of the SCS-CN runoff (40–100), after the AMC
+# conversion, and the inputs of Nash's urban regression (to 52 km², from 5 % of
+# impervious area); a dry AMC turns the CN 35 of a forest on group A soils into 19
+DRY_FOREST = {
+    **_with(_request(10.0, 10.0, [5.0, 20.0, 10.0, 5.0]), cn=35.0),
+    "amc": "I",
+}
+RURAL_URBAN_REGRESSION = {
+    **_with(_request(60.0, 10.0, [5.0, 20.0, 10.0, 5.0]), imperviousness=0.02),
+    "uh_model": "nash",
+    "nash_estimation": "from_urban_regression",
+}
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            DRY_FOREST,
+            "Opad efektywny SCS-CN: CN użyty w obliczeniu = 19 – poniżej zakresu "
+            "stosowania 40–100. Wynik może być niewiarygodny.",
+        ),
+        (
+            RURAL_URBAN_REGRESSION,
+            "Estymacja Nasha regresją urbanizacyjną: wskaźnik urbanizacji U = "
+            "2\u00a0% – poniżej zakresu stosowania 5–100\u00a0%. Wynik może być "
+            "niewiarygodny.",
+        ),
+        (
+            RURAL_URBAN_REGRESSION,
+            "Estymacja Nasha regresją urbanizacyjną: powierzchnia zlewni = "
+            "60\u00a0km² – powyżej zakresu stosowania 0–52\u00a0km². Wynik może być "
+            "niewiarygodny.",
+        ),
+    ],
+)
+def test_the_ranges_hydrolog_090_checks_are_worded_in_polish(client, body, expected):
+    messages = _messages(client.post(URL, json=body))
+
+    assert expected in messages
+    # None keeps Hydrolog's English template
+    assert not [message for message in messages if "Results may be" in message]

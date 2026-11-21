@@ -46,10 +46,12 @@ _METHODS: Final[Mapping[str, str]] = {
     "kerby": "Czas koncentracji (Kerby)",
     "kerby_kirpich": "Czas koncentracji (Kerby-Kirpich)",
     "scs_cn_amc": "Przeliczenie CN na AMC I lub III",
+    "scs_cn_runoff": "Opad efektywny SCS-CN",
     "scs": "Hydrogram jednostkowy SCS",
     "snyder": "Hydrogram jednostkowy Snydera",
     "nash": "Hydrogram jednostkowy Nasha",
     "lutz": "Estymacja Nasha metodą Lutza",
+    "nash_urban_regression": "Estymacja Nasha regresją urbanizacyjną",
 }
 
 # The inputs the checked values come from (details.field): the name, the unit and the
@@ -73,6 +75,13 @@ _INPUTS: Final[Mapping[str, tuple[str, str, float]]] = {
     "ct": ("współczynnik Ct", "", 1.0),
     "cp": ("współczynnik Cp", "", 1.0),
     "timestep_min": ("krok czasowy Δt", "min", 1.0),
+    "urban_fraction": ("wskaźnik urbanizacji U", "%", 100.0),
+}
+
+# An input a method checks other than the value _INPUTS names: the runoff of SCS-CN
+# takes the CN after the AMC conversion, the CN used in the computation
+_METHOD_INPUTS: Final[Mapping[tuple[str, str], tuple[str, str, float]]] = {
+    ("scs_cn_runoff", "cn"): ("CN użyty w obliczeniu", "", 1.0),
 }
 
 # The range each code of a value outside a range names and the end of its Polish text,
@@ -200,8 +209,9 @@ def _polish(code: str, details: Mapping[str, Any]) -> str | None:
     if code == "uh_substeps":
         return _substeps(details)
     worded = _RANGE_CODES.get(code)
-    subject = _METHODS.get(str(details.get("method")))
-    named = _INPUTS.get(str(details.get("field")))
+    method, field = str(details.get("method")), str(details.get("field"))
+    subject = _METHODS.get(method)
+    named = _METHOD_INPUTS.get((method, field)) or _INPUTS.get(field)
     numbers = [
         float(x)
         for x in (details.get("value"), details.get("minimum"), details.get("maximum"))
