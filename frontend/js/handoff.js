@@ -9,9 +9,9 @@
  * /api/delineate-network). The section serves the view the panel shows: the network
  * in the option „Sieć zlewni”, the watershed otherwise. "Kopiuj do Hydrologa" puts the
  * hand-off of what the panel shows on the clipboard and "Plik przekazania" downloads it as
- * <subject>.handoff.json; Hydrolog opens both with "Wczytaj z Hydrografa", a network in
- * „Sieć i trasowanie”. The labels, the file name, the text, the clipboard and the
- * download are those of Nogat's kit, the same in every GUI (DEV-15.5: nogat-handoff.js,
+ * hydrograf_handoff_<subject>.json (Nogat DEV-19.21); Hydrolog opens both with "Wczytaj z
+ * Hydrografa", a network in „Sieć i trasowanie”. The labels, the file name, the text, the
+ * clipboard and the download are those of Nogat's kit, the same in every GUI (DEV-15.5: nogat-handoff.js,
  * window.Hydrograf.nogat.handoff of js/nogat.js): without the Clipboard API (plain HTTP
  * outside localhost), or when the browser refuses it, the text goes selected into a
  * field for Ctrl+C. After a copy or a download the status links „Otwórz Hydrologa” when

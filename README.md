@@ -130,7 +130,7 @@ details:
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.0.0) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.1.0) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
   The link „Regulamin” (in a new tab) is at the bottom of the left rail, under the guide's
   table of contents, in the welcome window and in the menu „Aplikacje”.

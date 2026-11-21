@@ -6,7 +6,9 @@ its `55a191a` (the draft called 2.1 before; no tag of it exists yet, replace the
 tag when it does). Nogat's `uv run scripts/ecosystem.py drift` reports each copy as current,
 behind or modified:
 
-- `error_registry.json` (Nogat `standards/error_registry.json`): error codes, exit codes
+- `error_registry.json` (Nogat `standards/error_registry.json`), copied again from Nogat's
+  `975136e` (standard 1.1, the computation standard CMP; of the registry only its
+  `standard_version` changed, the codes are those of 1.0): error codes, exit codes
   and HTTP statuses. `backend/core/_errors.py` is generated from it with
   `cd backend && uv run python -m scripts.generate_errors`.
 - `result-1.schema.json`, `error-1.schema.json`, `commands-1.schema.json` (Nogat

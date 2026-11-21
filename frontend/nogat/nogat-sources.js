@@ -7,6 +7,9 @@
 // and `terms_notice`; the properties `attribution` and `termsNotice` take the arrays
 // themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked from
 // the dialog in a new tab, so the GUI's own tab and its session stay.
+// On a phone (up to 860 px, ECO-080) the strip is one line, its lines cut with an
+// ellipsis, and the button „więcej” unfolds it in place while they do not fit; the
+// property `expanded` (attribute `expanded`) is that state, `clipped` marks a cut line.
 // `fillSources(container, {attribution, termsNotice, terms})` writes the same full
 // content into a welcome window of the GUI's own.
 // No shadow DOM: the page's stylesheet nogat-sources.css styles it with the tokens.
@@ -74,6 +77,8 @@ export const SOURCES_TEXTS = {
   attribution: "Źródła danych",
   termsNotice: "Warunki korzystania z danych",
   regulamin: "Regulamin serwisu",
+  unfold: "więcej",
+  fold: "zwiń",
   close: "Zamknij",
 };
 
@@ -277,8 +282,36 @@ export class NogatSources extends HTMLElement {
     return Boolean(this.querySelector("dialog")?.open);
   }
 
+  /** @returns {boolean} whether the strip is unfolded on a phone */
+  get expanded() {
+    return this.hasAttribute("expanded");
+  }
+
+  /** @param {boolean} value unfold (true) or fold (false) the strip on a phone */
+  set expanded(value) {
+    this.toggleAttribute("expanded", Boolean(value));
+    const toggle = this.querySelector(".nogat-sources-toggle");
+    if (toggle) {
+      toggle.textContent = value ? SOURCES_TEXTS.fold : SOURCES_TEXTS.unfold;
+      toggle.setAttribute("aria-expanded", String(Boolean(value)));
+    }
+    this._measure();
+  }
+
   connectedCallback() {
+    this._resized ??= new ResizeObserver(() => this._measure());
     this.render();
+  }
+
+  disconnectedCallback() {
+    this._resized?.disconnect();
+  }
+
+  /** Mark the strip `clipped` while its folded line cuts the lines. */
+  _measure() {
+    const shown = this.querySelector(".nogat-sources-lines");
+    if (!shown || this.expanded) return;
+    this.toggleAttribute("clipped", shown.scrollWidth > shown.clientWidth);
   }
 
   attributeChangedCallback() {
@@ -304,18 +337,32 @@ export class NogatSources extends HTMLElement {
     const full = this.attribution;
     const notice = this.termsNotice;
     this.replaceChildren();
+    this._resized?.disconnect();
+    this.removeAttribute("clipped");
     this.hidden = full.length === 0 && notice.length === 0;
     if (this.hidden) return;
 
     const strip = document.createElement("p");
     strip.className = "nogat-sources-strip";
     strip.setAttribute("aria-label", SOURCES_TEXTS.strip);
-    for (const { shown, text } of onScreen(full)) {
+    const shown = document.createElement("span");
+    shown.className = "nogat-sources-lines";
+    shown.id = `${this._id}-lines`;
+    for (const { shown: mark, text } of onScreen(full)) {
       const line = document.createElement("span");
       line.className = "nogat-sources-line";
-      line.append(...(SHORT_LINKS[shown] ? short(text, SHORT_LINKS[shown]) : linked(text)));
-      strip.append(line, " ");
+      line.append(...(SHORT_LINKS[mark] ? short(text, SHORT_LINKS[mark]) : linked(text)));
+      shown.append(line, " ");
     }
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "nogat-sources-toggle";
+    toggle.textContent = this.expanded ? SOURCES_TEXTS.fold : SOURCES_TEXTS.unfold;
+    toggle.setAttribute("aria-expanded", String(this.expanded));
+    toggle.setAttribute("aria-controls", shown.id);
+    toggle.addEventListener("click", () => {
+      this.expanded = !this.expanded;
+    });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "nogat-sources-more";
@@ -323,9 +370,11 @@ export class NogatSources extends HTMLElement {
     button.setAttribute("aria-haspopup", "dialog");
     button.setAttribute("aria-controls", this._id);
     button.addEventListener("click", () => this.open());
-    strip.append(button);
+    strip.append(shown, toggle, " ", button);
 
     this.append(strip, this._dialog(full, notice, button));
+    this._resized?.observe(shown);
+    this._measure();
   }
 
   _dialog(full, notice, button) {

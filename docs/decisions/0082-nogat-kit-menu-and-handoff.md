@@ -8,7 +8,8 @@
 > `instrukcja/index.html` load.
 
 **Date:** 2026-11-12
-**Status:** accepted
+**Status:** accepted; amended 2026-11-21 (the hand-off file `hydrograf_handoff_<subject>.json`,
+Nogat DEV-19.21; see the amendment at the end)
 
 ## Context
 
@@ -116,3 +117,16 @@ A4 and B3.
   bumped.
 - The deviation DEV-15.1 of `CLAUDE.md` names `js/nogat.js` and the kit as the ES modules of
   the front end.
+
+## Amendment 2026-11-21: the files named by Nogat's rule (DEV-19.21, ECO-083)
+
+Nogat's DEV-19.21 (plan `2026-11-21-download-file-names`, kit 1.1.0 of `4d755ee`) names
+every file a tool hands to a user `<tool>_<content>_<qualifiers>.<extension>`, in lower-case
+ASCII. The kit's `fileName` gives the hand-off `hydrograf_handoff_<subject>.json`, the
+subject reduced by `nameSlug` (diacritics dropped, `ł` as `l`, each run of anything else one
+`-`): `Kaczawa, sieć (3 zlewnie)` gives `hydrograf_handoff_kaczawa-siec-3-zlewnie.json`
+instead of `Kaczawa, sieć (3 zlewnie).handoff.json`, and `<nogat-admin>` the statistics
+`hydrograf_stats_<first>_<last>.csv`. The page's own files follow the same rule
+(`js/rain-export.js`): `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>].csv`
+and `.json`, `hydrograf_pmaxtp-points_<…>.geojson`, `hydrograf_hyetograph_custom.csv` for
+a series of one's own, with a decimal point where the names had a comma (`p0.5`, `arf0.9`).

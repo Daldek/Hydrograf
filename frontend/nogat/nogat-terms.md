@@ -58,7 +58,7 @@ Regulamin serwisu hydrologicznego IMGW-PIB: <https://hydro.imgw.pl/#/regulamin>
 Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 <!-- /block -->
 
-<!-- block: chmi -->
+<!-- block: chmu -->
 ### ČHMÚ
 
 > Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
