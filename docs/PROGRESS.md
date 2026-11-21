@@ -274,11 +274,22 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     row and the advanced field of Jg, „Euler II”, the (i) texts, guide and slides of Euler II,
     Lutz and Snyder, Hydrolog's constants and ranges, `docs/INFO_TEXTS_SOURCES.md`); the
     documents (COMPUTATION_PIPELINE with Strahler's HI stages 0.35/0.60, ARCHITECTURE,
-    DATA_MODEL, the integrations, CROSS_PROJECT_ANALYSIS, SCOPE). Waiting for the author: the
-    merge, ADR-088, the version (still 0.5.2) and Nogat's kit copy. Deployment: Lutz needs the
+    DATA_MODEL, the integrations, CROSS_PROJECT_ANALYSIS, SCOPE). Merged into `develop`
+    (`d23cb02`). Waiting for the author: ADR-088 and the version (still 0.5.2); Nogat's kit
+    copy is Next 20. Deployment: Lutz needs the
     saved `dem_mosaic_02_filled` of the instance's run; production and Hydroni have it on the
     grid of their labels (checked read only on 2026-11-21), so both compute Lutz once deployed.
     Hydroni's parameter exports for the author lack Jg until they are made again.
+20. **The sources strip folded on a phone** (step 4 of Nogat's plan
+    `2026-11-21-phone-sources-strip`, Nogat ECO-080; branch `feat/phone-sources-strip`, pushed,
+    not merged): Nogat's kit 1.0.0 copied from Nogat `5f8cce0` (`nogat-sources.js` and `.css`,
+    `nogat-kit.json`, the draft `nogat-terms-operator.md`, which no page links) and
+    `error_registry.json` from Nogat `975136e` (standard 1.1, only `standard_version`
+    changes; `core/_errors.py` generated again). Up to 860 px the strip is one line with
+    „więcej”; at 390 × 844 px the foot of the view is 26 px with PS, PP and GK folded, 127 px
+    unfolded, and the sheets follow it; 1440 px is unchanged (checked in Chromium on the
+    static pages). Hydrograf has no browser tests; the kit's hashes are checked by
+    `tests/contract/test_frontend_kit.py`. Waiting for the author: the merge and a deployment.
 
 ## Open questions
 
