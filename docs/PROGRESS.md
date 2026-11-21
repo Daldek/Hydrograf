@@ -262,6 +262,20 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     name directories of the author's machines (`~/workspace/…`, `~/data/…`, `/mnt/magazyn/…`,
     `/data/nmt/…`). The accepted ADRs keep them (DOC-8.1); the other documents are to name
     such places by role, with the machine's paths kept outside Git.
+19. **Hydrolog 0.9.0 and Obserwator 3.1.0** (step 2 of Nogat's plan
+    `2026-11-19-hydrolog-0.9.0-consumers`, branch `feat/hydrolog-0.9.0`, not merged; CHANGELOG
+    `[Unreleased]`): pins `dbbbdb5` and `1a11df5`, the equal-area slope Jg measured on the
+    filled DEM, Lutz and Snyder on the longest flow path, Euler II from the PMAXTP curve, whole
+    steps, the refusals and `outside_applicability` in Polish, `formula_versions`, the schema
+    copy of Nogat `2bbb507`. Left on the branch: the GUI (the row and advanced field of Jg in
+    „Zlewnia”, the label „DVWK (Euler II)” and the texts of Euler II, Lutz's Jg and Snyder's L
+    in `index.html`, `js/info-texts.js`, the guide and the slides, `docs/INFO_TEXTS_SOURCES.md`),
+    the documents (HI classes 0.35/0.60 and Euler II, Lutz, Snyder and the whole steps in
+    `docs/COMPUTATION_PIPELINE.md`; the pins of `docs/integrations/HYDROLOG.md`, `OBSERWATOR.md`
+    and `docs/CROSS_PROJECT_ANALYSIS.md`; an ADR on measuring Jg at request time beside the flow
+    path lines), tests of the new code paths (the profile slope, the curve, the whole steps, the
+    refusals, `formula_versions`), and the version and Nogat's kit copy, which wait for the
+    author's decision.
 
 ## Open questions
 

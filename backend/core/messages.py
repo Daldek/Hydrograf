@@ -314,15 +314,19 @@ MESSAGES: Final[dict[str, Message]] = {
         "Nie udało się zbudować podglądu sieci.",
     ),
     "lutz_parameters_missing": Message(
-        "The Lutz method needs channel_length_km, length_to_centroid_km and "
-        "channel_slope_m_per_m.",
-        "Metoda Lutza wymaga channel_length_km, length_to_centroid_km i "
-        "channel_slope_m_per_m.",
+        "The Lutz method needs flow_path_length_km, length_to_centroid_km and "
+        "flow_path_equal_area_slope_m_per_m.",
+        "Metoda Lutza wymaga flow_path_length_km, length_to_centroid_km i "
+        "flow_path_equal_area_slope_m_per_m.",
+        "Delineate the watershed on this server, whose filled DEM gives the "
+        "equal-area slope of the longest flow path, or give it in the morphometry.",
+        "Wyznacz zlewnię na tym serwerze, którego NMT daje spadek wyrównany "
+        "najdłuższej drogi spływu, albo podaj go w morfometrii.",
     ),
     "snyder_parameters_missing": Message(
-        "The Snyder model needs channel_length_km and length_to_centroid_km in the "
+        "The Snyder model needs flow_path_length_km and length_to_centroid_km in the "
         "catchment parameters.",
-        "Model Snydera wymaga channel_length_km i length_to_centroid_km w "
+        "Model Snydera wymaga flow_path_length_km i length_to_centroid_km w "
         "parametrach zlewni.",
     ),
     "no_precipitation_data": Message(
@@ -345,6 +349,26 @@ MESSAGES: Final[dict[str, Message]] = {
         "Use one of: {allowed}.",
         "Użyj jednego z: {allowed}.",
     ),
+    "storm_not_whole_steps": Message(
+        "The duration of {duration_min:g} min is not a whole number of time steps of "
+        "{timestep_min:g} min: a design hyetograph is made of whole steps.",
+        "Czas trwania {duration_min:g} min nie jest wielokrotnością kroku czasowego "
+        "{timestep_min:g} min: hietogram projektowy składa się z całych kroków.",
+        "Choose a time step that divides the duration: 5 min divides every PMAXTP "
+        "duration.",
+        "Wybierz krok, który dzieli czas trwania: 5 min dzieli każdy czas trwania "
+        "PMAXTP.",
+    ),
+    "euler_ii_step_below_curve": Message(
+        "Euler II is built from the PMAXTP depth-duration curve, which starts at "
+        "{shortest_min:g} min: the time step of {timestep_min:g} min is shorter.",
+        "Euler II buduje się z krzywej wysokość–czas trwania PMAXTP, która zaczyna się "
+        "od {shortest_min:g} min: krok czasowy {timestep_min:g} min jest krótszy.",
+        "Choose a time step of at least {shortest_min:g} min that divides the "
+        "duration, or another hyetograph.",
+        "Wybierz krok co najmniej {shortest_min:g} min, który dzieli czas trwania, "
+        "albo inny rozkład opadu.",
+    ),
     "tc_inputs_missing": Message(
         "The time of concentration by the {method} method needs: {missing}.",
         "Czas koncentracji metodą {method} wymaga: {missing}.",
@@ -354,6 +378,56 @@ MESSAGES: Final[dict[str, Message]] = {
         "Podaj w żądaniu tc_runoff_coeff (C metody FAA) albo tc_retardance (N metody "
         "Kerby'ego), a brakujące parametry zlewni w morfometrii (tryb zaawansowany), "
         "albo wybierz inną metodę.",
+    ),
+    # Hydrolog's refusals by the reasons of Nogat's computation standard (CMP-3.1,
+    # CMP-3.2; core/hydrolog_refusals.py)
+    "formula_input_outside_physical_range": Message(
+        "{option} = {value} is outside its physical range {range} (formula {formula}).",
+        "Wartość {option} = {value} jest poza zakresem fizycznym {range} (wzór "
+        "{formula}).",
+    ),
+    "formula_input_invalid_type": Message(
+        "{option} is not a number (formula {formula}).",
+        "{option} nie jest liczbą (wzór {formula}).",
+    ),
+    "formula_physical_condition": Message(
+        "A physical condition of the formula {formula} is not met ({constraint}): "
+        "{text}",
+        "Niespełniony warunek fizyczny wzoru {formula} ({constraint}): {text}",
+    ),
+    "formula_precondition_failed": Message(
+        "A condition of applicability of the formula {formula} is not met "
+        "({constraint}): {text}",
+        "Niespełniony warunek stosowalności wzoru {formula} ({constraint}): {text}",
+    ),
+    "lutz_centroid_beyond_length": Message(
+        "Lutz's method: the length to the centroid Lc cannot exceed the length of the "
+        "longest flow path L: both run from the outlet, Lc along the main channel to "
+        "its point nearest the centroid of the watershed, L to the divide.",
+        "Metoda Lutza: długość do środka ciężkości zlewni Lc nie może być większa od "
+        "długości najdłuższej drogi spływu L: obie biegną od przekroju zamykającego, "
+        "Lc wzdłuż cieku głównego do jego punktu najbliższego środka ciężkości "
+        "zlewni, L do działu wodnego.",
+        "Correct length_to_centroid_km or flow_path_length_km (advanced mode).",
+        "Popraw Lc albo najdłuższą drogę spływu (tryb zaawansowany).",
+    ),
+    "lutz_shares_over_area": Message(
+        "Lutz's method: the shares of urbanised land U and of forest W together "
+        "cannot exceed 100% of the watershed.",
+        "Metoda Lutza: udział terenów zurbanizowanych U i udział lasów W razem nie "
+        "mogą przekroczyć 100% powierzchni zlewni.",
+        "Correct urban_pct or forest_pct (advanced mode).",
+        "Popraw udział terenów zurbanizowanych albo lasów (tryb zaawansowany).",
+    ),
+    "kerby_kirpich_overland_not_shorter": Message(
+        "Kerby-Kirpich: the longest flow path must be longer than its overland "
+        "segment: the method times the rest of the path as channel flow.",
+        "Kerby–Kirpich: najdłuższa droga spływu musi być dłuższa od spływu "
+        "powierzchniowego: metoda liczy resztę drogi jako przepływ korytem.",
+        "Choose another method of the time of concentration, or correct "
+        "flow_path_length_km or overland_length_km (advanced mode).",
+        "Wybierz inną metodę czasu koncentracji albo popraw najdłuższą drogę spływu "
+        "lub długość spływu powierzchniowego (tryb zaawansowany).",
     ),
     "invalid_parameters": Message(
         "Invalid parameters: {cause}",

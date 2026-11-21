@@ -834,7 +834,9 @@ def get_flow_paths(
     The watershed is the union of the sub-catchments of ``upstream_indices``
     in the label raster of ``threshold_m2``; both paths follow the D8 flow
     directions to the outlet and their lengths have the baseline of the
-    longest flow path (core.divide_flow_path).
+    longest flow path (core.divide_flow_path). With the filled DEM of the run
+    (``dem_mosaic_02_filled``) the longest gets the equal-area slope of its
+    profile.
 
     Parameters
     ----------
@@ -877,6 +879,7 @@ def get_flow_paths(
         labels_path,
         flow_dist_path,
         flowdir_path,
+        settings.resolve_pipeline_raster("02_filled"),
     )
 
 
@@ -1080,6 +1083,9 @@ def build_morph_dict_from_graph(
     divide_flow_path_km = (
         flow_paths.divide.length_km if flow_paths.divide is not None else None
     )
+    # Lutz's Jg: the equal-area slope of the profile of the same longest flow path
+    # (Hydrolog ADR-0053, ADR-088)
+    flow_path_equal_area_slope = flow_paths.equal_area_slope_m_per_m
 
     # Point sampling stream_distance.tif for the centroid flow path
     centroid_flow_path_km = None
@@ -1142,6 +1148,7 @@ def build_morph_dict_from_graph(
         "centroid_flow_path_km": centroid_flow_path_km,
         "flow_path_length_km": flow_path_length_km,
         "flow_path_slope_m_per_m": flow_path_slope,
+        "flow_path_equal_area_slope_m_per_m": flow_path_equal_area_slope,
         "overland_length_km": stats.get("overland_length_km"),
         "overland_slope_m_per_m": stats.get("overland_slope_m_per_m"),
     }

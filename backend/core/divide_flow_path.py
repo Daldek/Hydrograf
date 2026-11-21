@@ -21,6 +21,12 @@ the length of ``hydraulic_length_km`` and a boundary cell is never farther.
 The line of a path joins the centres of its cells, as the lines of
 ``stream_network`` (``core.stream_extraction``), without the cells inside its
 straight runs, so it lies on the streams where it follows them.
+
+Given the filled DEM of the window, the longest flow path also gets the
+equal-area slope of its longitudinal profile (Lutz's Jg, Hydrolog ADR-0053,
+ADR-088): its cells from the end of the path up to its head, each at its flow
+distance from that end and its elevation, the profile of the same D8 path whose
+length ``flow_path_length_km`` is.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ from dataclasses import dataclass
 import numba
 import numpy as np
 import rasterio
+from hydrolog.exceptions import InvalidParameterError
+from hydrolog.morphometry import equal_area_slope
 from rasterio.transform import Affine
 from rasterio.windows import Window, from_bounds
 from rasterio.windows import transform as window_transform
@@ -79,11 +87,16 @@ class WatershedFlowPaths:
         its first cell on the longest path; None when it is the longest path.
     divide_is_longest : bool
         The farthest boundary cell is the head of the longest path.
+    equal_area_slope_m_per_m : float | None
+        Equal-area slope of the profile of the longest flow path [m/m]
+        (``profile_equal_area_slope``); None without the DEM, or where it cannot
+        be measured.
     """
 
     longest: FlowPath | None
     divide: FlowPath | None
     divide_is_longest: bool = False
+    equal_area_slope_m_per_m: float | None = None
 
 
 NO_FLOW_PATHS = WatershedFlowPaths(longest=None, divide=None)
@@ -317,6 +330,65 @@ def _flow_path(
     )
 
 
+def profile_equal_area_slope(
+    cells: Sequence[tuple[int, int]],
+    flow_dist: np.ndarray,
+    flow_dist_nodata: float | None,
+    dem: np.ndarray,
+    dem_nodata: float | None,
+) -> float | None:
+    """Equal-area slope of the longitudinal profile of a D8 path (Lutz's Jg).
+
+    The profile runs from the last cell of the path up to its head: each cell at
+    its flow distance from the last one and at its elevation on the filled DEM,
+    so it is the profile of the length of the path (``flow_path_length_km`` for
+    the longest flow path). Hydrolog's ``equal_area_slope`` gives S = 2A/L², A the
+    area of the profile above the elevation of its first point, by the trapezoid
+    rule (KZGW 2017, annex 2, p. 97; Hydrolog ADR-0053). The last cell of a path
+    lies outside the watershed: without an elevation or a flow distance (beyond
+    the data) the profile starts at the cell above it.
+
+    Parameters
+    ----------
+    cells : Sequence[tuple[int, int]]
+        Rows and columns of the path, its head first (``trace_flow_path``).
+    flow_dist : np.ndarray
+        Flow distance to the outlet of the grid [m].
+    flow_dist_nodata : float | None
+        Nodata value of ``flow_dist``.
+    dem : np.ndarray
+        Filled DEM on the grid of ``flow_dist`` [m].
+    dem_nodata : float | None
+        Nodata value of ``dem``.
+
+    Returns
+    -------
+    float | None
+        The slope [m/m] to 6 decimals; None for a path of fewer than two cells
+        with a value, a cell above the last one without an elevation or a flow
+        distance, or a profile that does not rise above its first point on the
+        whole (Hydrolog's precondition ``positive_area``, a slope of 0 to 6
+        decimals included): never 0, which Hydrolog's watershed refuses.
+    """
+    rows, cols = np.asarray(cells, dtype=np.intp).reshape(-1, 2).T
+    distance = flow_dist[rows, cols].astype(np.float64)[::-1]
+    elevation = dem[rows, cols].astype(np.float64)[::-1]
+    valid = np.isfinite(distance) & np.isfinite(elevation)
+    if flow_dist_nodata is not None:
+        valid &= distance != flow_dist_nodata
+    if dem_nodata is not None:
+        valid &= elevation != dem_nodata
+    start = 0 if valid[0] else 1
+    if len(valid) - start < 2 or not valid[start:].all():
+        return None
+    distance, elevation = distance[start:], elevation[start:]
+    try:
+        slope = round(equal_area_slope(distance - distance[0], elevation), 6)
+    except InvalidParameterError:
+        return None
+    return slope if slope > 0 else None
+
+
 def compute_flow_paths(
     segment_idxs: Sequence[int],
     bounds_2180: tuple[float, float, float, float],
@@ -324,6 +396,7 @@ def compute_flow_paths(
     labels_path: str,
     flow_dist_path: str,
     flowdir_path: str,
+    dem_path: str | None = None,
 ) -> WatershedFlowPaths:
     """Longest flow path of a watershed and the one from its boundary.
 
@@ -343,6 +416,10 @@ def compute_flow_paths(
         Flow distance raster [m].
     flowdir_path : str
         Saved D8 flow directions of the pipeline (int16, 0 = none).
+    dem_path : str | None
+        Filled DEM of the pipeline (``dem_mosaic_02_filled``), for the equal-area
+        slope of the longest flow path; without it, or off the grid of the
+        labels, the slope is None.
 
     Returns
     -------
@@ -380,7 +457,23 @@ def compute_flow_paths(
         fdir = fdir_src.read(1, window=win)
         nodata = dist_src.nodata
         transform = window_transform(win, labels_src.transform)
-    return watershed_flow_paths(member, flow_dist, fdir, nodata, baseline_m, transform)
+        dem, dem_nodata = _read_dem(dem_path, grid, win)
+    return watershed_flow_paths(
+        member, flow_dist, fdir, nodata, baseline_m, transform, dem, dem_nodata
+    )
+
+
+def _read_dem(
+    dem_path: str | None, grid: tuple[tuple[int, int], Affine], win: Window
+) -> tuple[np.ndarray | None, float | None]:
+    """Read a window of the filled DEM; None without it or off ``grid``."""
+    if dem_path is None:
+        return None, None
+    with rasterio.open(dem_path) as dem_src:
+        if (dem_src.shape, dem_src.transform) != grid:
+            logger.warning("Flow paths: %s is not on the grid of the labels", dem_path)
+            return None, None
+        return dem_src.read(1, window=win), dem_src.nodata
 
 
 def watershed_flow_paths(
@@ -390,6 +483,8 @@ def watershed_flow_paths(
     nodata: float | None,
     baseline_m: float,
     transform: Affine,
+    dem: np.ndarray | None = None,
+    dem_nodata: float | None = None,
 ) -> WatershedFlowPaths:
     """Longest flow path and the one from the boundary of the cells of a watershed.
 
@@ -407,6 +502,11 @@ def watershed_flow_paths(
         Flow distance at the outlet of the watershed [m].
     transform : Affine
         Transform of the grid of ``member`` (EPSG:2180).
+    dem : np.ndarray | None
+        Filled DEM on the grid of ``member`` [m]; with it the longest flow path
+        gets the equal-area slope of its profile (``profile_equal_area_slope``).
+    dem_nodata : float | None
+        Nodata value of ``dem``.
 
     Returns
     -------
@@ -418,11 +518,21 @@ def watershed_flow_paths(
         return NO_FLOW_PATHS
     longest_cells = trace_flow_path(longest_head, member, fdir, flow_dist)
     longest = _flow_path(longest_cells, flow_dist, baseline_m, transform)
+    slope = (
+        profile_equal_area_slope(longest_cells, flow_dist, nodata, dem, dem_nodata)
+        if dem is not None and longest is not None
+        else None
+    )
     if divide_head is None:
-        return WatershedFlowPaths(longest=longest, divide=None)
+        return WatershedFlowPaths(
+            longest=longest, divide=None, equal_area_slope_m_per_m=slope
+        )
     if divide_head == longest_head:
         return WatershedFlowPaths(
-            longest=longest, divide=None, divide_is_longest=longest is not None
+            longest=longest,
+            divide=None,
+            divide_is_longest=longest is not None,
+            equal_area_slope_m_per_m=slope,
         )
     divide_cells = trace_flow_path(divide_head, member, fdir, flow_dist)
     on_longest = set(longest_cells)
@@ -437,4 +547,6 @@ def watershed_flow_paths(
             transform,
             own_end_m=float(flow_dist[divide_cells[meet]]),
         )
-    return WatershedFlowPaths(longest=longest, divide=divide)
+    return WatershedFlowPaths(
+        longest=longest, divide=divide, equal_area_slope_m_per_m=slope
+    )

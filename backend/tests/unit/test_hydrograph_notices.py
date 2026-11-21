@@ -55,19 +55,19 @@ DAILY = _request(10.0, 1440.0, [10.0, 60.0, 5.0])
 
 SCS_AREA = (
     "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100\u00a0km² – powyżej "
-    "typowego zakresu 0–52\u00a0km². Wynik może być niewiarygodny."
+    "zakresu stosowania 0–51,8\u00a0km². Wynik może być niewiarygodny."
 )
 NRCS_AREA = (
     "Czas koncentracji (NRCS): powierzchnia zlewni = 100\u00a0km² – powyżej "
-    "typowego zakresu 0,005–24\u00a0km². Wynik może być niewiarygodny."
+    "zakresu stosowania 0,005–24\u00a0km². Wynik może być niewiarygodny."
 )
 DAILY_STEP = (
-    "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min – powyżej typowego "
-    "zakresu 0–255,2\u00a0min. Wynik może być niewiarygodny."
+    "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min – powyżej zakresu "
+    "stosowania 0–255,1\u00a0min. Wynik może być niewiarygodny."
 )
 DAILY_SUBSTEPS = (
     "Hydrogram jednostkowy SCS: krok czasowy Δt = 1440\u00a0min jest dłuższy niż "
-    "typowy zakres 0–255,2\u00a0min, więc hydrogram policzono na 17 krokach "
+    "typowy zakres 0–255,1\u00a0min, więc hydrogram policzono na 17 krokach "
     "pośrednich po 84,71\u00a0min, z opadem każdego kroku rozłożonym na nie równo, "
     "i odczytano w chwilach kroków: zachowuje objętość."
 )
@@ -99,7 +99,7 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
         assert response.status_code == 200
         assert {
             "level": "warning",
-            "code": "outside_typical_range",
+            "code": "outside_applicability",
             "message": SCS_AREA,
         } in response.json()["notices"]
     # The server log keeps Hydrolog's warning, in English
@@ -108,7 +108,7 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
         for record in log_records()
         if record["kind"] == "app" and record["event"] == "py.warnings"
     ]
-    scs = "scs: area_km2=100.0 is outside typical range [0.0, 52.0]"
+    scs = "scs: area_km2=100.0 is outside its applicability range [0.0, 51.8]"
     assert sum(scs in message for message in logged) == 2
 
 

@@ -167,7 +167,9 @@ class TestMissingInput:
         )
 
         assert response.status_code == 400
-        assert response.json()["details"]["reason"] == "invalid_parameters"
+        problem = response.json()
+        assert problem["details"]["reason"] == "outside_physical_range"
+        assert problem["details"]["constraint"] == "flow_path_longer_than_overland"
 
 
 class TestTcOptionsInSchema:

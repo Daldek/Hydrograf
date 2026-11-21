@@ -59,6 +59,11 @@ _INPUTS: Final[Mapping[str, tuple[str, str, float]]] = {
     "cn": ("CN (AMC II)", "", 1.0),
     "flow_path_length_km": ("najdłuższa droga spływu", "km", 1.0),
     "flow_path_slope_m_per_m": ("spadek najdłuższej drogi spływu", "%", 100.0),
+    "flow_path_equal_area_slope_m_per_m": (
+        "spadek wyrównany najdłuższej drogi spływu",
+        "%",
+        100.0,
+    ),
     "overland_length_km": ("długość spływu powierzchniowego", "km", 1.0),
     "overland_slope_m_per_m": ("spadek spływu powierzchniowego", "%", 100.0),
     "runoff_coeff": ("współczynnik spływu C", "", 1.0),
@@ -70,14 +75,21 @@ _INPUTS: Final[Mapping[str, tuple[str, str, float]]] = {
     "timestep_min": ("krok czasowy Δt", "min", 1.0),
 }
 
-# The Polish text of each code of a value outside a typical range after
-# „{method}: {input} = {value} – powyżej/poniżej typowego zakresu {range}”, as
-# Hydrolog's English templates of the codes say it
-_RANGE_CODES: Final[Mapping[str, str]] = {
-    "outside_typical_range": ". Wynik może być niewiarygodny.",
+# The range each code of a value outside a range names and the end of its Polish text,
+# after „{method}: {input} = {value} – powyżej/poniżej {range} {bounds}”, as Hydrolog's
+# English templates of the codes say it: `outside_applicability` (Nogat CMP-3.3,
+# Hydrolog ADR-0070, `outside_typical_range` up to Hydrolog 0.8.x) for the
+# applicability range of a formula, `outside_unverified_range` for a typical range
+# without a published source
+_RANGE_CODES: Final[Mapping[str, tuple[str, str]]] = {
+    "outside_applicability": (
+        "zakresu stosowania",
+        ". Wynik może być niewiarygodny.",
+    ),
     "outside_unverified_range": (
+        "typowego zakresu",
         ", który nie ma opublikowanego źródła i czeka na weryfikację. Wynik może być "
-        "niewiarygodny."
+        "niewiarygodny.",
     ),
 }
 
@@ -187,7 +199,7 @@ def _polish(code: str, details: Mapping[str, Any]) -> str | None:
     """Return the Polish text of a notice, None without one for its code or details."""
     if code == "uh_substeps":
         return _substeps(details)
-    tail = _RANGE_CODES.get(code)
+    worded = _RANGE_CODES.get(code)
     subject = _METHODS.get(str(details.get("method")))
     named = _INPUTS.get(str(details.get("field")))
     numbers = [
@@ -195,8 +207,9 @@ def _polish(code: str, details: Mapping[str, Any]) -> str | None:
         for x in (details.get("value"), details.get("minimum"), details.get("maximum"))
         if isinstance(x, int | float) and math.isfinite(x)
     ]
-    if tail is None or subject is None or named is None or len(numbers) != 3:
+    if worded is None or subject is None or named is None or len(numbers) != 3:
         return None
+    range_name, tail = worded
     name, unit, factor = named
     value, minimum, maximum = (x * factor for x in numbers)
     if value > maximum:
@@ -207,8 +220,8 @@ def _polish(code: str, details: Mapping[str, Any]) -> str | None:
         return None
     units = f"\u00a0{unit}" if unit else ""
     return (
-        f"{subject}: {name} = {_value(value, crossed)}{units} – {where} typowego "
-        f"zakresu {_number(minimum)}–{_number(maximum)}{units}{tail}"
+        f"{subject}: {name} = {_value(value, crossed)}{units} – {where} {range_name} "
+        f"{_number(minimum)}–{_number(maximum)}{units}{tail}"
     )
 
 

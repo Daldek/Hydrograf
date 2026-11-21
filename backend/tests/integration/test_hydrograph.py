@@ -67,6 +67,7 @@ def _make_morph_dict(cn: int = 75) -> dict[str, Any]:
         "hydraulic_length_km": 7.0,
         "flow_path_length_km": 7.0,
         "flow_path_slope_m_per_m": 0.01,
+        "flow_path_equal_area_slope_m_per_m": 0.007,
         "overland_length_km": 0.2,
         "overland_slope_m_per_m": 0.05,
         "cn": cn,

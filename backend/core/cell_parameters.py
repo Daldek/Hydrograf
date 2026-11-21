@@ -337,9 +337,10 @@ def flow_path_parameters(
     -------
     tuple[dict[str, Any], WatershedFlowPaths]
         ``flow_path_length_km``, ``flow_path_slope_m_per_m``,
-        ``overland_length_km``, ``overland_slope_m_per_m`` and
-        ``divide_flow_path_km``, None where they cannot be measured; and the lines
-        of the longest flow path and of the divide path.
+        ``flow_path_equal_area_slope_m_per_m`` (of the profile of the longest flow
+        path on the filled DEM), ``overland_length_km``, ``overland_slope_m_per_m``
+        and ``divide_flow_path_km``, None where they cannot be measured; and the
+        lines of the longest flow path and of the divide path.
     """
     paths = watershed_flow_paths(
         cells.member,
@@ -348,10 +349,13 @@ def flow_path_parameters(
         cells.flow_dist_nodata,
         baseline_m(cells, outlet),
         cells.transform,
+        cells.dem,
+        cells.dem_nodata,
     )
     result: dict[str, Any] = {
         "flow_path_length_km": None,
         "flow_path_slope_m_per_m": None,
+        "flow_path_equal_area_slope_m_per_m": paths.equal_area_slope_m_per_m,
         "overland_length_km": None,
         "overland_slope_m_per_m": None,
         "divide_flow_path_km": (
