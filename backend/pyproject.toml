@@ -60,7 +60,7 @@ dependencies = [
     # the calculations of Hydrolog. The range is the one the code supports from the
     # producer's release (REL-5.6): Hydrolog 0.9.0 builds Euler II from a depth-duration
     # curve and gives the equal-area slope; the pin is in `[tool.uv.sources]`.
-    "obserwator>=3.0.0,<4",
+    "obserwator>=3.1.0.dev0,<4",
     "kartograf>=0.8.0,<0.9",
     "hydrolog>=0.9.0.dev5,<0.10",
     "requests>=2.31",
@@ -99,12 +99,12 @@ package = false
 [tool.uv.sources]
 # The heads of Hydrolog's and Obserwator's `develop` for the release round of 2026-11-21
 # (Nogat plan 2026-11-19-hydrolog-0.9.0-consumers, step 2), the commits of Nogat's release
-# set candidate-11: Hydrolog 0.9.0.dev6 and Obserwator 3.1.0.dev0, not tagged yet
+# set candidate-12: Hydrolog 0.9.0.dev6 and Obserwator 3.1.0.dev0, not tagged yet
 # (REL-5.3), and Kartograf v0.8.2; the release commit replaces the commits with the tags.
 # Both commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "4bf0ce33f19aa4a57cf8e7bfd0971fcc0cefe3e3" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "e66d4737aae2c5eff87198efe8864284402a8d4f" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.2" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "64f6e219b0199e1ad237c6247e54ac87651c39a7" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "829261ae3ee4ff2d510c61c93e5bada0b494ba30" }
 
 [tool.ruff]
 target-version = "py312"
