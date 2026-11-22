@@ -1021,8 +1021,8 @@ them group D (ADR-078).
 
 ### `preprocess_precipitation.py`: IMGW precipitation
 
-Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator, the package `obserwator`
-at the pinned commit `4bf0ce3`, 3.1.0.dev0) for a grid of points inside a
+Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator 3.1.0, the package
+`obserwator` pinned by its tag `v3.1.0`, range `>=3.1.0,<4`) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 
@@ -1104,3 +1104,9 @@ ORDER BY threshold_m2;
    `tests/unit/test_process_dem_callers.py` (the DEM step before it).
 4. **Real downloads are not tested**: the offline test suite runs the real Kartograf against stubbed
    providers (`docs/integrations/KARTOGRAF.md` §10).
+5. **`analyze_watershed.py` cuts its storm into whole steps** (Hydrolog ADR-0046): `--timestep`
+   (default 5 min) must be above zero and divide both `--duration` (default 60 min), the storm
+   without PMAXTP data, and the PMAXTP duration nearest to it, the storm with them. Another step
+   stops the script before any work with exit 2 and a Polish message that suggests a step dividing
+   both (`--duration 50 --timestep 10`: the nearest PMAXTP duration is 45 min, the message
+   suggests `--timestep 5`). Test: `tests/unit/test_analyze_watershed_timestep.py`.

@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.24
-**Date:** 2026-11-21
+**Version:** 2.25
+**Date:** 2026-11-22
 **Status:** Approved
 
 ---
@@ -164,7 +164,7 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── _errors.py                 # The error registry of the Nogat standard 1.0, generated from schemas/nogat/error_registry.json by scripts/generate_errors.py (ERR-3)
+│   ├── _errors.py                 # The error registry of the Nogat standard 1.1, generated from schemas/nogat/error_registry.json by scripts/generate_errors.py (ERR-3)
 │   ├── active_run.py              # The pointer <output_dir>/active_run.json to the published run by PGW units, whose VRT mosaics the raster resolvers of core/config.py return (ADR-071)
 │   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile, the providers' lines of a result (provider_lines, ADR-083)
 │   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083, ADR-085): PMAXTP's PS, PP, M and the terms line RK, GUGiK's G with the dates of core/data_sources.py, ISRIC's SG; ProviderLines, merge, is_terms, data_lines
@@ -285,7 +285,7 @@ Response: 200 OK
 {
   "status": "healthy",
   "database": "connected",
-  "version": "0.5.0.dev0"
+  "version": "0.6.0"
 }
 ```
 `version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin status (`GET /api/admin/status`) reports the same.
@@ -550,7 +550,13 @@ Response: 400 validation_error (application/problem+json), e.g. for the rainfall
           is not a whole number of timestep_min, euler_ii_step_below_curve (reason not_covered)
           for an Euler II step under 5 min (Hydrolog ADR-0046, ADR-0042); Hydrolog's refusals of
           an input by the standard's reason (outside_physical_range, invalid_type,
-          precondition_failed with details.constraint; core/hydrolog_refusals.py)
+          precondition_failed with details.constraint; core/hydrolog_refusals.py):
+          formula_input_outside_physical_range, formula_input_invalid_type,
+          formula_physical_condition and formula_precondition_failed name the formula and
+          the input or the constraint; lutz_centroid_beyond_length (Lc ≤ L),
+          lutz_shares_over_area (U + W ≤ 100 %) and kerby_kirpich_overland_not_shorter (the
+          flow path longer than its overland segment) have sentences of their own; any other
+          refusal is invalid_parameters with Hydrolog's message
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
           delineated catchment and for one given in morphometry alike; lutz_parameters_missing
           and snyder_parameters_missing (reason missing_morphometry) without the longest flow
@@ -562,7 +568,6 @@ durations weighed as the design depth and multiplied by the user's areal reducti
 (ADR-088, Hydrolog ADR-0042); the hand-off's rainfall carries it as `depth_duration_mm`. Lutz's
 estimation reads `flow_path_length_km` and `flow_path_equal_area_slope_m_per_m` (ADR-088,
 Hydrolog ADR-0053), Snyder's L `flow_path_length_km` (Hydrolog ADR-0043).
-```
 
 `attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M) and the link to the PMAXTP terms (RK, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”); no summary of the terms (Nogat ECO-065); then G of the GUGiK data of the watershed with the dates of `instance.json` and SG with its soil groups (ADR-085). A product made with the result shows them visibly and carries them on (ADR-083).
 
@@ -787,12 +792,13 @@ Details: `core/watershed_service.py`
 - `zonal_bincount`, `zonal_min`, `zonal_max`, `zonal_elevation_histogram` (`np.bincount`, scipy): `generate_depressions.py` and the reference of `zonal_summary` in the tests
 
 #### 2.4.7 Hydrolog library (external)
-**Responsibilities:** (delegated to `hydrolog`, pinned by commit in `backend/pyproject.toml`, ADR-060)
+**Responsibilities:** (delegated to `hydrolog`, pinned by its tag `v0.9.0` in `backend/pyproject.toml`, REL-5.1; range `>=0.9.0,<0.10`)
 - Hyetograph generation (Beta, Block, Euler II)
 - SCS CN model (effective precipitation)
 - Unit hydrograph: SCS, Nash IUH, Snyder
 - Numerical convolution
 - Time of concentration (Kirpich, NRCS, Giandotti, FAA, Kerby, Kerby-Kirpich)
+- Equal-area slope of a longitudinal profile (`equal_area_slope`): Lutz's Jg of the longest flow path (`core/divide_flow_path.py`, ADR-088)
 
 Hydrograf calls Hydrolog through the endpoint `api/endpoints/hydrograph.py`:
 ```python
@@ -1214,7 +1220,7 @@ frontend/
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
 ├── nogat/                    # Copies of Nogat's GUI kit 1.1.0 (design/kit/, ADR-082 to ADR-086) — do NOT edit, copy them again
-│   ├── nogat-admin.js        # <nogat-admin> and its views „Zgłoszenia”, „Statystyki”, „Stan” (ES module, ADR-086)
+│   ├── nogat-admin.js        # <nogat-admin> and its views „Zgłoszenia”, „Statystyki” (the days shown saved as hydrograf_stats_<first>_<last>.csv, Nogat DEV-19.21), „Stan” (ES module, ADR-086)
 │   ├── nogat-admin.css       # Their styles, in the tokens
 │   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
@@ -1255,7 +1261,7 @@ frontend/
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
-    ├── rain-export.js        # Export of the hietogram (CSV, JSON) and of its PMAXTP points with weights (GeoJSON)
+    ├── rain-export.js        # Export of the hietogram (CSV, JSON) and of its PMAXTP points with weights (GeoJSON), named by Nogat DEV-19.21: hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>].csv/.json, hydrograf_pmaxtp-points_<…>.geojson; an own series hydrograf_hyetograph_custom.csv/.json
     ├── info.js               # (i) explanations: markers, shared panel, MathML formulas; opened by a click, a tap, Enter or Space, closed by the same (i), Esc or a click outside
     ├── info-texts.js         # 87 explanations (formula, variables, unit, meaning) keyed by an API field, a control id or a kind of the network's elements
     ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
@@ -1294,7 +1300,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **„Wybierz zlewnię” and its two options** (`app.js`, `setClickMode`; ADR-080, note of 2026-11-11) — while the mode is on, the radio group „Co wyznaczyć” sits at the top of the map (`#select-tools`, placed and styled like the drawing tools of „Profil terenu”, `.map-tools`, also on phones): „Jedna zlewnia” (the default; the click mode `select`) or „Sieć zlewni” (the click mode `network`). The button of the mode is on for both; it returns to the option chosen last in the page (`state.selectTarget`, not kept across reloads). Switching the option keeps both the watershed and the network.
 - **„Wybierz zlewnię” → „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — the first click places the closing section and every later click a point (at most 30), as draggable markers; a marker not yet in a preview shows the first free `P<n>` among the shown ids, which is also its handle in the request, so a problem names it as the map does, and after every preview each marker shows its node's id (`points[].node`: `J<n>` at a confluence, `P<n>` elsewhere). The closing section alone is a network: „Oblicz charakterystyki” needs no other point. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `POST /api/delineate-network/preview` (`api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” calls `POST /api/delineate-network` with the names and draws the closing section's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the option (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the closing section first, then the points by their ids, each with its name field and „w węźle sieci” when it was drawn to a node (`at_node`), the check of B5, the notices and the tree from the closing section upward (a node entered without a reach as „J4 → J1”; in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Jedna zlewnia” leaves the map in the option (`map.setWatershedShown`) and returns, with its sections, after it.
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. A watershed above 250 km² (`hydrograph_available` false) has no hietogram and hydrograph sections; the notice under the sections (`#hydrograph-limit`) gives that limit of SCS-CN and the watershed's area. Under the sections, `#hydrograph-notices` shows the `notices` of the hydrograph shown, one notice each (`hydrograph.js`, E5b-06); a new watershed takes them away. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc hides the panel as the × does and never clears the result.
-- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 75 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) follow Nogat DEV-15.14: a definition of one or two sentences, a formula (built as MathML through the DOM, without libraries) with the list „gdzie:” of the variables and their units and the unit of the result, how to read the value (`reading`) and „Źródła:”, at most about 400 characters without the formula and the sources; 67 of them link their longer explanation, a section `o-<key>` of the guide's part „Objaśnienia wielkości i metod” (`/instrukcja/#objasnienia-wielkosci`, static MathML), with „Więcej w instrukcji” in a new tab. The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice (`summary`); Hydrolog's warnings of a computed hydrograph, a value outside the typical range of its method, come from the API as `notices` and stand under the sections (right panel, above).
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 76 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) follow Nogat DEV-15.14: a definition of one or two sentences, a formula (built as MathML through the DOM, without libraries) with the list „gdzie:” of the variables and their units and the unit of the result, how to read the value (`reading`) and „Źródła:”, at most about 400 characters without the formula and the sources; 68 of them link their longer explanation, a section `o-<key>` of the guide's part „Objaśnienia wielkości i metod” (`/instrukcja/#objasnienia-wielkosci`, static MathML), with „Więcej w instrukcji” in a new tab. The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice (`summary`); Hydrolog's warnings of a computed hydrograph, a value outside the applicability range of its method or outside a range that awaits a published source, come from the API as `notices` and stand under the sections (right panel, above).
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
 - **The providers' lines** (`attribution.js`, ADR-083 and its amendment, ADR-085, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry and the short forms GK and SK of G and SG (for PMAXTP: PS and PP, two rows at 1440 px; up to 860 px one line cut with an ellipsis and „więcej”, which unfolds it in place, Nogat ECO-080), and „Źródła i warunki”, a dialog with every line (PS, PP, M, G, SG), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the delineated watershed and of the network, of the layers of Hydrograf's data that are on (the kinds of `layers` of `GET /api/terms`), of the results whose layer is on, of the point card and of the profile. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/terms` under its text (the kit's `fillSources`), ending on a public deployment with „Regulamin serwisu”, the welcome window's link to the regulamin. The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Snyder computes its own lag from L and Lc, so for Snyder „Metoda Tc” stays in view, disabled, with the note „Snyder nie używa Tc: …” instead of its applicability note, the request carries no `tc_method`, C or N, and the result table leaves out the Tc that the API still reports. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
@@ -2288,11 +2294,12 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.23
-**Date of the last update:** 2026-11-21
+**Document version:** 2.25
+**Date of the last update:** 2026-11-22
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.25 (2026-11-22): the release audit of 0.6.0 against the code: §2.1 `core/_errors.py` the registry of the Nogat standard 1.1; §2.2.1 the example `version` 0.6.0; §2.2.3 the message IDs of Hydrolog's refusals, and no code fence left open after the block; §2.4.7 Hydrolog pinned by its tag `v0.9.0`, the equal-area slope among its tasks; §4.1 the names of the downloads of `rain-export.js` and of the statistics of `nogat-admin.js` (Nogat DEV-19.21); §4.2.0 76 entries keyed by a field, a control or a kind, 68 with a section of the guide, the notices of a value outside the applicability range; the header and the footer 2.25 like this history (the footer said 2.23)
 - 2.24 (2026-11-21): the sources strip folded on a phone (Nogat ECO-080, step 4 of Nogat's plan `2026-11-21-phone-sources-strip`): §4.1 `nogat-terms-operator.md` among the kit's copies; §4.2.0 the strip is one line up to 860 px, „więcej” unfolds it; the header 2.24 like this history
 - 2.23 (2026-11-21): Hydrolog 0.9.0 (ADR-088; Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): §2.1 `core/formula_versions.py`, `core/hydrolog_refusals.py` and the equal-area slope of `core/divide_flow_path.py`; §2.2.3 the notice `outside_applicability`, `hydrolog_version` and `formula_versions`, the whole-step refusals, Hydrolog's refusals by the standard's reasons, Lutz and Snyder on the longest flow path, Euler II from the PMAXTP curve; §2.5 the equal-area slope on the filled DEM beside the flow path lines; §4.1 87 info texts; §4.2.0 the advanced mode's 16 fields with the equal-area slope; the header 2.23 like this history
 - 2.22 (2026-11-17): the defect fixes of 0.5.1: §2.2.1b PMAXTP's lines in `GET /api/terms` only with PMAXTP data (E5b-09); §5 the entrypoint waits and migrates only with a database (E4-03); §7.3 the healthcheck of nginx asks 127.0.0.1 (HG-E2E-02); §2.1 `core/hydrolog_notices.py`, §2.2.3 `notices` of the hydrograph and §4.2.0 `#hydrograph-notices` under the sections: Hydrolog's warnings in Polish (E5b-06)

@@ -15,7 +15,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Hydrographs | done | SCS-CN (AMC I–III, own rainfall series), SCS, Snyder and Nash (Lutz, urban regression) unit hydrographs of Hydrolog; tc only from Hydrolog on the inputs each method defines (C and N from the user); the hand-off to Hydrolog (ADR-068); PMAXTP design depth as the Thiessen mean of the watershed (ADR-069); limit 250 km². |
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
 | Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, in `develop` since `b38b657`; Hydroni's run 4 and, since 2026-11-12, production have them); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
-| Producers | done | `develop` pins the development heads of the release round of 2026-11-21, the commits of Nogat's release set candidate-11: Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0), with Kartograf `v0.8.2` (branch `chore/copies-round`, 2026-11-22, after `56771c6` and `de06926` of `chore/pins-round`; `feat/hydrolog-0.9.0`, Next 19, pinned `dbbbdb5` and `1a11df5`); the release commit replaces them with the tags of Hydrolog 0.9.0 and Obserwator 3.1.0. Hydrograf 0.5.2 pinned the tags of Nogat's release set candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`. On 2026-11-21 (read only) production's checkout was `a86e8ce` (release v0.5.1: Kartograf `v0.8.1`, Obserwator `v3.0.1`, Hydrolog `v0.8.1` in `hydro_api`) and Hydroni's `a46adb4` (candidate-3: Hydrolog `930915d`, Kartograf `d0990c8`, Obserwator `f9f4ee7`). The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
+| Producers | done | Hydrograf 0.6.0 pins the tags of the release round of 2026-11-21: Hydrolog `v0.9.0` (`>=0.9.0,<0.10`) and Obserwator `v3.1.0` (`>=3.1.0,<4`), with Kartograf `v0.8.2` (`>=0.8.0,<0.9`); before the release `develop` pinned their development heads, `dbbbdb5` and `1a11df5` (`feat/hydrolog-0.9.0`, Next 19), then `56771c6` and `de06926` (`chore/pins-round`) and `64f6e21` and `4bf0ce3` (`chore/copies-round`, 2026-11-22), the commits of Nogat's release set candidate-11. Hydrograf 0.5.2 pinned the tags of Nogat's release set candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`. On 2026-11-21 (read only) production's checkout was `a86e8ce` (release v0.5.1: Kartograf `v0.8.1`, Obserwator `v3.0.1`, Hydrolog `v0.8.1` in `hydro_api`) and Hydroni's `a46adb4` (candidate-3: Hydrolog `930915d`, Kartograf `d0990c8`, Obserwator `f9f4ee7`). The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
 | Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię (options „Jedna zlewnia” and „Sieć zlewni” over the map) / Profil terenu / Identyfikuj. The top-bar „Instrukcja” button opens the welcome dialog; the user guide is a scrolling page with a TOC and chapters, while `docs/Hydrograf-prezentacja.html` remains a slide deck. The welcome text and guide name the data area from `frontend/data/instance.json`; external analyses come from `frontend/data/results/index.json` (SFINCS), alongside the MZP overlay and `?v=` asset versions. Nogat's GUI kit 1.1.0 in `frontend/nogat/` (ADR-082 to ADR-086): the top-bar menu „Aplikacje” of the GUIs in `HYDROGRAF_GUI` or the table `gui` of NOGAT_CONFIG's file (`GET /api/gui`), the hand-off through `nogat-handoff.js`, the providers' strip, the regulamin template and the admin panel. |
 | Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the option „Sieć zlewni” of „Wybierz zlewnię” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended on 2026-11-11 by the plan `2026-11-11-network-nodes`: every point is a node, `J` at a confluence it is drawn to within 50 m up or down, `P` elsewhere, numbered from the closing section up, the outlet `O`; ADR-081); the plans `2026-11-10-network-delineation`, `2026-11-11-network-preview` and `2026-11-11-network-nodes` are done. Merged into `develop` with `feat/network-nodes` on 2026-11-11; networks above 60 M cells stay refused. Open methodology: Next 10. |
 | Admin panel | done | Step 3 of Nogat's plan `2026-11-13-admin-panel` (DEV-15.13, ECO-067, kit 0.7.0; ADR-086): `/admin/` is the kit's `<nogat-admin>` („Zgłoszenia”, „Statystyki”, „Stan”, then „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”), `/admin` answers 308, `/admin.html` and Bootstrap are gone; `status` (database, catchment graph, data directory) replaces `dashboard`, `stats` reads `stats.jsonl`; no generated key (`admin_key_not_configured`); admin answers `no-store`, the panel's requests limited, not counted. The reports of the old form keep their `legacy` member, which the kit's view does not show (Next 14). Merged into `develop` on 2026-11-14 (`aa975b0`) and deployed; Next 13. |
@@ -29,14 +29,15 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Dead and duplicated code | done | The author's request of 2026-11-14: functions without callers or only with their own tests, the re-exports of `scripts/process_dem.py`, settings and `config.yaml` keys that nothing read, the staging LAN binding of S7 and front-end functions and exports without callers removed (CHANGELOG, Removed); the rmtree helper, the sheet box and the map colour helpers have one implementation. Kept on purpose: the routes, validators and response fields that vulture flags, the reference functions of the equivalence tests (`zonal_min`, `zonal_elevation_histogram`, `normalize_elevation`), the CRS constants of TECHNICAL_DEBT and the old columns of the feedback (Next 14). `stream_catchments.hydraulic_length_km` is now written and never read: dropping it needs a migration. Merged into `develop` on 2026-11-14 (`f6f689e`). |
 | No footer | done | The author's decision of 2026-11-14 (Nogat DEV-15.7, DEV-15.8; ADR-084 amended): the footer and its statement are gone from the map and the guide; „Regulamin” is the last item of the rail (the bottom bar on phones) and of the guide's table of contents, besides the menu and the welcome window's „Regulamin serwisu”. `scripts/gate.sh` on `feat/no-footer`: 2,379 passed, 170 deselected, coverage 87.2 %. Merged into `develop` on 2026-11-14 (`bbd3792`) and deployed (production `1577dbc`). |
 | Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; on `feature/nogat-kit` (2026-11-12, merged as `48bf24a`): 2,244 passed, 170 deselected, coverage 87.0 %; on `fix/provider-attribution` (2026-11-13): 2,260 passed, 170 deselected, coverage 87.1 %; on `feature/public-gui` (2026-11-13): 2,323 passed, 170 deselected, coverage 87.5 %; on `feature/compact-sources` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; on `fix/minimal-provider-texts` (2026-11-13): 2,325 passed, 170 deselected, coverage 87.5 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
-| Documentation | in progress | Guide and slide screenshots refreshed from the current live UI on 2026-11-14; the documents of release v0.5.0 (CHANGELOG `[Unreleased]`, the pins → tags in CLAUDE.md, the integration documents and CROSS_PROJECT_ANALYSIS) on 2026-11-16, when README and CLAUDE.md were also brought within their budgets (DOC-1.7) by moving the deployment reference to `docs/USAGE.md`. The documents still in Polish are listed in Next 7, the local paths in Next 18. |
+| Documentation | in progress | Guide and slide screenshots refreshed from the current live UI on 2026-11-14; the documents of release v0.5.0 (CHANGELOG `[Unreleased]`, the pins → tags in CLAUDE.md, the integration documents and CROSS_PROJECT_ANALYSIS) on 2026-11-16, when README and CLAUDE.md were also brought within their budgets (DOC-1.7) by moving the deployment reference to `docs/USAGE.md`; the documents of release 0.6.0 checked against its code on 2026-11-22 (README, CLAUDE.md, the CHANGELOG, ARCHITECTURE, SCOPE, PRD, the integrations, INFO_TEXTS_SOURCES, the guide and the slides). The documents still in Polish are listed in Next 7, the local paths in Next 18. |
 | Release v0.5.0 | done | Released on 2026-11-16 as a member of the first joint release of the ecosystem (Nogat release set candidate-6; ECO-074): tag `v0.5.0` on `main` (`634fce6`). Its deployment to production is a separate step of the author's. |
-| Release v0.5.1 | in progress | Defect fixes only (the author's approval of 2026-11-17), on `fix/0.5.1` at `0.5.1.dev0`; the scope and the defects left are Next 5. |
+| Releases v0.5.1 and v0.5.2 | done | v0.5.1, defect fixes only (the author's approval of 2026-11-17; Next 5): tag `v0.5.1` (`a86e8ce`), 2026-11-18. v0.5.2, nginx 1.31.9 with the pinned images and Kartograf `v0.8.2` of Nogat's release set candidate-10: tag `v0.5.2` (`2f6da1d`), 2026-11-20. |
+| Release v0.6.0 | done | The adaptation to Hydrolog 0.9.0 with Nogat's kit 1.1.0, the file names of DEV-19.21, the standard 1.1 and the tags Hydrolog `v0.9.0`, Obserwator `v3.1.0` and Kartograf `v0.8.2` (Next 19); a member of Nogat's release set 0.2.0. The author decided on 2026-11-21 that 0.6.0 holds only this; what was planned for 0.6.0 before is 0.7.0 (Next 5). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
 
 ### Production
 
-- **Code:** checkout `~/workspace/Hydrograf`, local `develop` (0.5.0.dev0) fast-forwarded on 2026-11-15 to `1577dbc` (the merge of `fix/nginx-resolve`, which gives `resolve` in the nginx upstream to pick up new IPs without reloading the server) with a new image `hydrograf-api:latest` built from it. The default compose project (`hydro_db`, `hydro_api`, `hydro_nginx`) with the development override: the code is mounted from the checkout and served with `--reload`, so an edit there reaches the live API, and the files must be readable by uid 999 (check out under `umask 022`). `docker/nginx.conf` is mounted as one file.
+- **Code:** checkout `~/workspace/Hydrograf`, detached at `a86e8ce` (release v0.5.1) when read on 2026-11-21 (read only); before, its local `develop` (0.5.0.dev0) was fast-forwarded on 2026-11-15 to `1577dbc` (the merge of `fix/nginx-resolve`, which gives `resolve` in the nginx upstream to pick up new IPs without reloading the server) with a new image `hydrograf-api:latest` built from it. The default compose project (`hydro_db`, `hydro_api`, `hydro_nginx`) with the development override: the code is mounted from the checkout and served with `--reload`, so an edit there reaches the live API, and the files must be readable by uid 999 (check out under `umask 022`). `docker/nginx.conf` is mounted as one file.
 - **GUI kit:** on 2026-11-12, at the author's request, `develop` took `feature/nogat-kit` (`48bf24a`, ADR-082) and the checkout followed; `.env` gained `HYDROGRAF_GUI` with the public addresses of Hydrograf, Hydrolog (`https://hydrolog-test.debever.pl/`), Archiwista (`https://archiwista-test.debever.pl/`) and Obserwator (`https://obserwator-test.debever.pl/`, a placeholder for now), and `hydro_api` was recreated (`docker compose up -d --no-deps api`). `GET /api/gui` answers the table and the public page shows „Aplikacje”.
 - **Hydrolog:** develop `e5df06d` (version 0.8.0.dev0, the author's decision 2026-11-14) in production's image and served at `127.0.0.1:8070`; `develop` pins `3ce7ee8` of candidate-5 since 2026-11-15 (the hand-off from Hydrograf routes the network; Hydrolog ADR-0026 warns `diffusion_dominated` where Muskingum-Cunge cannot grid a reach as linear reservoirs).
 - **Public service:** `.env` names `NOGAT_CONFIG` and `NOGAT_STATE_DIR`; `~/.config/nogat/nogat.toml` has `[nogat.operator]` with `terms_effective = 2026-11-14`, mounted into the API at `/config/nogat.toml`; the API writes its access and lifecycle records to `~/.local/state/nogat/hydrograf/logs/` (`/state/hydrograf` in the container); `frontend/data/instance.json` was written again on 2026-11-14 at 08:32 UTC with the `sources` that date G; the SFINCS entry of `frontend/data/results/index.json` carries PS, PP, M and RK.
@@ -90,15 +91,14 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    later flights may replace them). The report to GUGiK is the author's step: the draft
    `/mnt/magazyn/agent-tmp/Hydroni/sprawdzenie/zgloszenie_gugik_nmt5m.md` (Polish, not proofread;
    the list of the 81 sheets has to be generated again before it is sent).
-5. **Release v0.5.1, defect fixes only.** v0.5.0 is released (tag `v0.5.0` on `main`, `634fce6`,
-   2026-11-16). The author approved on 2026-11-17 a patch of defect fixes only, released after
-   Hydrolog 0.8.1 (REL-6.6; Nogat's PROGRESS Next 7): branch `fix/0.5.1` from `develop`, at
-   `0.5.1.dev0`, one commit per fix, nothing merged, tagged or released until the author approves;
-   the pins stay at the tags of v0.5.0 until the coordinator's pin commit. Known defects, by the
-   IDs of the scenario test of 2026-11-15/16 (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4,
-   owners §6; none of C1–C7 of Nogat's run of candidate-5 is Hydrograf's) and of the external test
-   report of 2026-11-02 (A2, B2, B3); *0.5.1* marks the scope of the patch, *fixed* what
-   `fix/0.5.1` fixed (CHANGELOG `[Unreleased]`):
+5. **Defects of the scenario test of 2026-11-15/16 left after 0.5.1.** v0.5.1, the patch of
+   defect fixes only that the author approved on 2026-11-17, was released on 2026-11-18 (tag
+   `v0.5.1`); 0.6.0 is the adaptation to Hydrolog 0.9.0 alone (Next 19), so what is left waits
+   for 0.7.0 or later. Known defects, by the IDs of the scenario test of 2026-11-15/16
+   (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4, owners §6; none of C1–C7 of Nogat's run
+   of candidate-5 is Hydrograf's) and of the external test report of 2026-11-02 (A2, B2, B3);
+   *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *0.5.1* what was in its scope and is
+   still open, *0.7.0* what is planned for 0.7.0:
    - *Large basins (0.7.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
      E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
@@ -215,9 +215,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     menu is drawn. With the kit a copy on a plain-HTTP address no longer tries
     `document.execCommand('copy')`: the text is selected for Ctrl+C (Nogat D6); a one-click copy
     there would be a change of the kit in Nogat.
-13. **The deployments of 2026-11-13 to 2026-11-15.** Production runs `1577dbc` (Production): the
-    providers' lines and their strip, the linked terms, the public service, the corrected
-    regulamin with G and SG, the logs of ECO-066, the admin panel and no footer. Left:
+13. **The deployments of 2026-11-13 to 2026-11-15.** Production ran `1577dbc` from 2026-11-15
+    and `a86e8ce` (v0.5.1) on 2026-11-21 (Producers): the providers' lines and their strip, the
+    linked terms, the public service, the corrected regulamin with G and SG, the logs of
+    ECO-066, the admin panel and no footer. Left:
     - Cloudflare Access on `/admin`, `/admin/*` and `/api/admin/*` (ADR-086; `/admin.html` is
       gone): the author's step, not visible from here;
     - the old journal entries of `hydro_api` and `hydro_nginx` stay until root removes them
@@ -241,9 +242,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 15. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
-    endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
-    sheet selection of `--boundary-file`, SQLAlchemy 2.1, named volumes, the Opolskie data (D6)
-    and the ADR on NMT sheet versions.
+    endpoints proposed for v0.5.x, clipping the presented data to the boundary, the GPT items
+    B6–B15, the sheet selection of `--boundary-file`, SQLAlchemy 2.1, named volumes, the
+    Opolskie data (D6) and the ADR on NMT sheet versions.
 16. **The SFINCS layer's (i) by Nogat DEV-15.14** (the author's request of 2026-11-14): the (i) of
     a result is the manifest's `description` and `source`, outside Git, so production's
     `frontend/data/results/index.json` gets, for `sfincs-kamiennik-24h-p1`, `description` „Największa
@@ -255,51 +256,26 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     (SFINCS); dane: IMGW-PIB (PMAXTP), GUGiK (NMT, BDOT10k), ISRIC SoilGrids (CC BY 4.0)”. The
     assumptions of the run moved to the guide's `#sfincs`. Its `attribution` has PS, PP and M but
     not G and SG of the NMT, BDOT10k and SoilGrids the run used (Open questions 11).
-17. **Admin panel re-processing from a store** (the author's decision 2026-11-15): the panel's `/bootstrap/start` refuses to run when `HYDROGRAF_KARTOGRAF_ROOT` is set, preventing re-processing from an Archiwista store. The fix is scheduled for the release after the first joint release. Not urgent.
+17. **Admin panel re-processing from a store** (the author's decision 2026-11-15): the panel's `/bootstrap/start` refuses to run when `HYDROGRAF_KARTOGRAF_ROOT` is set, preventing re-processing from an Archiwista store. Not fixed in 0.5.1 or 0.6.0. Not urgent.
 18. **Local paths in the documents** (DOC-1.4): this file (Production, Hydroni instance, Other
     places, Next 1, 4, 5, 11, 14), `docs/runbooks/`, `docs/plans/`, BACKLOG, TECHNICAL_DEBT,
     `docs/integrations/KARTOGRAF.md`, the CHANGELOG and ADR-066, ADR-067, ADR-070 and ADR-071
     name directories of the author's machines (`~/workspace/…`, `~/data/…`, `/mnt/magazyn/…`,
     `/data/nmt/…`). The accepted ADRs keep them (DOC-8.1); the other documents are to name
     such places by role, with the machine's paths kept outside Git.
-19. **Hydrolog 0.9.0 and Obserwator 3.1.0** (step 2 of Nogat's plan
-    `2026-11-19-hydrolog-0.9.0-consumers`, branch `feat/hydrolog-0.9.0`, pushed, not merged;
-    CHANGELOG `[Unreleased]`; ADR-088 proposed): done on the branch. The pins `dbbbdb5` and
-    `1a11df5`, since 2026-11-22 `64f6e21` and `4bf0ce3` of Nogat's release set candidate-11
-    (Kartograf `v0.8.2` kept); the equal-area slope Jg on the saved filled DEM at
-    request time; Lutz and Snyder on the longest flow path; Euler II from the PMAXTP curve,
-    scaled as a whole by the own ARF; whole steps in the API and in `analyze_watershed.py`;
-    Hydrolog's refusals and its notices in Polish (also the new `scs_cn_runoff` and
-    `nash_urban_regression` ranges); `formula_versions` and `hydrolog_version`, tested against
-    the envelope of Hydrolog's `run_command`; the schema copy of Nogat `2bbb507`; the GUI (the
-    row and the advanced field of Jg, „Euler II”, the (i) texts, guide and slides of Euler II,
-    Lutz and Snyder, Hydrolog's constants and ranges, `docs/INFO_TEXTS_SOURCES.md`); the
-    documents (COMPUTATION_PIPELINE with Strahler's HI stages 0.35/0.60, ARCHITECTURE,
-    DATA_MODEL, the integrations, CROSS_PROJECT_ANALYSIS, SCOPE). Merged into `develop`
-    (`d23cb02`). Waiting for the author: ADR-088 and the version (still 0.5.2); Nogat's kit
-    copy is Next 20. The author decided on 2026-11-21 that release 0.6.0 holds only this
-    adaptation to Hydrolog 0.9.0, with the pins and the kit copy of this round; what was
-    planned for 0.6.0 before moves to 0.7.0 (Next 5). Deployment: Lutz needs the
-    saved `dem_mosaic_02_filled` of the instance's run; production and Hydroni have it on the
-    grid of their labels (checked read only on 2026-11-21), so both compute Lutz once deployed.
-    Hydroni's parameter exports for the author lack Jg until they are made again.
-20. **The sources strip folded on a phone** (step 4 of Nogat's plan
-    `2026-11-21-phone-sources-strip`, Nogat ECO-080; branch `feat/phone-sources-strip`, pushed,
-    not merged): Nogat's kit 1.1.0 copied whole from Nogat `4d755ee` (`develop`; ECO-080 to
-    ECO-083: `nogat-sources.js` and `.css` of `5f8cce0`, the regulamin's ČHMÚ block `chmu`,
-    the draft `nogat-terms-operator.md`, which no page links, the hand-off file
-    `hydrograf_handoff_<subject>.json` and the statistics file
-    `hydrograf_stats_<first>_<last>.csv` of DEV-19.21, and `nogat-kit.json`), and
-    `error_registry.json` from Nogat `975136e` (standard 1.1, only `standard_version`
-    changes; `core/_errors.py` generated again). Up to 860 px the strip is one line with
-    „więcej”; at 390 × 844 px the foot of the view is 26 px with PS, PP and GK folded, 127 px
-    unfolded, and the sheets follow it; 1440 px is unchanged (checked in Chromium on the
-    static pages). Hydrograf has no browser tests; the kit's hashes are checked by
-    `tests/contract/test_frontend_kit.py`. The same branch takes step 4 of Nogat's plan
-    `2026-11-21-download-file-names` (DEV-19.21; ADR-082 amended): the files of „Hietogram”
-    are `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>].csv`/`.json` and
-    `hydrograf_pmaxtp-points_<…>.geojson`, with a decimal point, and ČHMÚ's CP is
-    `CHMU_PROCESSED` (ECO-082). Waiting for the author: the merge and a deployment.
+19. **Deploy 0.6.0** (done, in 0.6.0; CHANGELOG 0.6.0). The author decided on 2026-11-21 that
+    0.6.0 holds only the adaptation to Hydrolog 0.9.0 (step 2 of Nogat's plan
+    `2026-11-19-hydrolog-0.9.0-consumers`, merged from `feat/hydrolog-0.9.0` as `d23cb02`) with
+    the pins of the round, Nogat's kit 1.1.0, the sources strip folded on a phone (Nogat
+    ECO-080) and the file names of DEV-19.21 (step 4 of Nogat's plans
+    `2026-11-21-phone-sources-strip` and `2026-11-21-download-file-names`, merged from
+    `feat/phone-sources-strip` as `3a4ecf9`); what was planned for 0.6.0 before is 0.7.0
+    (Next 5). Left for the author: ADR-088 (Open questions 16) and the deployment. Lutz needs
+    the saved `dem_mosaic_02_filled` of the instance's run; production and Hydroni have it on
+    the grid of their labels (checked read only on 2026-11-21), so both compute Lutz once 0.6.0
+    is deployed; Hydroni's parameter exports for the author lack Jg until they are made again.
+    The folded strip was checked in Chromium at 390 × 844 px on the static pages (Hydrograf has
+    no browser tests; `tests/contract/test_frontend_kit.py` checks the kit's hashes).
 
 ## Open questions
 
@@ -328,8 +304,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     `2026-11-13-gui-terms` proposes (§ 8 of the regulamin deletes a report once it is handled)?
     The operator decides; until then they stay.
 13. Nogat's `handoff-1.schema.json` does not name `result.computed_with.formula_versions`,
-    which Hydrograf's hand-offs carry since the branch of Next 19 (the object accepts
-    additional properties, so the copy validates). Should Nogat's schema describe it?
+    which Hydrograf's hand-offs carry since 0.6.0 (Next 19; the object accepts additional
+    properties, so the copy validates). Should Nogat's schema describe it?
 14. `negative_quantiles` (Hydrolog 0.9.0's notice of low-flow quantiles below zero) has no
     Polish text in `core/hydrolog_notices.py`: Hydrograf computes no low flows, so no request
     can get it. Confirm that it needs none.
