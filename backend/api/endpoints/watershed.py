@@ -38,6 +38,7 @@ from core.errors import (
     NotFoundError,
     StoreUnavailableError,
 )
+from core.formula_versions import formula_versions, watershed_specs
 from core.handoff import (
     build_handoff,
     delineated_origin,
@@ -228,6 +229,13 @@ def _build_watershed_response(
             flow_paths.divide, "divide_flow_path"
         ),
         pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
+        formula_versions=formula_versions(
+            watershed_specs(
+                cn_from_land_cover=lc_stats is not None,
+                equal_area_slope=morph_dict.get("flow_path_equal_area_slope_m_per_m")
+                is not None,
+            )
+        ),
     )
 
 
