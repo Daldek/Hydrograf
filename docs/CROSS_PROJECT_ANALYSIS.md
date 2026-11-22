@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-21 (the development pins of the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2: Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), Kartograf the tag `v0.8.2`; Hydrograf 0.5.0 to 0.5.2 pinned tags, 0.5.2 those of Nogat's release set candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`; the imports of Hydrolog's equal-area slope, formula specs, catalog of notices and refusals in §3.1); 2026-11-15 (Kartograf pinned to `e14bc78`, the candidate-5 head of its `develop` after its documentation fixes); 2026-11-15 (the pins follow the release set candidate-5 of Nogat: Obserwator `f4f6a8d`, Kartograf `c9afdd3`, Hydrolog `3ce7ee8`; production runs Obserwator `0394af7`, Kartograf `c9afdd3` and Hydrolog `e5df06d`, Hydroni candidate-3); 2026-11-15 (Hydrolog pinned to `e5df06d`, the head of its `develop` at 0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds `9e2cb61`; production runs these pins, Hydroni candidate-3); 2026-11-14 (the pins follow the release set candidate-4 of Nogat: Obserwator `0394af7`, Kartograf `c9afdd3`, Hydrolog `9e2cb61`; production and Hydroni still run candidate-3); 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-22 (the pins of Nogat's release set candidate-11: Hydrolog `56771c6` (0.9.0.dev6) and Obserwator `de06926` (3.1.0.dev0), Kartograf the tag `v0.8.2`); 2026-11-21 (the development pins of the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2: Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), Kartograf the tag `v0.8.2`; Hydrograf 0.5.0 to 0.5.2 pinned tags, 0.5.2 those of Nogat's release set candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`; the imports of Hydrolog's equal-area slope, formula specs, catalog of notices and refusals in §3.1); 2026-11-15 (Kartograf pinned to `e14bc78`, the candidate-5 head of its `develop` after its documentation fixes); 2026-11-15 (the pins follow the release set candidate-5 of Nogat: Obserwator `f4f6a8d`, Kartograf `c9afdd3`, Hydrolog `3ce7ee8`; production runs Obserwator `0394af7`, Kartograf `c9afdd3` and Hydrolog `e5df06d`, Hydroni candidate-3); 2026-11-15 (Hydrolog pinned to `e5df06d`, the head of its `develop` at 0.8.0.dev0, the author's version of 2026-11-14; candidate-4 holds `9e2cb61`; production runs these pins, Hydroni candidate-3); 2026-11-14 (the pins follow the release set candidate-4 of Nogat: Obserwator `0394af7`, Kartograf `c9afdd3`, Hydrolog `9e2cb61`; production and Hydroni still run candidate-3); 2026-11-14 (audit against the code of 2026-11-14, see the end of the document); 2026-11-11 (Hydroni runs `develop` `824bebd` with these pins; production still runs `894810c`; 2026-11-10: Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni then ran `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  1a11df5      │   │   v0.8.2      │   │   dbbbdb5     │              │
+│  │  de06926      │   │   v0.8.2      │   │   56771c6     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,22 +30,22 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit 1a11df5 (3.1.0.dev0), range `>=3.0.0,<4` |
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit de06926 (3.1.0.dev0), range `>=3.0.0,<4` |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | tag v0.8.2 (0.8.2), range `>=0.8.0,<0.9` |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit dbbbdb5 (0.9.0.dev5), range `>=0.9.0.dev5,<0.10` |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 56771c6 (0.9.0.dev6), range `>=0.9.0.dev5,<0.10` |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-Hydrolog and Obserwator are pinned by the heads of their `develop` for the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): Hydrolog 0.9.0.dev5 and Obserwator 3.1.0.dev0, not tagged yet; Kartograf by its tag `v0.8.2` of Nogat's release set candidate-10 (REL-5.3, ADR-060, ADR-061). The release commit replaces the two commits with the tags of Hydrolog 0.9.0 and Obserwator 3.1.0, within the ranges `>=0.9.0.dev5,<0.10` and `>=3.0.0,<4` of `dependencies` (Kartograf `>=0.8.0,<0.9`; REL-5.6). Hydrograf 0.5.0 to 0.5.2 pinned tags; 0.5.2 those of candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`.
+Hydrolog and Obserwator are pinned by the heads of their `develop` for the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2), the commits of Nogat's release set candidate-11: Hydrolog 0.9.0.dev6 and Obserwator 3.1.0.dev0, not tagged yet; Kartograf by its tag `v0.8.2` of Nogat's release sets candidate-10 and candidate-11 (REL-5.3, ADR-060, ADR-061). The release commit replaces the two commits with the tags of Hydrolog 0.9.0 and Obserwator 3.1.0, within the ranges `>=0.9.0.dev5,<0.10` and `>=3.0.0,<4` of `dependencies` (Kartograf `>=0.8.0,<0.9`; REL-5.6). Hydrograf 0.5.0 to 0.5.2 pinned tags; 0.5.2 those of candidate-10: Kartograf `v0.8.2`, Obserwator `v3.0.1`, Hydrolog `v0.8.1`.
 
 ```toml
 # [tool.uv.sources]
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1a11df5fb217ddd4b5b167bfa2d44e37d171f419" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "de06926d38e6040f31ef7a82767a6fe20aa26b2e" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.2" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "dbbbdb5a6d8d9d4e0125178cb00ce2920709b672" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "56771c68c76fcb9ed13a5f13b46852f6fe571140" }
 ```
 
 ---
@@ -398,4 +398,4 @@ fail_under = 80
 
 ---
 
-**Last update:** 2026-11-21 (the pins of the release round of 2026-11-21 in §1 and §2 and the new imports of Hydrolog in §3.1; see the header). Before: 2026-11-14 (audit against the code of 2026-11-14: the imports of the producers in §3, the build and dependency rows of Hydrograf in §5 and §6, the deleted `DEVELOPMENT_STANDARDS.md`, the Nogat standard 1.0 in §10, the admin panel of ADR-086); 2026-10-25 (the producers pinned on their heads, the Kartograf 0.8.0 migration, ADR-060, ADR-061; translated to English); 2026-03-25 (session 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 tests).
+**Last update:** 2026-11-22 (the pins of Nogat's release set candidate-11 in §1; see the header). Before: 2026-11-21 (the pins of the release round of 2026-11-21 in §1 and §2 and the new imports of Hydrolog in §3.1); 2026-11-14 (audit against the code of 2026-11-14: the imports of the producers in §3, the build and dependency rows of Hydrograf in §5 and §6, the deleted `DEVELOPMENT_STANDARDS.md`, the Nogat standard 1.0 in §10, the admin panel of ADR-086); 2026-10-25 (the producers pinned on their heads, the Kartograf 0.8.0 migration, ADR-060, ADR-061; translated to English); 2026-03-25 (session 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 tests).

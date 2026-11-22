@@ -98,13 +98,13 @@ package = false
 
 [tool.uv.sources]
 # The heads of Hydrolog's and Obserwator's `develop` for the release round of 2026-11-21
-# (Nogat plan 2026-11-19-hydrolog-0.9.0-consumers, step 2): Hydrolog 0.9.0.dev5 and
-# Obserwator 3.1.0.dev0, not tagged yet (REL-5.3), and Kartograf v0.8.2 of release set
-# candidate-10; the release commit replaces the commits with the tags. Both commits are
-# on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1a11df5fb217ddd4b5b167bfa2d44e37d171f419" }
+# (Nogat plan 2026-11-19-hydrolog-0.9.0-consumers, step 2), the commits of Nogat's release
+# set candidate-11: Hydrolog 0.9.0.dev6 and Obserwator 3.1.0.dev0, not tagged yet
+# (REL-5.3), and Kartograf v0.8.2; the release commit replaces the commits with the tags.
+# Both commits are on GitHub.
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "de06926d38e6040f31ef7a82767a6fe20aa26b2e" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.2" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "dbbbdb5a6d8d9d4e0125178cb00ce2920709b672" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "56771c68c76fcb9ed13a5f13b46852f6fe571140" }
 
 [tool.ruff]
 target-version = "py312"

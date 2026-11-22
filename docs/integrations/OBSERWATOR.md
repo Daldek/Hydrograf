@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
-**Wersja:** 1.6
-**Data:** 2026-11-21 (the pin `1a11df5`, 3.1.0.dev0, the head of Obserwator's `develop` for the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2; was the tag `v3.0.1` of Hydrograf 0.5.2, Nogat's release set candidate-10: between `v3.0.1` and `1a11df5` only the docstrings of `fetch_pmaxtp` and `build_pmaxtp_url` change, PMAXTP being IMGW-PIB's quantiles and not the PMP of WMO-No. 1045; `exceptions.py`, `PMaXTPResult` and `PMaXTPData` are unchanged). 2026-11-15 (the pin `f4f6a8d` of the release set candidate-5 of Nogat, was `0394af7`: Obserwator adds the synop daily data and builds its analyses; `fetch_pmaxtp` and the three exceptions Hydrograf catches are unchanged). 2026-11-14 (the pin `0394af7` of the release set candidate-4 of Nogat, was `f9f4ee7`: Obserwator splits its store into a raw root and a data root, its ADR-017, takes the station details of hydro.imgw.pl, its ADR-021, and adds its GUI and stored analyses; `fetch_pmaxtp`, which reads no store, and the three exceptions Hydrograf catches are unchanged). 2026-11-14 (audit against the code of 2026-11-14: the pin `f9f4ee7` is that of the release set candidate-3 of Nogat; the `source` column holds `IMGW_PMAXTP` and only the KS quantiles are stored; `PMaXTPResult`; `ObserwatorValidationError` of `get_precipitation`; `GET /api/scenarios` in `api/endpoints/hydrograph.py`; the scope of the tests). 2026-11-10: Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`), and imports the package `obserwator`
+**Wersja:** 1.7
+**Data:** 2026-11-22 (the pin `de06926`, 3.1.0.dev0, the head of Obserwator's `develop` in Nogat's release set candidate-11, was `1a11df5`: Obserwator names ČHMÚ `chmu` and IMGW-PIB `IMGW` in its identifiers, Nogat ECO-082; `fetch_pmaxtp`, `urls.py`, `exceptions.py`, `PMaXTPResult` and `PMaXTPData` are unchanged, and of `fetch.py` only the docstring of `download_archives` changes). 2026-11-21 (the pin `1a11df5`, 3.1.0.dev0, the head of Obserwator's `develop` for the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2; was the tag `v3.0.1` of Hydrograf 0.5.2, Nogat's release set candidate-10: between `v3.0.1` and `1a11df5` only the docstrings of `fetch_pmaxtp` and `build_pmaxtp_url` change, PMAXTP being IMGW-PIB's quantiles and not the PMP of WMO-No. 1045; `exceptions.py`, `PMaXTPResult` and `PMaXTPData` are unchanged). 2026-11-15 (the pin `f4f6a8d` of the release set candidate-5 of Nogat, was `0394af7`: Obserwator adds the synop daily data and builds its analyses; `fetch_pmaxtp` and the three exceptions Hydrograf catches are unchanged). 2026-11-14 (the pin `0394af7` of the release set candidate-4 of Nogat, was `f9f4ee7`: Obserwator splits its store into a raw root and a data root, its ADR-017, takes the station details of hydro.imgw.pl, its ADR-021, and adds its GUI and stored analyses; `fetch_pmaxtp`, which reads no store, and the three exceptions Hydrograf catches are unchanged). 2026-11-14 (audit against the code of 2026-11-14: the pin `f9f4ee7` is that of the release set candidate-3 of Nogat; the `source` column holds `IMGW_PMAXTP` and only the KS quantiles are stored; `PMaXTPResult`; `ObserwatorValidationError` of `get_precipitation`; `GET /api/scenarios` in `api/endpoints/hydrograph.py`; the scope of the tests). 2026-11-10: Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`), and imports the package `obserwator`
 **Status:** Aktywna
 
 ---
@@ -10,7 +10,7 @@
 
 Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/Obserwator) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
-**Pin i pakiet:** Hydrograf pins the commit `1a11df5` of Obserwator (version 3.1.0.dev0, the head of its `develop` for the release round of 2026-11-21; Hydrograf 0.5.0 to 0.5.2 pinned its tags, 0.5.2 `v3.0.1`) and imports the package `obserwator` (`fetch_pmaxtp`, the exceptions `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki. `fetch_pmaxtp` asks IMGW-PIB directly and reads no store, so Obserwator's raw and data roots (its ADR-017, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`) are not set for Hydrograf.
+**Pin i pakiet:** Hydrograf pins the commit `de06926` of Obserwator (version 3.1.0.dev0, the head of its `develop` for the release round of 2026-11-21, Nogat's release set candidate-11; Hydrograf 0.5.0 to 0.5.2 pinned its tags, 0.5.2 `v3.0.1`) and imports the package `obserwator` (`fetch_pmaxtp`, the exceptions `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki. `fetch_pmaxtp` asks IMGW-PIB directly and reads no store, so Obserwator's raw and data roots (its ADR-017, `OBSERWATOR_RAW_ROOT`, `OBSERWATOR_ROOT`) are not set for Hydrograf.
 
 ### 1.1 Co to jest Obserwator?
 
@@ -285,18 +285,18 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 ```
 # In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "obserwator>=3.0.0,<4"):
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1a11df5fb217ddd4b5b167bfa2d44e37d171f419" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "de06926d38e6040f31ef7a82767a6fe20aa26b2e" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/Obserwator
-- **Branch:** `develop` (on GitHub; the pin is its head for the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2)
-- **Wersja:** 3.1.0.dev0 (untagged), commit `1a11df5fb217ddd4b5b167bfa2d44e37d171f419`; against `v3.0.1`, the tag of Hydrograf 0.5.2, `fetch_pmaxtp` (`fetch.py`) and `build_pmaxtp_url` (`urls.py`) change only in their docstrings, and `exceptions.py` and the PMAXTP models are unchanged
+- **Branch:** `develop` (on GitHub; the pin is its head for the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2, and Nogat's release set candidate-11)
+- **Wersja:** 3.1.0.dev0 (untagged), commit `de06926d38e6040f31ef7a82767a6fe20aa26b2e`; against `v3.0.1`, the tag of Hydrograf 0.5.2, `fetch_pmaxtp` (`fetch.py`) and `build_pmaxtp_url` (`urls.py`) change only in their docstrings, and `exceptions.py` and the PMAXTP models are unchanged
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release commit replaces it with the tag of Obserwator 3.1.0, within the range `obserwator>=3.0.0,<4` (REL-5.3, REL-5.6).
 
 ---
 
-**Wersja dokumentu:** 1.6
-**Ostatnia aktualizacja:** 2026-11-21
+**Wersja dokumentu:** 1.7
+**Ostatnia aktualizacja:** 2026-11-22
