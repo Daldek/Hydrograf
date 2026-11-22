@@ -995,7 +995,7 @@ wheels = [
 
 [[package]]
 name = "hydrograf"
-version = "0.5.2"
+version = "0.6.0"
 source = { virtual = "." }
 dependencies = [
     { name = "affine" },
@@ -1058,12 +1058,12 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=829261ae3ee4ff2d510c61c93e5bada0b494ba30" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?tag=v0.9.0" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?tag=v0.8.2" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
-    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=e66d4737aae2c5eff87198efe8864284402a8d4f" },
+    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?tag=v3.1.0" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "platformdirs", specifier = ">=4.2" },
@@ -1099,8 +1099,8 @@ dev = [
 
 [[package]]
 name = "hydrolog"
-version = "0.9.0.dev6"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=829261ae3ee4ff2d510c61c93e5bada0b494ba30#829261ae3ee4ff2d510c61c93e5bada0b494ba30" }
+version = "0.9.0"
+source = { git = "https://github.com/Daldek/Hydrolog.git?tag=v0.9.0#6520f487bf76907546a49ca5df22b8567cb19ec5" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1773,8 +1773,8 @@ wheels = [
 
 [[package]]
 name = "obserwator"
-version = "3.1.0.dev0"
-source = { git = "https://github.com/Daldek/Obserwator.git?rev=e66d4737aae2c5eff87198efe8864284402a8d4f#e66d4737aae2c5eff87198efe8864284402a8d4f" }
+version = "3.1.0"
+source = { git = "https://github.com/Daldek/Obserwator.git?tag=v3.1.0#0ce9514c5d057ee9be7b03cdda1e44c0dd117990" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
