@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Hydrolog 0.9.0 (`dbbbdb5`, 0.9.0.dev5) and Obserwator 3.1.0 (`1a11df5`, 3.1.0.dev0) of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2); Kartograf stays `v0.8.2`. Of Obserwator 3.1.0 Hydrograf calls only `fetch_pmaxtp` and its three exceptions, whose texts alone changed.
+Hydrolog 0.9.0 (`56771c6`, 0.9.0.dev6) and Obserwator 3.1.0 (`de06926`, 3.1.0.dev0) of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2; the commits of Nogat's release set candidate-11, were `dbbbdb5` and `1a11df5`); Kartograf stays `v0.8.2`. Of Obserwator 3.1.0 Hydrograf calls only `fetch_pmaxtp` and its three exceptions, whose texts alone changed.
 
 ### Added
 - **The equal-area slope of the longest flow path, `flow_path_equal_area_slope_m_per_m`** (Lutz's Jg; Hydrolog ADR-0053; `core/divide_flow_path.py`, `core/watershed_service.py`, `core/cell_parameters.py`, `models/schemas.py`, `core/handoff.py`, `scripts/export_catchment_parameters.py`): S = 2A/L² of the longitudinal profile of the same D8 path as `flow_path_length_km` on the filled DEM of the run (`dem_mosaic_02_filled`), A the area of the profile above the elevation of its end below the outlet, by the trapezoid rule (Hydrolog's `equal_area_slope`). The morphometry of a delineation, of each element of a network and of the parameters export carries it, and so does the watershed of every hand-off to Hydrolog; null without the filled DEM or for a profile that does not rise above its end.
