@@ -37,12 +37,13 @@
  *
  * Every formula, unit and statement about what Hydrograf computes follows
  * the code: Hydrograf backend (core/catchment_graph.py,
- * core/watershed_service.py, core/morphometry.py, core/land_cover.py,
- * core/precipitation.py, api/endpoints/hydrograph.py; the network:
- * core/network_tree.py, core/network_delineation.py, core/handoff.py) and
- * Hydrolog, the version the backend pins (docs/INFO_TEXTS_SOURCES.md,
- * "Wersja Hydrologu"; time/concentration.py, morphometry/watershed_params.py,
- * runoff/*.py, precipitation/hietogram.py, routing/cunge.py). Hydrological
+ * core/watershed_service.py, core/divide_flow_path.py, core/morphometry.py,
+ * core/land_cover.py, core/precipitation.py, api/endpoints/hydrograph.py; the
+ * network: core/network_tree.py, core/network_delineation.py,
+ * core/handoff.py) and Hydrolog, the version the backend pins
+ * (docs/INFO_TEXTS_SOURCES.md, "Wersja Hydrologu"; time/concentration.py,
+ * morphometry/watershed_params.py, morphometry/profile.py, runoff/*.py,
+ * precipitation/hietogram.py, routing/cunge.py). Hydrological
  * statements rest on the literature in `sources`; every claim of the entries
  * and of their guide sections, its verdict and the place where the source was
  * checked are listed in docs/INFO_TEXTS_SOURCES.md.
@@ -69,6 +70,8 @@
     var L_MAX = ['L_{max}', 'najdłuższa droga spływu od punktu zlewni najdalszego hydraulicznie do ujścia', 'km'];
     var H_POCZ = ['H_{pocz}', 'wysokość początku najdłuższej drogi spływu (najdalszej hydraulicznie komórki NMT zlewni, zwykle na dziale wodnym)', 'm n.p.m.'];
     var L_SP = ['L_{sp}', 'długość spływu powierzchniowego: od początku najdłuższej drogi spływu do sieci cieków z NMT', 'km'];
+    // Snyder's and Lutz's L: the main stream to the divide, which the longest flow path is
+    var L_MAX_DIVIDE = ['L_{max}', 'najdłuższa droga spływu, od działu wodnego (punktu zlewni najdalszego hydraulicznie) do ujścia', 'km'];
 
     var BETA_PEAK = {
         formula: f`t_s = \frac{α - 1}{α + β - 2}`,
@@ -173,7 +176,7 @@
             formula: 'L_g = ∑ l_j',
             variables: [['l_j', 'długość j-tego odcinka sieci na drodze cieku głównego', 'km']],
             unit: 'km',
-            reading: 'Dłuższy ciek główny wydłuża czas opóźnienia, więc szczyt hydrogramu jest późniejszy i niższy (Snyder, Lutz, Giandotti). Ciek z NMT nie sięga działu wodnego, a jego długość zależy od progu sieci.',
+            reading: 'Dłuższy ciek główny wydłuża czas koncentracji metodą Giandottiego, więc szczyt hydrogramu jest późniejszy i niższy. Ciek z NMT nie sięga działu wodnego, a jego długość zależy od progu sieci; dlatego Snyder i Lutz biorą najdłuższą drogę spływu.',
             sources: 'KZGW 2017; Tarboton i in. 1991; Giandotti 1934 (za Grimaldi i in. 2012)',
             guide: 'o-channel_length_km',
         },
@@ -225,6 +228,20 @@
             reading: 'Większy spadek skraca czas koncentracji ($T_c ∝ I_{dr}^{-0,385}$), więc szczyt jest wcześniejszy i wyższy. Najdalszy punkt nie musi być najwyższym, więc $I_{dr}$ nie jest deniwelacją zlewni podzieloną przez $L_{max}$.',
             sources: 'Kirpich 1940 (za Fang i in. 2005 i Mota i Kobiyama 2015); Roussel i in. 2005; TxDOT 2019',
             guide: 'o-flow_path_slope_m_per_m',
+        },
+        flow_path_equal_area_slope_m_per_m: {
+            title: 'Spadek wyrównany najdłuższej drogi spływu',
+            symbol: 'J_g',
+            definition: 'Spadek prostej z ujścia, nad którą i pod którą pola profilu podłużnego najdłuższej drogi spływu są równe; wysokości profilu pochodzą z NMT z wypełnionymi zagłębieniami.',
+            formula: f`J_g = \frac{2 A_p}{(1000 · L_{max})^2}`,
+            variables: [
+                ['A_p', 'pole profilu nad wysokością końca drogi przy ujściu, sumowane trapezami między kolejnymi komórkami NMT', 'm²'],
+                L_MAX,
+            ],
+            unit: 'm/m (w tabeli w %)',
+            reading: 'Na profilu wklęsłym, stromym w górnym biegu, $J_g$ jest mniejszy od spadku między końcami drogi $I_{dr}$. To spadek metody Lutza: czas do szczytu rośnie jak $J_g^{-0,39}$, więc mniejszy $J_g$ daje szczyt późniejszy i niższy.',
+            sources: 'KZGW 2017; Ministry of Works and Development 1980 (TM61); Lutz 1984 (za KZGW 2017)',
+            guide: 'o-flow_path_equal_area_slope_m_per_m',
         },
         overland_length_km: {
             title: 'Spływ powierzchniowy – długość',
@@ -562,15 +579,21 @@
         },
         'hydro-hietogram-type': {
             title: 'Rozkład opadu w czasie (hietogram)',
-            definition: 'Sposób rozłożenia sumy opadu $P$ na $n$ kroków $Δt$ = 5 min w czasie trwania $D$: Beta – kształt według $α$ i $β$, DVWK (Euler II) – szczyt w 1/3 czasu trwania, Blokowy – stałe natężenie.',
-            formula: f`P_i = P · \frac{w_i}{∑ w_j}`,
+            definition: 'Rozkład opadu na $n = D/Δt$ kroków po 5 min: Beta – według rozkładu Beta ($α$, $β$), Euler II – z przyrostów krzywej PMAXTP wysokość–czas trwania, największy od 0,3 czasu trwania, Blokowy – stałe natężenie.',
+            formula: [
+                f`P_i = P · [I_{i/n}(α, β) - I_{(i-1)/n}(α, β)]`,
+                f`Δh_j = h(j Δt) - h((j - 1) Δt)`,
+                f`P_i = \frac{P}{n}`,
+            ],
             variables: [
-                ['P_i', 'opad w i-tym kroku', 'mm'],
-                ['w_i', 'waga kroku według rozkładu', '–'],
+                ['P_i', 'opad w i-tym kroku, $i = 1…n$', 'mm'],
+                ['I_u(α, β)', 'dystrybuanta rozkładu Beta: część sumy, która spadła do chwili $u·D$', '–'],
+                ['h(D)', 'opad PMAXTP o czasie trwania $D$ przy wybranym $p$, średni w zlewni (razy własny ARF); między czasami tablicy liniowo względem ln D', 'mm'],
+                ['Δh_j', 'przyrost krzywej w j-tym kroku: $Δh_1$ w bloku od 0,3 D zaokrąglonego w dół do kroku, $Δh_2$, $Δh_3$… przed nim, reszta po nim', 'mm'],
             ],
             unit: 'mm w kroku',
-            reading: 'Przy tej samej sumie i czasie trwania rozkład zmienia wysokość i czas kulminacji: ten sam blok opadu daje więcej odpływu, gdy spada później (straty $I_a$ są już pokryte). Nie dotyczy własnej serii opadu.',
-            sources: 'Chow i in. 1988; KZGW 2017; Malitz 2009; Wachulec i in. 2016',
+            reading: 'Przy tej samej sumie rozkład zmienia wysokość i czas kulminacji: blok spadający później daje więcej odpływu (straty $I_a$ są już pokryte). W Eulerze II każde $m$ bloków wokół szczytu ma opad PMAXTP dla $m·Δt$. Nie dotyczy własnej serii opadu.',
+            sources: 'KZGW 2017; ATV-DVWK 2001 (A 118, za Thewes 2005); Malitz 2009; Kaźmierczak i Kotowski 2012; Chow i in. 1988; Wachulec i in. 2016',
             guide: 'o-hydro-hietogram-type',
         },
         'hydro-alpha': {
@@ -748,9 +771,9 @@
         'hydro-snyder-ct': {
             title: 'Współczynnik czasu (Snyder)',
             symbol: 'C_t',
-            definition: 'Współczynnik opóźnienia w modelu Snydera (domyślnie 1,5), w postaci metrycznej ($L$ w km); ujmuje wpływ spadku i retencji zlewni na opóźnienie.',
-            formula: f`t_L = C_t (L_g L_c)^{0,3}`,
-            variables: [L_G, L_C, ['t_L', 'opóźnienie zlewni', 'h']],
+            definition: 'Współczynnik opóźnienia w modelu Snydera (domyślnie 1,5), w postaci metrycznej (długości w km); ujmuje wpływ spadku i retencji zlewni na opóźnienie.',
+            formula: f`t_L = C_t (L_{max} L_c)^{0,3}`,
+            variables: [L_MAX_DIVIDE, L_C, ['t_L', 'opóźnienie zlewni', 'h']],
             unit: '–',
             reading: 'Większy $C_t$ – dłuższe opóźnienie, szczyt później i niższy. Bez pomiarów $C_t$ przyjmuje się z kalibracji w zlewniach tego samego regionu; typowe 1,35–1,65 to przeliczone 1,8–2,2 z Appalachów.',
             sources: 'Snyder 1938 (za Chow i in. 1988); Chow i in. 1988; Young i in. 1986; USACE 2000 (HEC-HMS)',
@@ -932,9 +955,9 @@
         },
         'hydro-uh-model:snyder': {
             title: 'Snyder – syntetyczny hydrogram jednostkowy',
-            definition: 'Hydrogram z empirycznych zależności od długości cieku i położenia środka ciężkości zlewni (Snyder 1938), przeliczony ze standardowego czasu trwania opadu $t_D$ na krok $Δt$:',
+            definition: 'Hydrogram z empirycznych zależności od długości cieku głównego do działu wodnego (tu: najdłuższej drogi spływu) i położenia środka ciężkości zlewni (Snyder 1938), przeliczony ze standardowego czasu trwania opadu $t_D$ na krok $Δt$:',
             formula: [
-                f`t_L = C_t (L_g L_c)^{0,3}`,
+                f`t_L = C_t (L_{max} L_c)^{0,3}`,
                 f`t_D = \frac{t_L}{5,5}`,
                 f`t_{LR} = t_L + 0,25 (Δt - t_D)`,
                 f`t_{pR} = t_{LR} + \frac{Δt}{2}`,
@@ -942,7 +965,7 @@
             ],
             variables: [
                 ['C_t, C_p', 'współczynniki czasu (postać metryczna) i szczytu', '–'],
-                L_G, L_C,
+                L_MAX_DIVIDE, L_C,
                 ['t_L', 'opóźnienie zlewni', 'h'],
                 ['t_D', 'standardowy czas trwania opadu', 'h'],
                 ['Δt', 'krok czasowy obliczeń – czas trwania opadu jednostkowego', 'h'],
@@ -951,8 +974,8 @@
                 A,
                 ['q_{pR}', 'przepływ szczytowy hydrogramu jednostkowego', 'm³/s na 1 mm'],
             ],
-            reading: 'Im dłuższy ciek i dalej od ujścia leży środek ciężkości zlewni, tym dłuższe opóźnienie i niższy szczyt, a większy $C_p$ daje hydrogram wyższy i węższy. $C_t$ i $C_p$ bierze się z kalibracji w zlewniach tego samego regionu.',
-            summary: 'Hydrogram syntetyczny (Snyder 1938; zlewnie Appalachów 26–26 000 km²); $C_t$ i $C_p$ z kalibracji regionalnej.',
+            reading: 'Im dłuższa droga spływu i dalej od ujścia leży środek ciężkości zlewni, tym dłuższe opóźnienie i niższy szczyt, a większy $C_p$ daje hydrogram wyższy i węższy. $C_t$ i $C_p$ bierze się z kalibracji w zlewniach tego samego regionu.',
+            summary: 'Hydrogram syntetyczny (Snyder 1938; zlewnie Appalachów 30–30 000 km²); $C_t$ i $C_p$ z kalibracji regionalnej.',
             sources: 'Snyder 1938 (za Chow i in. 1988); Chow i in. 1988; USACE 2000 (HEC-HMS); Ponce 2013',
             guide: 'o-hydro-uh-model-snyder',
         },
@@ -962,21 +985,21 @@
             title: 'Metoda Lutza',
             definition: 'Parametry z cech fizjograficznych (Lutz 1984, w postaci z metodyki KZGW 2017): najpierw czas do szczytu $t_p$ i rzędna szczytu $u_p$ hydrogramu chwilowego, z nich $N$, a potem $K$.',
             formula: [
-                f`t_p = P_1 (\frac{L_g L_c}{I_g^{1,5}})^{0,26} e^{-0,016 U} e^{0,004 W}`,
+                f`t_p = P_1 (\frac{L_{max} L_c}{J_g^{1,5}})^{0,26} e^{-0,016 U} e^{0,004 W}`,
                 'P_1 = 3,989 n + 0,028',
                 f`u_p = \frac{0,66}{t_p^{1,04}}`,
                 f`t_p u_p = \frac{(N - 1)^N e^{-(N - 1)}}{Γ(N)}`,
                 f`K = \frac{t_p}{N - 1}`,
             ],
             variables: [
-                L_G, L_C,
-                ['I_g', 'spadek cieku głównego', '–'],
+                L_MAX_DIVIDE, L_C,
+                ['J_g', 'spadek wyrównany najdłuższej drogi spływu: prostej z ujścia, nad którą i pod którą pola profilu podłużnego są równe', '–'],
                 ['n', 'współczynnik szorstkości Manninga koryta', 's·m^(−1/3)'],
                 ['U, W', 'udział terenów zurbanizowanych i leśnych', '%'],
                 ['t_p', 'czas do szczytu hydrogramu chwilowego', 'h'],
                 ['u_p', 'rzędna szczytu hydrogramu chwilowego', '1/h'],
             ],
-            reading: 'Czas do szczytu rośnie z długością cieku i oddaleniem środka ciężkości zlewni od ujścia, maleje ze spadkiem; lasy go wydłużają, zabudowa skraca. Dłuższy czas do szczytu daje szczyt późniejszy i niższy.',
+            reading: 'Czas do szczytu rośnie z długością drogi spływu i oddaleniem środka ciężkości zlewni od ujścia, maleje ze spadkiem; lasy go wydłużają, zabudowa skraca. Dłuższy czas do szczytu daje szczyt późniejszy i niższy.',
             summary: 'Zlewnie niekontrolowane quasi-naturalne (uszczelnienie < 5 %, do 236 km²) – KZGW 2017; wzór Lutza (1984) z 75 zlewni.',
             sources: 'Lutz 1984 (za KZGW 2017 i Assmann 1999); KZGW 2017; Rozporządzenie EGiB 2021',
             guide: 'o-hydro-nash-estimation-from_lutz',
@@ -1007,7 +1030,7 @@
         'hydro-tc-method:nrcs': {
             title: 'NRCS – równanie opóźnienia (lag)',
             definition: 'Opóźnienie zlewni z równania NRCS (Mockus 1961; NEH 630, rozdz. 15) przeliczone na czas koncentracji, $T_c = t_{lag}/0,6$. Opór powierzchni zlewni ujmuje przez CN.',
-            formula: f`T_c = 0,01416 · L_{max}^{0,8} (S + 25,4)^{0,7} I_{śr}^{-0,5}`,
+            formula: f`T_c = 0,014147 · L_{max}^{0,8} (S + 25,4)^{0,7} I_{śr}^{-0,5}`,
             variables: [
                 ['L_{max}', 'najdłuższa droga spływu od punktu zlewni najdalszego hydraulicznie do ujścia', 'm'],
                 S,
@@ -1022,14 +1045,14 @@
         'hydro-tc-method:kirpich': {
             title: 'Kirpich (1940)',
             definition: 'Wzór empiryczny dla małych zlewni rolniczych z wyraźnymi korytami; opisuje głównie czas przepływu korytem. Długość i spadek mierzy się wzdłuż drogi wody od ujścia do punktu zlewni najdalszego hydraulicznie.',
-            formula: f`T_c = 3,981 · L_{max}^{0,77} · I_{dr}^{-0,385}`,
+            formula: f`T_c = 3,976 · L_{max}^{0,77} · I_{dr}^{-0,385}`,
             variables: [
                 L_MAX,
                 ['I_{dr}', 'spadek najdłuższej drogi spływu: wysokość jej początku nad ujściem podzielona przez jej długość', 'm/m'],
             ],
             unit: 'min',
             reading: 'Czas koncentracji zależy tylko od długości i spadku drogi wody – nie od CN ani pokrycia terenu. Wg autora wzór stosuje się do ok. 0,8 km² (200 akrów).',
-            summary: 'Małe zlewnie rolnicze z wyraźnym korytem (dane: 7 zlewni w Tennessee, 0,005–0,45 km², spadki 3–10 %).',
+            summary: 'Małe zlewnie rolnicze z wyraźnym korytem (dane: 6 zlewni w Tennessee, 0,005–0,45 km², drogi spływu 0,11–1,2 km, spadki 2,5–10 %).',
             sources: 'Kirpich 1940 (za Fang i in. 2005 i Roussel i in. 2005); Mota i Kobiyama 2015; USDA-NRCS 2010 (NEH 630-15)',
             guide: 'o-hydro-tc-method-kirpich',
         },
@@ -1080,7 +1103,7 @@
             formula: [
                 'T_c = t_{sp} + t_k',
                 f`t_{sp} = 36,37 · (L_{sp} N)^{0,467} I_{sp}^{-0,2335}`,
-                f`t_k = 3,981 · (L_{max} - L_{sp})^{0,77} I_{dr}^{-0,385}`,
+                f`t_k = 3,976 · (L_{max} - L_{sp})^{0,77} I_{dr}^{-0,385}`,
             ],
             variables: [
                 L_SP,

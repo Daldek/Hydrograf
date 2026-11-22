@@ -82,6 +82,7 @@ _WATERSHED_KEYS: Final = {
     "forest_pct": "forest_pct",
     "flow_path_length_km": "flow_path_length_km",
     "flow_path_slope_m_per_m": "flow_path_slope_m_per_m",
+    "flow_path_equal_area_slope_m_per_m": "flow_path_equal_area_slope_m_per_m",
 }
 
 
@@ -201,7 +202,7 @@ def design_storm(
     *,
     alpha: float | None = None,
     beta: float | None = None,
-    peak_position: float | None = None,
+    depth_duration_mm: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
     """Return the ``rainfall`` of a design storm: a depth in the shape of a hyetograph.
 
@@ -215,8 +216,10 @@ def design_storm(
         Duration [min].
     alpha, beta : float, optional
         Parameters of the Beta hyetograph.
-    peak_position : float, optional
-        Relative position of the peak of the Euler II hyetograph.
+    depth_duration_mm : Mapping[str, float], optional
+        The depth-duration curve of the Euler II hyetograph: the depth [mm] of each
+        duration [min], the duration as the text of a number (Hydrolog ADR-0042);
+        ``total_mm`` is its depth of ``duration_min``.
 
     Returns
     -------
@@ -229,8 +232,12 @@ def design_storm(
         "total_mm": float(total_mm),
         "duration_min": float(duration_min),
     }
-    shape = {"alpha": alpha, "beta": beta, "peak_position": peak_position}
+    shape = {"alpha": alpha, "beta": beta}
     rainfall.update({key: value for key, value in shape.items() if value is not None})
+    if depth_duration_mm is not None:
+        rainfall["depth_duration_mm"] = {
+            duration: float(depth) for duration, depth in depth_duration_mm.items()
+        }
     return rainfall
 
 
@@ -357,7 +364,10 @@ def curve_number_runoff(
 
 
 def hydrograph_result(
-    peak_discharge_m3s: float, time_to_peak_min: float, total_volume_m3: float
+    peak_discharge_m3s: float,
+    time_to_peak_min: float,
+    total_volume_m3: float,
+    formula_versions: Mapping[str, int],
 ) -> dict[str, Any]:
     """Return the ``result`` of a hand-off: Hydrograf's hydrograph, for comparison.
 
@@ -369,15 +379,23 @@ def hydrograph_result(
         Time to the peak [min].
     total_volume_m3 : float
         Volume of the hydrograph [m3].
+    formula_versions : Mapping[str, int]
+        The ``formula_version`` of each of Hydrolog's formulas the result depends
+        on, by the name of its spec (Nogat CMP-2.8; ``core.formula_versions``).
 
     Returns
     -------
     dict[str, Any]
-        The endpoint that computed it, Hydrolog and its version, and the three values.
+        The endpoint that computed it, Hydrolog with its version and the versions of
+        its formulas, and the three values.
     """
     return {
         "command": HYDROGRAPH_COMMAND,
-        "computed_with": {"tool": "hydrolog", "version": hydrolog_version()},
+        "computed_with": {
+            "tool": "hydrolog",
+            "version": hydrolog_version(),
+            "formula_versions": dict(formula_versions),
+        },
         "peak_discharge_m3s": float(peak_discharge_m3s),
         "time_to_peak_min": float(time_to_peak_min),
         "total_volume_m3": float(total_volume_m3),

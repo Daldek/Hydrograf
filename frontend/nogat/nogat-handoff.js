@@ -80,21 +80,34 @@ const TYPE_NAMES = {
 };
 
 /**
- * The file name of a hand-off: "<subject>.handoff.json". Characters a file name cannot hold
- * (\ / : * ? " < > | and control characters) become "-", runs of white space one space,
- * and an empty subject becomes the producer's name.
+ * A text a person gave as a part of a file name (DEV-19.21): lower-case ASCII without
+ * diacritics, each run of anything else one "-", none at either end; "" when nothing is left.
+ *
+ * @param {string} text the text, e.g. "Kamiennik — Świerzawa"
+ * @returns {string} the part, e.g. "kamiennik-swierzawa"
+ */
+export function nameSlug(text) {
+  return String(text ?? "")
+    .replace(/ł/g, "l")
+    .replace(/Ł/g, "L")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * The file name of a hand-off (DEV-19.21): "<producer>_handoff_<subject>.json", the subject
+ * as nameSlug makes it, "<producer>_handoff.json" when nothing of it is left.
  *
  * @param {string} subject the document's `subject`
  * @param {string} producer registry name of the producing tool, e.g. "hydrograf"
  * @returns {string} the file name
  */
 export function fileName(subject, producer) {
-  const base = String(subject ?? "")
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
-  return `${base || producer}.handoff.json`;
+  const part = nameSlug(subject);
+  return `${producer}_handoff${part ? `_${part}` : ""}.json`;
 }
 
 /**
@@ -155,7 +168,7 @@ export function saveText(text, name, type = "application/json") {
 }
 
 /**
- * Download a hand-off as "<subject>.handoff.json".
+ * Download a hand-off as "<producer>_handoff_<subject>.json" (see fileName).
  *
  * @param {object} doc the document
  * @returns {string} the file name

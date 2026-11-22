@@ -32,6 +32,7 @@ import argparse
 import fnmatch
 import json
 import logging
+import math
 import sys
 import textwrap
 import time
@@ -51,6 +52,7 @@ from core.attribution import (
     merge,
 )
 from core.constants import DEFAULT_THRESHOLD_M2
+from core.precipitation import DURATION_MIN_TO_STR
 from utils.kartograf_store import metadata_cache_path, store_dir
 
 # Configure logging
@@ -72,6 +74,60 @@ RETIRED_LINES = (
     "Dane IMGW-PIB można wykorzystywać nieodpłatnie ",
     "Regulamin: ",
 )
+
+# A duration is a whole number of steps to this fraction of it, as Hydrolog counts
+# the steps of a hyetograph (ADR-0046) and as the API checks it
+WHOLE_STEPS_TOLERANCE = 1e-9
+
+
+def nearest_pmaxtp_duration(duration_min: int) -> int:
+    """Return the PMAXTP duration [min] nearest to ``duration_min``."""
+    return min(DURATION_MIN_TO_STR, key=lambda d: abs(d - duration_min))
+
+
+def storm_step_error(duration_min: int, timestep_min: float) -> str | None:
+    """Return why the time step cannot cut the run's storm, or None when it can.
+
+    The run's storm lasts ``duration_min`` without PMAXTP data and the PMAXTP
+    duration nearest to it with them; Hydrolog builds a hyetograph only of whole
+    steps (ADR-0046), so the step must divide both. The message is Polish, as the
+    script's help and logs.
+    """
+    if not math.isfinite(timestep_min) or timestep_min <= 0:
+        return f"Krok czasowy --timestep musi być dodatni, podano {timestep_min:g} min."
+    if duration_min <= 0:
+        return f"Czas trwania --duration musi być dodatni, podano {duration_min} min."
+    nearest = nearest_pmaxtp_duration(duration_min)
+    for used in dict.fromkeys((duration_min, nearest)):
+        steps = max(round(used / timestep_min), 1)
+        if abs(steps * timestep_min - used) <= WHOLE_STEPS_TOLERANCE * used:
+            continue
+        common = math.gcd(duration_min, nearest)
+        suggested = max(
+            (d for d in range(1, common + 1) if common % d == 0 and d <= timestep_min),
+            default=1,
+        )
+        source = (
+            ""
+            if used == duration_min
+            else (
+                f" (czas trwania PMAXTP najbliższy żądanemu --duration {duration_min} "
+                "min, użyty, gdy są dane PMAXTP)"
+            )
+        )
+        durations = (
+            f"{used} min"
+            if nearest == duration_min
+            else f"{duration_min} i {nearest} min"
+        )
+        return (
+            f"Czas trwania opadu {used} min{source} nie jest wielokrotnością kroku "
+            f"czasowego --timestep {timestep_min:g} min: hietogram składa się z całych "
+            "kroków, więc czas trwania musi być całkowitą liczbą kroków. Wybierz krok, "
+            f"który dzieli {durations}, np. --timestep {suggested}."
+        )
+    return None
+
 
 # =============================================================================
 # KONFIGURACJA - ZMIEŃ PARAMETRY TUTAJ
@@ -532,30 +588,8 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
             longitude=config.longitude,
         )
 
-        # Dostępne czasy trwania w PMAXTP
-        valid_durations = [
-            5,
-            10,
-            15,
-            30,
-            45,
-            60,
-            90,
-            120,
-            180,
-            360,
-            720,
-            1080,
-            1440,
-            2160,
-            2880,
-            4320,
-        ]
-
-        # Znajdź najbliższy dostępny czas trwania
-        duration_key = str(
-            min(valid_durations, key=lambda x: abs(x - config.duration_min))
-        )
+        # Znajdź najbliższy dostępny w PMAXTP czas trwania
+        duration_key = str(nearest_pmaxtp_duration(config.duration_min))
         if int(duration_key) != config.duration_min:
             logger.warning(
                 f"Czas {config.duration_min}min niedostępny, użyto {duration_key}min"
@@ -1486,6 +1520,9 @@ def main():
     )
 
     args = parser.parse_args()
+    error = storm_step_error(args.duration, args.timestep)
+    if error:
+        parser.error(error)
 
     # Utwórz konfigurację
     config = AnalysisConfig(

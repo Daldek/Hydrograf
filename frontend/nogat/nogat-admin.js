@@ -848,14 +848,15 @@ export class NogatAdminStats extends AdminView {
     parts.foot.replaceChildren(row);
   }
 
-  /** Save the days shown as `<project>-stats-<first>-<last>.csv`, built in the browser. */
+  /** Save the days shown as `<project>_stats_<first>_<last>.csv` (DEV-19.21), built here. */
   _download() {
     const { days } = this._data;
     if (!days.length) return;
     const project =
-      this.getAttribute("project") || this.closest("nogat-admin")?.getAttribute("project");
-    const prefix = project ? `${project.toLowerCase()}-` : "";
-    const name = `${prefix}stats-${shown(days[0].date)}-${shown(days.at(-1).date)}.csv`;
+      this.getAttribute("project") ||
+      this.closest("nogat-admin")?.getAttribute("project") ||
+      "nogat";
+    const name = `${project.toLowerCase()}_stats_${days[0].date}_${days.at(-1).date}.csv`;
     const blob = new Blob([statsCsv(days)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = el("a");

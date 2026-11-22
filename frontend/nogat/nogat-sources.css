@@ -43,7 +43,8 @@ nogat-sources[hidden] {
   color: var(--text, #2b2b2b);
 }
 
-.nogat-sources-more {
+.nogat-sources-more,
+.nogat-sources-toggle {
   padding: 0;
   border: 0;
   background: none;
@@ -56,15 +57,50 @@ nogat-sources[hidden] {
   cursor: pointer;
 }
 
-.nogat-sources-more:hover {
+.nogat-sources-more:hover,
+.nogat-sources-toggle:hover {
   color: var(--accent-hover, #1a3a50);
 }
 
 .nogat-sources-strip a:focus-visible,
 .nogat-sources-more:focus-visible,
+.nogat-sources-toggle:focus-visible,
 .nogat-sources-dialog :focus-visible {
   outline: 2px solid var(--focus, #284b63);
   outline-offset: 2px;
+}
+
+/* „więcej” shows only on a phone, while the folded line cuts the lines or the strip is unfolded. */
+.nogat-sources-toggle {
+  display: none;
+  margin-inline-start: 0.5em;
+}
+
+/* A phone (ECO-080): the strip folds to one line, the lines cut with an ellipsis, then
+   „więcej” and „Źródła i warunki”; „więcej” unfolds it in place. */
+@media (max-width: 860px) {
+  nogat-sources:not([expanded]) .nogat-sources-strip {
+    display: flex;
+    align-items: baseline;
+    column-gap: 0.5em;
+  }
+
+  nogat-sources:not([expanded]) .nogat-sources-lines {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  nogat-sources:not([expanded]) .nogat-sources-toggle {
+    margin-inline-start: 0;
+  }
+
+  nogat-sources[clipped] .nogat-sources-toggle,
+  nogat-sources[expanded] .nogat-sources-toggle {
+    display: inline;
+  }
 }
 
 /* The dialog: header and content cover it, so a click on the dialog itself is the backdrop. */
@@ -166,7 +202,8 @@ nogat-sources[hidden] {
 }
 
 @media (pointer: coarse) {
-  .nogat-sources-more {
+  .nogat-sources-more,
+  .nogat-sources-toggle {
     padding-block: var(--space-2, 8px);
   }
 

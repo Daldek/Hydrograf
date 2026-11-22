@@ -1,11 +1,13 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.8
-**Data:** 2026-11-14
+**Wersja:** 1.10
+**Data:** 2026-11-22
 **Status:** Approved
 
 **History:**
+- 1.10 (2026-11-22): the release of 0.6.0 (Hydrolog 0.9.0): §6.4 the example's `hydrolog_version` 0.9.0 (it named a development version) and its `formula_versions` with `equal_area_slope` and `tr55_cn`, which the full path joins from the delineated watershed of §6.2; `precipitation.times_min` the ends of the steps, 5 to 60 min.
+- 1.9 (2026-11-21): Hydrolog 0.9.0 (ADR-088): §6.2 `flow_path_equal_area_slope_m_per_m` in the morphometry and the watershed's `formula_versions`; §6.3 the whole steps of a design storm (`storm_not_whole_steps`, `euler_ii_step_below_curve`); §6.4 the notice `outside_applicability`, `hydrolog_version` and `formula_versions`, Euler II's `depth_duration_mm` in the hand-off.
 - 1.8 (2026-11-14): audit against the code of 2026-11-14: the ERD and §4–§5 with `feedback`, `processing_runs` and `processing_units` and the partial indexes of migration 004; `stream_network.source` without a default (`DEM_DERIVED` only), `precipitation_data.source` `IMGW_PMAXTP` only, `sewer_network.source` VARCHAR(255); `perimeter_km` and `hydraulic_length_km` of `stream_catchments` written but no longer read; the limit of `feedback.context` in bytes; §6 the models of `models/schemas.py`; §7 without the data classes that do not exist; no maintenance job.
 
 ---
@@ -1044,14 +1046,15 @@ class DelineateRequest(BaseModel):
     "outlet": { "latitude": 52.123456, "longitude": 21.123456, "elevation_m": 145.5 },
     "area_km2": 45.3,
     "hydrograph_available": true,
-    "morphometry": { "area_km2": 45.3, "perimeter_km": 38.5, "length_km": 14.2, "cn": 72.4, ... },
+    "morphometry": { "area_km2": 45.3, "perimeter_km": 38.5, "length_km": 14.2, "cn": 72.4, "flow_path_equal_area_slope_m_per_m": 0.00848, ... },
     "hypsometric_curve": [...],
     "land_cover_stats": { "categories": [...], "weighted_cn": 72.4, ... },
     "hsg_stats": {...},
     "main_stream_geojson": {...},
     "longest_flow_path_geojson": {...},
     "divide_flow_path_geojson": {...},
-    "pmaxtp_grid": [...]
+    "pmaxtp_grid": [...],
+    "formula_versions": {"equal_area_slope": 1, "tr55_cn": 1}
   },
   "stream": { "segment_idx": 42, "strahler_order": 3, "length_m": 523.4, "upstream_area_km2": 12.8 },
   "upstream_segment_indices": [42, 43, 44],
@@ -1063,7 +1066,7 @@ class DelineateRequest(BaseModel):
 }
 ```
 
-**Pydantic models:** `DelineateResponse` (`mode` `"precomputed"` or `"precise"`; `stream`, a `StreamInfo`, in the precomputed mode only; `upstream_segment_indices` and `display_threshold_m2` for the highlighting of the streams of the MVT tiles; `handoff`, the watershed as a hand-off to Hydrolog's GUI, `nogat-handoff/1`, ADR-068; `attribution` and `terms_notice`, ADR-083), `WatershedResponse` (`outlet` an `OutletInfo`, `hydrograph_available` for an area of at most 250 km², `morphometry` a `MorphometricParameters`: area, perimeter, lengths, elevations, slopes, CN and the shape, relief and flow path indices), `StreamInfo`.
+**Pydantic models:** `DelineateResponse` (`mode` `"precomputed"` or `"precise"`; `stream`, a `StreamInfo`, in the precomputed mode only; `upstream_segment_indices` and `display_threshold_m2` for the highlighting of the streams of the MVT tiles; `handoff`, the watershed as a hand-off to Hydrolog's GUI, `nogat-handoff/1`, ADR-068; `attribution` and `terms_notice`, ADR-083), `WatershedResponse` (`outlet` an `OutletInfo`, `hydrograph_available` for an area of at most 250 km², `morphometry` a `MorphometricParameters`: area, perimeter, lengths, elevations, slopes, CN and the shape, relief and flow path indices, among them `flow_path_equal_area_slope_m_per_m`, the equal-area slope of the profile of the longest flow path on the filled DEM, Lutz's Jg, null without the saved filled DEM (ADR-088); `formula_versions`, the `formula_version` of Hydrolog's `tr55_cn` and `equal_area_slope` where they gave a value, Nogat CMP-2.8), `StreamInfo`.
 
 ---
 
@@ -1112,6 +1115,8 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
 
 `custom_precipitation.derived_from` (`"pmaxtp"` or null, ADR-083): the series started as a copy of a PMAXTP hyetogram, so the response carries PMAXTP's lines.
 
+A PMAXTP design storm is made of whole time steps (Hydrolog ADR-0046): a `duration` that is not a whole number of `timestep_min` is refused before anything is computed (400 `validation_error`, `storm_not_whole_steps`, reason `not_multiple`), and so is an Euler II step shorter than 5 min, where the PMAXTP depth–duration curve starts (`euler_ii_step_below_curve`, reason `not_covered`; Hydrolog ADR-0042). The 5 min default divides every PMAXTP duration.
+
 ---
 
 ### 6.4 Response: Generate Hydrograph
@@ -1128,7 +1133,7 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
     "duration_min": 60,
     "probability_percent": 10,
     "timestep_min": 5,
-    "times_min": [0, 5, 10, ..., 55],
+    "times_min": [5, 10, 15, ..., 60],
     "intensities_mm": [1.0, 2.5, 6.0, ..., 0.0],
     "effective_mm": [0.0, 0.0, 0.4, ..., 0.0],
     "interpolation": "thiessen",
@@ -1162,8 +1167,10 @@ Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"
   "attribution": [...],
   "terms_notice": [...],
   "notices": [
-    {"level": "warning", "code": "outside_typical_range", "message": "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej typowego zakresu 0–52 km². Wynik może być niewiarygodny."}
-  ]
+    {"level": "warning", "code": "outside_applicability", "message": "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej zakresu stosowania 0–51,8 km². Wynik może być niewiarygodny."}
+  ],
+  "hydrolog_version": "0.9.0",
+  "formula_versions": {"beta_hyetograph": 1, "equal_area_slope": 1, "nrcs": 1, "scs": 1, "scs_cn_retention": 1, "scs_cn_runoff": 1, "thiessen_precipitation": 1, "tr55_cn": 1, "uh_convolution": 1}
 }
 ```
 
@@ -1173,7 +1180,9 @@ Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`
 
 The response also has `attribution` and `terms_notice` (ADR-083): the lines the PMAXTP terms require (Nogat DEV-20.2, DEV-20.7) for a PMAXTP rainfall and for an own series with `derived_from: "pmaxtp"`, empty lists for the user's own data; the hand-off `handoff` carries the same two fields when they are not empty.
 
-`notices` (E5b-06; `[]` without warnings) are the warnings Hydrolog gave while it computed this hydrograph, identical ones once: `level` and `code` of Hydrolog's registry `hydrolog.catalog.NOTICES` (`outside_typical_range`, `outside_unverified_range` for the ranges of Nash's N and K, which await a source) and `message` in Polish, worded by `core/hydrolog_notices.py` from the warning's details (the method or model, the input, its value and the typical range); a code without a Polish text keeps Hydrolog's English message. A Snyder hydrograph leaves out the warnings of the tc it does not use.
+`notices` (E5b-06; `[]` without warnings) are the warnings Hydrolog gave while it computed this hydrograph, identical ones once: `level` and `code` of Hydrolog's registry `hydrolog.catalog.NOTICES` (`outside_applicability`, called `outside_typical_range` up to Hydrolog 0.8.x, for the applicability range of a formula; `outside_unverified_range` for a typical range that awaits a published source, such as those of Nash's N and K) and `message` in Polish, worded by `core/hydrolog_notices.py` from the warning's details (the method or model, the input, its value and the range); a code without a Polish text keeps Hydrolog's English message. A Snyder hydrograph leaves out the warnings of the tc it does not use.
+
+`hydrolog_version` and `formula_versions` (Nogat CMP-2.8, `core/formula_versions.py`) name the Hydrolog that computed the hydrograph and the `formula_version` of each of its formulas the result depends on, by the name of its spec: the weighting of the PMAXTP grid (`thiessen_precipitation` or the IDW's), the hyetograph, the SCS-CN retention and runoff, the AMC conversion (AMC I and III), the time of concentration and the unit hydrograph or Nash's IUH with its estimation, the convolution, and on the full path those of the delineated watershed (6.2). The hand-off's `result.computed_with` carries both. With `euler_ii` the hand-off's rainfall carries `depth_duration_mm`, the PMAXTP depth–duration curve the storm was built from (each duration weighed as the design depth and multiplied by the areal reduction factor; ADR-088).
 
 ---
 
@@ -1344,8 +1353,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.8
-**Data ostatniej aktualizacji:** 2026-11-14
+**Wersja dokumentu:** 1.10
+**Data ostatniej aktualizacji:** 2026-11-22
 **Status:** Approved
 
 ---

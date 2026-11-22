@@ -72,6 +72,7 @@ def _morphometry() -> dict[str, Any]:
         "hydraulic_length_km": 22.2789,
         "flow_path_length_km": 22.2789,
         "flow_path_slope_m_per_m": 0.016038,
+        "flow_path_equal_area_slope_m_per_m": 0.0084766,
         "overland_length_km": 0.2563,
         "overland_slope_m_per_m": 0.163324,
     }
@@ -298,9 +299,9 @@ class TestLutzHandoff:
         # What Hydrolog's GUI runs when it opens Nash by Lutz (`uh nash`, lutzOptions)
         lutz = uh_nash(
             area_km2=watershed["area_km2"],
-            lutz_length_km=watershed["channel_length_km"],
+            lutz_length_km=watershed["flow_path_length_km"],
             lutz_centroid_length_km=watershed["Lc_km"],
-            lutz_slope_m_per_m=watershed["channel_slope_m_per_m"],
+            lutz_slope_m_per_m=watershed["flow_path_equal_area_slope_m_per_m"],
             lutz_manning_n=watershed["manning_n"],
             lutz_forest_pct=watershed["forest_pct"],
             lutz_urban_pct=watershed["urban_pct"],
@@ -425,4 +426,66 @@ class TestDelineatedWatershedHandoff:
             "forest_pct": 47.9,
             "flow_path_length_km": 22.2789,
             "flow_path_slope_m_per_m": 0.016038,
+            "flow_path_equal_area_slope_m_per_m": 0.0084766,
         }
+
+
+class TestHydrolog090Storms:
+    """The design storms of Hydrolog 0.9.0: whole steps and Euler II from its curve."""
+
+    def test_a_duration_that_is_not_a_whole_number_of_steps_is_refused(self, client):
+        response = _post(client, duration="45min", timestep_min=10)
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"] == {
+            "reason": "not_multiple",
+            "duration_min": 45.0,
+            "timestep_min": 10.0,
+        }
+
+    def test_euler_ii_needs_a_step_the_pmaxtp_curve_reaches(self, client):
+        response = _post(
+            client, duration="1h", timestep_min=2, hietogram_type="euler_ii"
+        )
+
+        assert response.status_code == 400
+        assert response.json()["details"]["reason"] == "not_covered"
+
+    def test_euler_ii_is_built_from_the_pmaxtp_curve_of_the_probability(self, client):
+        doc = _handoff(client, hietogram_type="euler_ii", areal_reduction_factor=0.9)
+
+        rainfall = doc["payload"]["nodes"][0]["rainfall"]
+        curve = rainfall["depth_duration_mm"]
+        # Every PMAXTP duration, reduced by the factor like the total h(D)
+        assert list(curve) == [str(m) for m in sorted(map(int, curve))]
+        assert len(curve) == 16
+        assert curve["360"] == pytest.approx(PMAXTP_MM * 0.9)
+        assert rainfall["total_mm"] == pytest.approx(curve["360"])
+        assert "peak_position" not in rainfall
+
+    def test_the_result_carries_the_versions_of_hydrologs_formulas(self, client):
+        response = _post(
+            client,
+            uh_model="scs",
+            tc_method="kirpich",
+            hietogram_type="euler_ii",
+            amc="III",
+        )
+
+        body = response.json()
+        versions = body["formula_versions"]
+        assert set(versions) == {
+            "euler_ii_hyetograph",
+            "idw_precipitation",
+            "kirpich",
+            "scs",
+            "scs_cn_amc",
+            "scs_cn_retention",
+            "scs_cn_runoff",
+            "uh_convolution",
+        }
+        computed_with = body["handoff"]["result"]["computed_with"]
+        assert computed_with["formula_versions"] == versions
+        assert computed_with["version"] == body["hydrolog_version"]

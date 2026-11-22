@@ -15,7 +15,7 @@ from pathlib import Path
 
 from core.attribution import (
     CATCHMENT,
-    CHMI_PROCESSED,
+    CHMU_PROCESSED,
     DRAINAGE,
     ELEVATION,
     GUGIK_SOURCE,
@@ -58,7 +58,7 @@ def test_g_and_sg_are_the_templates_of_the_kit_byte_for_byte():
 
 def test_cp_is_the_line_of_the_kit_byte_for_byte():
     """The strip reads an old CP as the kit's CP: a drifted text shows two lines."""
-    assert _kit_line("CP") == CHMI_PROCESSED
+    assert _kit_line("CP") == CHMU_PROCESSED
 
 
 def test_g_writes_one_value_or_the_first_and_last_with_dashes():

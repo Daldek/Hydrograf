@@ -9,7 +9,7 @@ via BFS on pre-computed sub-catchments.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import asdict
 from typing import Any
 
@@ -57,6 +57,11 @@ from core.errors import (
     StoreUnavailableError,
     UnsupportedError,
 )
+from core.formula_versions import (
+    formula_versions,
+    hydrograph_specs,
+    watershed_specs,
+)
 from core.handoff import (
     PRODUCER,
     DesignHydrograph,
@@ -66,13 +71,16 @@ from core.handoff import (
     design_storm,
     given_origin,
     hydrograph_result,
+    hydrolog_version,
     pmaxtp_origin,
     rainfall_series,
     watershed_name,
     watershed_parameters,
 )
+from core.hydrolog_refusals import refusal
 from core.land_cover import get_land_cover_for_boundary
 from core.precipitation import (
+    DURATION_MIN_TO_STR,
     DURATION_STR_TO_MIN,
     VALID_DURATIONS_STR,
     VALID_PROBABILITIES,
@@ -119,8 +127,13 @@ router = APIRouter()
 # Manning's n of the channel in Lutz's estimation of Nash's n and K
 LUTZ_MANNING_N = 0.035
 
-# Relative position of the peak of the Euler II hyetograph
-EULER_II_PEAK_POSITION = 0.33
+# The shortest duration of the PMAXTP depth-duration curve, where Euler II's curve
+# starts: its time step is at least this long (Hydrolog ADR-0042, `not_covered`)
+EULER_II_SHORTEST_MIN = float(min(DURATION_MIN_TO_STR))
+
+# A duration is a whole number of steps to this fraction of it, as Hydrolog counts
+# the steps of a hyetograph (ADR-0046)
+WHOLE_STEPS_TOLERANCE = 1e-9
 
 # The coefficients of the tc methods that only the request gives, Hydrolog's field ->
 # the request's option: FAA's C and Kerby's N are inputs, never derived (Nogat plan
@@ -206,6 +219,7 @@ def _compute_watershed(
     # The land cover lies on soil groups of soil_hsg (SoilGrids), unless they were
     # assumed for the whole of it
     uses = DRAINAGE
+    cn_from_land_cover = False
     try:
         lc_data = get_land_cover_for_boundary(boundary_2180, db)
         if lc_data:
@@ -213,6 +227,7 @@ def _compute_watershed(
             imperviousness = lc_data.get("weighted_imperviousness")
             lutz_shares = {key: lc_data[key] for key in ("forest_pct", "urban_pct")}
             uses = CATCHMENT if lc_data["hsg_assumed_pct"] < 100 else DRAINAGE
+            cn_from_land_cover = True
             logger.info(f"CN={cn} calculated from land cover")
         else:
             cn = DEFAULT_CN
@@ -223,6 +238,7 @@ def _compute_watershed(
         imperviousness = None
         lutz_shares = {}
         uses = DRAINAGE
+        cn_from_land_cover = False
 
     outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
     if outlet_info is not None:
@@ -272,6 +288,13 @@ def _compute_watershed(
         hydrograph_available=True,
         morphometry=MorphometricParameters(**morph_dict),
         pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
+        formula_versions=formula_versions(
+            watershed_specs(
+                cn_from_land_cover=cn_from_land_cover,
+                equal_area_slope=morph_dict.get("flow_path_equal_area_slope_m_per_m")
+                is not None,
+            )
+        ),
     )
 
     lines = instance_lines(uses, get_settings().frontend_data_dir)
@@ -324,6 +347,52 @@ def _design_depth(
     if depth is None:
         raise no_data
     return depth
+
+
+def _depth_duration_mm(
+    request: HydrographRequest,
+    point_2180: Point,
+    cells: list[ThiessenCell] | None,
+    probability: float,
+    factor: float,
+    db: Session,
+) -> dict[str, float]:
+    """PMAXTP depth-duration curve of the probability, for Euler II (ADR-069).
+
+    The depth of every PMAXTP duration at the probability, each weighed as the
+    design depth (``_design_depth``: the Thiessen mean over the watershed, or the
+    IDW at the point), times the user's areal reduction factor: the storm holds the
+    depth of its duration (Hydrolog ADR-0042), so a reduced total needs the curve
+    reduced alike.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    point_2180 : Point
+        The point of the request in EPSG:2180.
+    cells : list[ThiessenCell] or None
+        The Thiessen cells of the watershed, None for the IDW at the point.
+    probability : float
+        Exceedance probability [%].
+    factor : float
+        The areal reduction factor, 1 without one.
+    db : Session
+        Database session.
+
+    Returns
+    -------
+    dict[str, float]
+        The depth [mm] by duration [min] written as text, from 5 min to 72 h, as
+        Hydrolog's ``precip pmaxtp`` gives the curve.
+    """
+    return {
+        str(minutes): _design_depth(
+            request, point_2180, cells, key, probability, db
+        ).precipitation_mm
+        * factor
+        for minutes, key in DURATION_MIN_TO_STR.items()
+    }
 
 
 def _pmaxtp_points(depth: DesignDepth) -> list[PmaxtpPoint]:
@@ -440,7 +509,7 @@ def _calculate_tc(
 
 
 def _lutz_inputs(morph_dict: dict[str, Any]) -> dict[str, float]:
-    """Return the inputs of Lutz's estimation besides the main channel.
+    """Return the inputs of Lutz's estimation besides the flow path and Lc.
 
     Parameters
     ----------
@@ -473,15 +542,19 @@ def _estimate_nash_params(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Estimate Nash IUH parameters (n, k) using the requested method.
 
+    Lutz's L is the longest flow path (``flow_path_length_km``) and Jg the
+    equal-area slope of its profile (``flow_path_equal_area_slope_m_per_m``),
+    Hydrolog ADR-0053; Lc runs along the main channel (``length_to_centroid_km``).
+
     Returns (uh_params, nash_meta) where nash_meta has extra info for response.
     """
     nash_meta: dict[str, Any] = {"estimation": request.nash_estimation}
 
     if request.nash_estimation == "from_lutz":
-        channel_length = morph_dict.get("channel_length_km")
+        flow_path_length = morph_dict.get("flow_path_length_km")
         length_to_centroid = morph_dict.get("length_to_centroid_km")
-        channel_slope = morph_dict.get("channel_slope_m_per_m")
-        if not channel_length or not length_to_centroid or not channel_slope:
+        equal_area_slope = morph_dict.get("flow_path_equal_area_slope_m_per_m")
+        if not flow_path_length or not length_to_centroid or not equal_area_slope:
             raise UnsupportedError(
                 "lutz_parameters_missing",
                 reason="missing_morphometry",
@@ -489,9 +562,9 @@ def _estimate_nash_params(
             )
         lutz = _lutz_inputs(morph_dict)
         nash = NashIUH.from_lutz(
-            L_km=channel_length,
+            L_km=flow_path_length,
             Lc_km=length_to_centroid,
-            slope=channel_slope,
+            slope=equal_area_slope,
             manning_n=lutz["manning_n"],
             urban_pct=lutz["urban_pct"],
             forest_pct=lutz["forest_pct"],
@@ -549,15 +622,48 @@ def _estimate_nash_params(
     return {"n": nash.n, "k": nash.k_min, "k_unit": "min"}, nash_meta
 
 
-# Hietogram factory
-HIETOGRAM_CLASSES: dict[str, Callable[[], Hietogram]] = {
-    "beta": lambda: BetaHietogram(alpha=2.0, beta=5.0),
-    "block": lambda: BlockHietogram(),
-    "euler_ii": lambda: EulerIIHietogram(peak_position=EULER_II_PEAK_POSITION),
-}
+# The design hyetographs of a PMAXTP storm (`allowed` of unknown_hietogram_type)
+HIETOGRAM_TYPES = ("beta", "block", "euler_ii")
 
 # Request AMC code -> Hydrolog enum
 AMC_BY_CODE = {"I": AMC.I, "II": AMC.II, "III": AMC.III}
+
+
+def _hietogram(
+    request: HydrographRequest, depth_duration_mm: Mapping[str, float] | None
+) -> Hietogram:
+    """Return Hydrolog's design hyetograph of the request.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        Request of a PMAXTP design storm.
+    depth_duration_mm : Mapping[str, float] or None
+        The PMAXTP depth-duration curve of Euler II (``_depth_duration_mm``).
+
+    Returns
+    -------
+    Hietogram
+        Beta of the request's α and β, the block, or Euler II of the curve.
+
+    Raises
+    ------
+    InvalidRequestError
+        ``unknown_hietogram_type`` (400) for another type (the request's pattern
+        admits none).
+    """
+    if request.hietogram_type == "beta":
+        return BetaHietogram(alpha=request.hietogram_alpha, beta=request.hietogram_beta)
+    if request.hietogram_type == "block":
+        return BlockHietogram()
+    if request.hietogram_type == "euler_ii" and depth_duration_mm is not None:
+        return EulerIIHietogram(depth_duration_mm)
+    raise InvalidRequestError(
+        "unknown_hietogram_type",
+        reason="unknown_hietogram_type",
+        value=request.hietogram_type,
+        allowed=list(HIETOGRAM_TYPES),
+    )
 
 
 def _custom_hietogram(depths_mm: list[float], timestep_min: float) -> HietogramResult:
@@ -590,6 +696,11 @@ def _custom_hietogram(depths_mm: list[float], timestep_min: float) -> HietogramR
 def _design_storm(request: HydrographRequest) -> tuple[str, float]:
     """Return the validated duration and probability of the PMAXTP design storm.
 
+    The storm is made of whole time steps (Hydrolog ADR-0046): its duration is a
+    whole number of steps of ``timestep_min``, and Euler II, built from the PMAXTP
+    depth-duration curve, has a step no shorter than the curve's first duration
+    (Hydrolog ADR-0042). Both are refused here, before the watershed is delineated.
+
     Parameters
     ----------
     request : HydrographRequest
@@ -604,7 +715,11 @@ def _design_storm(request: HydrographRequest) -> tuple[str, float]:
     ------
     InvalidRequestError
         ``validation_error`` (400) when the duration or the probability is missing
-        (``HydrographRequest`` rejects such a request already).
+        (``HydrographRequest`` rejects such a request already), with reason
+        ``not_multiple`` (``storm_not_whole_steps``) when the duration is not a whole
+        number of steps, and with reason ``not_covered``
+        (``euler_ii_step_below_curve``) when the step of Euler II is shorter than
+        the curve's first duration.
     ValueError
         When the duration or the probability is not one of PMAXTP's values.
     """
@@ -614,9 +729,26 @@ def _design_storm(request: HydrographRequest) -> tuple[str, float]:
             reason="invalid_parameters",
             cause="duration and probability are required without custom_precipitation",
         )
-    return validate_duration(request.duration), validate_probability(
-        request.probability
-    )
+    duration_str = validate_duration(request.duration)
+    probability = validate_probability(request.probability)
+    duration_min = float(DURATION_STR_TO_MIN[duration_str])
+    step = request.timestep_min
+    steps = max(round(duration_min / step), 1)
+    if abs(steps * step - duration_min) > WHOLE_STEPS_TOLERANCE * duration_min:
+        raise InvalidRequestError(
+            "storm_not_whole_steps",
+            reason="not_multiple",
+            duration_min=duration_min,
+            timestep_min=step,
+        )
+    if request.hietogram_type == "euler_ii" and step < EULER_II_SHORTEST_MIN:
+        raise InvalidRequestError(
+            "euler_ii_step_below_curve",
+            reason="not_covered",
+            shortest_min=EULER_II_SHORTEST_MIN,
+            timestep_min=step,
+        )
+    return duration_str, probability
 
 
 def _handoff_watershed(
@@ -692,13 +824,11 @@ def _storm_shape(request: HydrographRequest) -> dict[str, float]:
     Returns
     -------
     dict[str, float]
-        ``alpha`` and ``beta`` of the Beta hyetograph, ``peak_position`` of Euler II,
-        nothing for the block.
+        ``alpha`` and ``beta`` of the Beta hyetograph; nothing for the block and for
+        Euler II, whose shape is its depth-duration curve.
     """
     if request.hietogram_type == "beta":
         return {"alpha": request.hietogram_alpha, "beta": request.hietogram_beta}
-    if request.hietogram_type == "euler_ii":
-        return {"peak_position": EULER_II_PEAK_POSITION}
     return {}
 
 
@@ -920,7 +1050,8 @@ def generate_hydrograph(
             )
             # The user's own areal reduction factor; none by default (ADR-069)
             arf = request.areal_reduction_factor
-            precip_mm = depth.precipitation_mm * (1.0 if arf is None else arf)
+            factor = 1.0 if arf is None else arf
+            precip_mm = depth.precipitation_mm * factor
             logger.debug(
                 f"Precipitation: {precip_mm:.1f} mm for {duration_str}, "
                 f"p={probability}% ({depth.interpolation}, "
@@ -928,23 +1059,16 @@ def generate_hydrograph(
             )
 
             hietogram_type = request.hietogram_type
-            hietogram: Hietogram
-            if hietogram_type == "beta":
-                hietogram = BetaHietogram(
-                    alpha=request.hietogram_alpha,
-                    beta=request.hietogram_beta,
+            # Euler II is built from the PMAXTP depth-duration curve of the
+            # probability (Hydrolog ADR-0042), weighed as the design depth
+            curve = (
+                _depth_duration_mm(
+                    request, point_2180, pmaxtp_cells, design_probability, factor, db
                 )
-            else:
-                hietogram_factory = HIETOGRAM_CLASSES.get(hietogram_type)
-                if hietogram_factory is None:
-                    raise InvalidRequestError(
-                        "unknown_hietogram_type",
-                        reason="unknown_hietogram_type",
-                        value=hietogram_type,
-                        allowed=["beta", *sorted(HIETOGRAM_CLASSES)],
-                    )
-                hietogram = hietogram_factory()
-            precip_result = hietogram.generate(
+                if hietogram_type == "euler_ii"
+                else None
+            )
+            precip_result = _hietogram(request, curve).generate(
                 total_mm=precip_mm,
                 duration_min=duration_min,
                 timestep_min=timestep_min,
@@ -953,6 +1077,7 @@ def generate_hydrograph(
                 request.hietogram_type,
                 precip_mm,
                 duration_min,
+                depth_duration_mm=curve,
                 **_storm_shape(request),
             )
             rainfall_origin = pmaxtp_origin(
@@ -1006,16 +1131,18 @@ def generate_hydrograph(
             # estimation, the unit hydrographs and the generation warn
             with global_compiler_lock:
                 if request.uh_model == "snyder":
-                    channel_length = morph_dict.get("channel_length_km")
+                    # Snyder's L runs to the divide: the longest flow path, not the
+                    # main channel (Hydrolog ADR-0043)
+                    flow_path_length = morph_dict.get("flow_path_length_km")
                     length_to_centroid = morph_dict.get("length_to_centroid_km")
-                    if not channel_length or not length_to_centroid:
+                    if not flow_path_length or not length_to_centroid:
                         raise UnsupportedError(
                             "snyder_parameters_missing",
                             reason="missing_morphometry",
                             method="snyder",
                         )
                     uh_params = {
-                        "L_km": channel_length,
+                        "L_km": flow_path_length,
                         "Lc_km": length_to_centroid,
                         "ct": request.snyder_ct or 1.5,
                         "cp": request.snyder_cp or 0.6,
@@ -1060,6 +1187,22 @@ def generate_hydrograph(
                     amc=amc,
                 )
 
+        # ===== The versions of Hydrolog's formulas of the result (CMP-2.8) =====
+        versions = formula_versions(
+            hydrograph_specs(
+                hietogram_type=hietogram_type,
+                interpolation_method=None if depth is None else depth.interpolation,
+                tc_method=tc_method if request.uh_model == "scs" else None,
+                uh_model=request.uh_model,
+                nash_estimation=nash_meta.get("estimation"),
+                amc=request.amc,
+            )
+        )
+        if watershed_resp is not None:
+            versions = dict(
+                sorted({**versions, **watershed_resp.formula_versions}.items())
+            )
+
         # ===== Hand-off to Hydrolog: the values used, unrounded (ADR-068) =====
         name, watershed_origin = _handoff_watershed(request, watershed_resp)
         # The rainfall's lines, then those of a watershed of Hydrograf's data
@@ -1087,6 +1230,7 @@ def generate_hydrograph(
                     hydro_result.peak_discharge_m3s,
                     hydro_result.time_to_peak_min,
                     hydro_result.total_volume_m3,
+                    versions,
                 ),
             ),
         )
@@ -1152,6 +1296,8 @@ def generate_hydrograph(
             attribution=list(lines.attribution),
             terms_notice=list(lines.terms_notice),
             notices=hydrolog_notices.notices(caught),
+            hydrolog_version=hydrolog_version(),
+            formula_versions=versions,
         )
 
         logger.info(
@@ -1164,7 +1310,10 @@ def generate_hydrograph(
 
     except HydrografError:
         raise
-    except (ValueError, InvalidParameterError) as e:
+    except InvalidParameterError as e:
+        logger.error(f"Hydrolog refused the hydrograph's inputs: {e}")
+        raise refusal(e) from e
+    except ValueError as e:
         logger.error(f"Validation error in hydrograph generation: {e}")
         raise InvalidRequestError(
             "invalid_parameters", reason="invalid_parameters", cause=str(e)

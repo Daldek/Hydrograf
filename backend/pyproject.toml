@@ -1,6 +1,6 @@
 [project]
 name = "hydrograf"
-version = "0.5.2"
+version = "0.6.0"
 description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
@@ -55,14 +55,14 @@ dependencies = [
     # (re-checked 2026-10-25, ADR-062); the fix (#109) waits for 0.5.13. Lift the cap
     # with that release.
     "affine>=2.4,<3",
-    # Ecosystem producers at the releases of Nogat's first joint release set (REL-2.1,
-    # REL-5.3, ADR-060, ADR-061): precipitation PMAXTP of Obserwator, spatial data download
-    # of Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and the calculations of Hydrolog. The
-    # range is the one the code supports from the producer's release (REL-5.6); the tag is
-    # in `[tool.uv.sources]`.
-    "obserwator>=3.0.0,<4",
+    # Ecosystem producers (REL-2.1, REL-5.3, ADR-060, ADR-061): precipitation PMAXTP of
+    # Obserwator, spatial data download of Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and
+    # the calculations of Hydrolog. The range is the one the code supports from the
+    # producer's release (REL-5.6): Hydrolog 0.9.0 builds Euler II from a depth-duration
+    # curve and gives the equal-area slope; the pin is in `[tool.uv.sources]`.
+    "obserwator>=3.1.0,<4",
     "kartograf>=0.8.0,<0.9",
-    "hydrolog>=0.8.0,<0.9",
+    "hydrolog>=0.9.0,<0.10",
     "requests>=2.31",
     # Process monitoring, utilities, caching
     "psutil>=5.9",
@@ -97,11 +97,12 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The releases of Nogat's release set candidate-10: Kartograf v0.8.2, Obserwator v3.0.1
-# and Hydrolog v0.8.1, Git tags (REL-5.1).
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.0.1" }
+# The releases of Nogat's release set v0.2.0 (the release round of 2026-11-21, Nogat
+# plan 2026-11-19-hydrolog-0.9.0-consumers): Hydrolog v0.9.0, Obserwator v3.1.0 and
+# Kartograf v0.8.2, Git tags (REL-5.1).
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.1.0" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.2" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.8.1" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.9.0" }
 
 [tool.ruff]
 target-version = "py312"

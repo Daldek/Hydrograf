@@ -130,7 +130,7 @@ details:
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.0.0) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.1.0) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
   The link „Regulamin” (in a new tab) is at the bottom of the left rail, under the guide's
   table of contents, in the welcome window and in the menu „Aplikacje”.
@@ -317,7 +317,7 @@ of a pull request.
 
 ## Status, licence, author
 
-Alpha. Releases are the tags `vX.Y.Z` of `main`; 0.5.0 is in the first joint release of
-Nogat. Licence: MIT
+Alpha. Releases are the tags `vX.Y.Z` of `main`; 0.6.0, with Hydrolog 0.9.0 and Obserwator
+3.1.0, is in the release set of Nogat 0.2.0 (standard 1.1). Licence: MIT
 ([LICENSE](https://github.com/Daldek/Hydrograf/blob/main/LICENSE)). Author:
 [Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/).

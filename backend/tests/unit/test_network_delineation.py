@@ -27,6 +27,7 @@ from core.errors import (
     StoreUnavailableError,
     UnsupportedError,
 )
+from core.formula_versions import FLOW_PATH_EQUAL_AREA_SLOPE, TR55_CN
 from core.network_delineation import (
     MIN_REACH_SLOPE_M_PER_M,
     Click,
@@ -315,6 +316,32 @@ def mouths(run, graph, db, settings):
     return tree, grid, elements, network
 
 
+def panel_of(graph, db, tree, element):
+    """The response of POST /api/delineate-watershed for the units of an element."""
+    item = element.subcatchment
+    units = tree.units[tree.unit_elements == item.number]
+    outlet_unit = item.outlet.unit
+    boundary = element.boundary_2180
+    if boundary.geom_type == "Polygon":
+        boundary = MultiPolygon([boundary])
+    stats = graph.aggregate_stats(units, outlet_idx=outlet_unit)
+    return _build_watershed_response(
+        graph,
+        boundary.representative_point(),
+        boundary,
+        boundary_to_polygon(boundary),
+        units,
+        outlet_unit,
+        graph.get_segment_idx(outlet_unit),
+        UNITS,
+        UNITS,
+        stats["area_km2"],
+        stats,
+        False,
+        db,
+    )
+
+
 def test_every_element_of_whole_units_has_the_parameters_of_the_panel(
     graph, db, mouths
 ):
@@ -329,27 +356,7 @@ def test_every_element_of_whole_units_has_the_parameters_of_the_panel(
     differences = []
     for element in network.subcatchments:
         item = element.subcatchment
-        units = tree.units[tree.unit_elements == item.number]
-        outlet_unit = item.outlet.unit
-        boundary = element.boundary_2180
-        if boundary.geom_type == "Polygon":
-            boundary = MultiPolygon([boundary])
-        stats = graph.aggregate_stats(units, outlet_idx=outlet_unit)
-        panel = _build_watershed_response(
-            graph,
-            boundary.representative_point(),
-            boundary,
-            boundary_to_polygon(boundary),
-            units,
-            outlet_unit,
-            graph.get_segment_idx(outlet_unit),
-            UNITS,
-            UNITS,
-            stats["area_km2"],
-            stats,
-            False,
-            db,
-        )
+        panel = panel_of(graph, db, tree, element)
         expected = panel.morphometry.model_dump()
         got = element.watershed.morphometry.model_dump()
         for field in PANEL_FIELDS:
@@ -382,6 +389,35 @@ def test_every_element_of_whole_units_has_the_parameters_of_the_panel(
     assert differences == []
     kinds = {e.subcatchment.kind for e in network.subcatchments}
     assert kinds == {"headwater", "intermediate"}
+
+
+def test_the_elements_and_the_panel_name_the_formulas_of_their_cn_and_jg(
+    run, graph, db, settings, mouths
+):
+    """formula_versions name tr55_cn and equal_area_slope where they gave a value.
+
+    Nogat CMP-2.8, ADR-088: the CN of the soil-cover complexes of the land cover is
+    tr55_cn, the equal-area slope of the longest flow path equal_area_slope; without
+    land cover the CN is the default and names no formula.
+    """
+    tree, _, _, network = mouths
+    jg = {"equal_area_slope": FLOW_PATH_EQUAL_AREA_SLOPE.formula_version}
+    both = {**jg, "tr55_cn": TR55_CN.formula_version}
+    bare = FakeDatabase(run, UNITS)
+    a, *points = at_the_mouths(run)
+    without_land_cover = {
+        e.subcatchment.id: e.watershed
+        for e in delineate_network(graph, bare, a, points, SNAP, settings).subcatchments
+    }
+    assert set(without_land_cover) == {e.subcatchment.id for e in network.subcatchments}
+    for element in network.subcatchments:
+        watershed = element.watershed
+        assert watershed.morphometry.flow_path_equal_area_slope_m_per_m is not None
+        assert watershed.land_cover_stats is not None
+        assert watershed.formula_versions == both
+        assert panel_of(graph, db, tree, element).formula_versions == both
+        assert without_land_cover[element.subcatchment.id].formula_versions == jg
+        assert panel_of(graph, bare, tree, element).formula_versions == jg
 
 
 def test_a_przyrzecze_is_measured_within_it_and_its_channel_runs_up_its_reach(

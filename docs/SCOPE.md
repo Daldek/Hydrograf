@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.18
-**Date:** 2026-11-14
+**Version:** 1.21
+**Date:** 2026-11-21
 **Status:** Approved
 
 ---
@@ -68,7 +68,7 @@ This document defines precisely:
 - Length of the main stream [km]
 - Hydraulic length of the watershed (hydraulic_length_km) [km]
 - Actual length of the main channel (real_channel_length_km) [km]
-- Flow paths: the longest one, from the hydraulically most distant point (usually on the divide), from the centroid [km]
+- Flow paths: the longest one, from the hydraulically most distant point (usually on the divide), from the centroid [km]; the slope and the equal-area slope of the longest one (Lutz's Jg) [m/m]
 - Weighted imperviousness (weighted_imperviousness) [-]
 
 **Geometric characteristics:**
@@ -166,7 +166,7 @@ This document defines precisely:
 
 **Rainfall-runoff model:**
 - Hyetograph: Beta distribution (α=2, β=5)
-- Time step: 5 minutes
+- Time step: 5 minutes by default; the duration of a design storm must be a whole number of steps
 - SCS Curve Number method:
   - Maximum retention: S = 25400/CN - 254
   - Initial abstraction: Ia = 0.2 × S
@@ -178,10 +178,10 @@ This document defines precisely:
   - Peak flow: qp = 0.208 × A / tp
   - Base time: tb = 2.67 × tp
 - Nash IUH method (Instantaneous Unit Hydrograph):
-  - Parameter estimation: from_lutz, from_urban_regression
+  - Parameter estimation: from_lutz (L the longest flow path, Jg its equal-area slope), from_urban_regression
 - Snyder UH method:
-  - Parameters: ct (lag coefficient), cp (peak coefficient)
-- Hyetograph types: Beta, Block, Euler II
+  - Parameters: ct (lag coefficient), cp (peak coefficient); L the longest flow path
+- Hyetograph types: Beta, Block, Euler II (from the PMAXTP depth–duration curve)
 
 **Rainfall → runoff transformation:**
 - Discrete convolution: Q(t) = Pe(t) ⊗ UH(t)
@@ -210,7 +210,7 @@ This document defines precisely:
 
 **✅ In scope:**
 - The admin page `/admin/` on Nogat's kit (`/admin` answers 308; ADR-086) with the key of ADMIN_API_KEY or ADMIN_API_KEY_FILE in the header X-Admin-Key; no key, no access
-- „Zgłoszenia”, „Statystyki” (`stats.jsonl`) and „Stan” (status with the checks database, catchment graph, data directory) of the kit
+- „Zgłoszenia”, „Statystyki” (`stats.jsonl`; the days shown saved as `hydrograf_stats_<first>_<last>.csv`, Nogat DEV-19.21) and „Stan” (status with the checks database, catchment graph, data directory) of the kit
 - „Zasoby”: CPU/RAM (psutil), DB pool and size, rows of the tables, CatchmentGraph, disk usage of the data
 - „Przetwarzanie NMT”: running the bootstrap pipeline from the panel + real-time logs (SSE), the area drawn on a map or a boundary file
 - „Czyszczenie”: tiles, overlays, dem_mosaic, TRUNCATE of tables; „Granice i kanalizacja”: the boundary and sewer uploads
@@ -355,7 +355,7 @@ This document defines precisely:
 
 #### 3.1.1 Digital Elevation Model (DEM, Polish NMT)
 
-**Source:** GUGiK through Kartograf 0.8.0.dev0 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
+**Source:** GUGiK through Kartograf 0.8.2 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
 **Format:** ARC/INFO ASCII GRID → VRT mosaic
 **Resolution:** 5 m (Kartograf `GugikProvider(resolution="5m")`, vertical datum EVRF2007; `bootstrap --resolution 1m` selects 1 m)
 **Coordinate system:** EPSG:2180 (PL-1992)
@@ -377,7 +377,7 @@ This document defines precisely:
 
 #### 3.1.2 Land Cover
 
-**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.0.dev0, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
+**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.2, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
 **Format:** GeoPackage
 **Coordinate system:** EPSG:2180
 **Extent:** The districts that cover the bbox
@@ -423,7 +423,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `f4f6a8d`, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at the tag `v3.1.0`, 3.1.0, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -442,7 +442,7 @@ This document defines precisely:
 
 #### 3.1.5 Soil Data (HSG)
 
-**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.0.dev0, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
+**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.2, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
 **Format:** GeoTIFF (the HSG raster of Poland, a version of the Kartograf store) → polygons → PostGIS (table `soil_hsg`)
 **Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
@@ -533,9 +533,10 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 0.8.0.dev0 (commit `3ce7ee8` of `develop`, the release set candidate-5 of Nogat, range `>=0.8.0.dev0,<0.9`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `e14bc78` of `develop`, the release set candidate-5 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f4f6a8d`, the release set candidate-5 of Nogat, package `obserwator`; design precipitation from IMGW)
+- Hydrolog 0.9.0 (tag `v0.9.0`, the release set of the release round of 2026-11-21, range `>=0.9.0,<0.10`; hydrological calculations)
+- Kartograf 0.8.2 (tag `v0.8.2`, the release set of the release round of 2026-11-21, pinned since Hydrograf 0.5.2, range `>=0.8.0,<0.9`; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.1.0 (IMGWTools until its v3.0.0; tag `v3.1.0`, the release set of the release round of 2026-11-21, range `>=3.1.0,<4`, package `obserwator`; design precipitation from IMGW)
+- Hydrograf 0.6.0 pins these tags (REL-5.3, REL-5.6); during the round it pinned the commits Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0) of their `develop`; Hydrograf 0.5.2 pinned Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1`
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -543,7 +544,7 @@ This document defines precisely:
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
 **Libraries:** served by Hydrograf from `frontend/vendor/` with their licences and `integrity`; the CSP allows scripts, styles and fonts from the site only, no CDN (ADR-085)
 **UI framework:** none (own shell `chrome.css` + `app.css` on the main page; Nogat's kit `nogat-admin.css` and `admin/admin.css` on the admin page), in the tokens
-**Nogat's GUI kit:** 1.0.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the regulamin template and the admin panel
+**Nogat's GUI kit:** 1.1.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the regulamin template and the admin panel
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
 **Modules:** 26 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, sewer, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
 **Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
@@ -968,13 +969,16 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.20
-**Date of the last update:** 2026-11-17
-**Current version:** v0.5.0 is the latest release; `fix/0.5.1` carries 0.5.1.dev0, a patch of defect fixes (`backend/pyproject.toml`)
+**Document version:** 1.23
+**Date of the last update:** 2026-11-22
+**Current version:** v0.6.0 (`backend/pyproject.toml`): the adaptation to Hydrolog 0.9.0, with Obserwator 3.1.0 and Kartograf 0.8.2
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.23 (2026-11-22): the release state of Hydrograf 0.6.0: the tags Hydrolog `v0.9.0`, Obserwator `v3.1.0` and Kartograf `v0.8.2` with their ranges in 3.1.4 and 5.1, the current version v0.6.0; Lutz's and Snyder's L the longest flow path, Euler II from the PMAXTP depth–duration curve and the whole time steps in 2.1.3; the file name of the statistics in 2.1.4
+- 1.22 (2026-11-22): the pins of Nogat's release set candidate-11: Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0), Kartograf the tag `v0.8.2`
+- 1.21 (2026-11-21): the producers of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), Kartograf the tag `v0.8.2`; Hydrograf 0.5.0 to 0.5.2 pinned tags, 0.5.2 Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1` of Nogat's release set candidate-10; the equal-area slope of the longest flow path in 2.1.2; v0.5.2 the latest release
 - 1.20 (2026-11-17): the current version: v0.5.0 released, 0.5.1.dev0 on `fix/0.5.1`
 - 1.19 (2026-11-14): the producers follow the release set candidate-4 of Nogat: Kartograf `c9afdd3`, Obserwator `0394af7`, Hydrolog `9e2cb61`
 - 1.18 (2026-11-14): audit against the code of 2026-11-14: the header version; the data sources (no GIOŚ/RZGW, no CORINE); the point selection of „Wybierz zlewnię”; the sewer import from a file only; `waterbody_mode` in the admin API, not the panel's form; the network of 0–30 points, nodes J/P and two kinds of subcatchment; the base layers and TERYT notes of 2.3; Kartograf 0.8.0.dev0; the vendored libraries, Nogat's kit 0.7.0 and the 26 + 5 JS modules in 5.1; public access in 7.2; the provider lines G, PS/PP/M/RK and SG in 7.3; the current version
