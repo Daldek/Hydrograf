@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-22
 
 The adaptation to Hydrolog 0.9.0 of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2), with Nogat's kit 1.1.0, its rule for the names of files (DEV-19.21) and the standard 1.1: Hydrograf pins Hydrolog 0.9.0 (`v0.9.0`), Obserwator 3.1.0 (`v3.1.0`) and Kartograf 0.8.2 (`v0.8.2`), the members of Nogat's release set 0.2.0. Of Obserwator 3.1.0 Hydrograf calls only `fetch_pmaxtp` and its three exceptions, whose texts alone changed. What was planned for 0.6.0 before moves to 0.7.0.
 
@@ -1246,6 +1246,8 @@ Changes since 0.5.0, to be released as 0.5.1: defect fixes only.
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
+[0.6.0]: https://github.com/Daldek/Hydrograf/compare/v0.5.2...v0.6.0
+[0.5.2]: https://github.com/Daldek/Hydrograf/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Daldek/Hydrograf/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
