@@ -69,6 +69,7 @@ from core.errors import (
     StoreUnavailableError,
     UnsupportedError,
 )
+from core.formula_versions import formula_versions, watershed_specs
 from core.hydrology import D8_DIRECTIONS
 from core.morphometry import calculate_shape_indices
 from core.network_tree import (
@@ -1326,6 +1327,13 @@ def _element_watershed(
             PmaxtpGridCell(**asdict(cell)) for cell in thiessen_cells(boundary, db)
         ]
         or None,
+        formula_versions=formula_versions(
+            watershed_specs(
+                cn_from_land_cover=land_cover is not None,
+                equal_area_slope=morphometry.get("flow_path_equal_area_slope_m_per_m")
+                is not None,
+            )
+        ),
     )
 
 
