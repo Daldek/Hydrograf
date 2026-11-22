@@ -1,9 +1,9 @@
 # ADR-088: Lutz's Jg measured at request time on the traced flow path; Euler II's PMAXTP curve scaled by the areal reduction factor
 
 **Date:** 2026-11-21
-**Status:** proposed (implemented on the branch `feat/hydrolog-0.9.0`, commit `86fb9d6`, step 2 of
-Nogat's plan `2026-11-19-hydrolog-0.9.0-consumers`; accepted with the author's approval of the
-branch)
+**Status:** proposed (implemented in Hydrograf 0.6.0 by commit `86fb9d6` of the branch
+`feat/hydrolog-0.9.0`, step 2 of Nogat's plan `2026-11-19-hydrolog-0.9.0-consumers`; the
+author has not accepted it yet)
 
 ## Context
 

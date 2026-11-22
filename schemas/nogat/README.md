@@ -1,10 +1,10 @@
 # Copies of the Nogat standard
 
-Verbatim copies (ERR-3, AGI-4.1, DEV-15.6) of the files below, from commit `7786271` of the
-[Nogat](https://github.com/Daldek/Nogat) repository: the standard that Nogat numbers 1.0 since
-its `55a191a` (the draft called 2.1 before; no tag of it exists yet, replace the copies by the
-tag when it does). Nogat's `uv run scripts/ecosystem.py drift` reports each copy as current,
-behind or modified:
+Verbatim copies (ERR-3, AGI-4.1, DEV-15.6) of the files below of the
+[Nogat](https://github.com/Daldek/Nogat) repository, current with the Nogat standard 1.1 (tag
+`std-1.1`): the files named without a commit of their own are copies of Nogat's `7786271`
+(standard 1.0), which 1.1 did not change. Nogat's `uv run scripts/ecosystem.py drift` reports
+each copy as current, behind or modified:
 
 - `error_registry.json` (Nogat `standards/error_registry.json`), copied again from Nogat's
   `975136e` (standard 1.1, the computation standard CMP; of the registry only its
@@ -27,7 +27,7 @@ ECO-060, with the description and examples of ECO-065: `terms_notice` holds the 
 terms only; its first example records the result of Hydrolog 0.9.0 (57.9 m³/s and
 1 046 737.6 m³, the exact Beta storm and Kirpich's 0.0078). SHA-256
 `10de3e18aafe37d413d19bd849730a2bee2b64603eb5d2c01c992f80c662c62f`. The pinned Hydrolog
-`64f6e21` reads the same copy (the same SHA-256), with `node_provenance`, `attribution` and
+0.9.0 reads the same copy (the same SHA-256), with `node_provenance`, `attribution` and
 `terms_notice`:
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope

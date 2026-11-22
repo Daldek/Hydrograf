@@ -478,7 +478,7 @@ Launch:                                                            🚀
 - ☑ Rainfall scenario form
 - ☑ API calls with error handling
 - ☑ Chart.js charts (hydrograph, histogram)
-- ☑ CSV/GeoJSON export (today: the hyetograph as CSV and JSON, its PMAXTP points as GeoJSON and the hand-off file to Hydrolog)
+- ☑ CSV/GeoJSON export (today, with the file names of Nogat DEV-19.21: the hyetograph as CSV and JSON, `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>]` or `hydrograf_hyetograph_custom`, its PMAXTP points as GeoJSON, `hydrograf_pmaxtp-points_<…>.geojson`, and the hand-off file to Hydrolog, `hydrograf_handoff_<subject>.json`)
 - ☑ Glassmorphism UI with a draggable side panel (REPLACED by the Nogat visual identity and the Archiwista shell, ADR-065)
 - ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic) (REPLACED: today OpenFreeMap grey, OSM GUGiK grey, „Ortofotomapa GUGiK” and none; ADR-065, ADR-085)
 - ☑ Thematic layers: MVT streams, MVT watersheds, MVT land cover, DEM hillshade, depressions
@@ -486,7 +486,7 @@ Launch:                                                            🚀
 - ☑ 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app (today 26 modules of `js/` without `draggable`, SCOPE 5.1)
 
 #### **Phase 3b: Admin panel (ADR-034)**
-**Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit 1.0.0 at `/admin/`, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
+**Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit at `/admin/`, 1.0.0 then and 1.1.0 today, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
 - ☑ Frontend `/admin` — glassmorphism, 4 sections (Dashboard, Bootstrap, Resources, Cleanup)
 - ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream); `GET /api/admin/dashboard` is gone, replaced by `GET /api/admin/status`, with `GET /api/admin/stats` and the reports `GET /api/admin/feedback` beside it
 - ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY; today also ADMIN_API_KEY_FILE, and without either every admin route answers 401 `admin_key_not_configured`)
@@ -552,11 +552,12 @@ Launch:                                                            🚀
 
 ---
 
-**Document version:** 1.3
-**Date of the last update:** 2026-11-14
+**Document version:** 1.4
+**Date of the last update:** 2026-11-22
 **Status:** Approved — the project is in active development (CP4 finished, CP5 MVP in preparation)
 
 **Change history:**
+- 1.4 (2026-11-22): the release state of Hydrograf 0.6.0: the export file names of Nogat DEV-19.21 in Phase 3 and Nogat's GUI kit 1.1.0 of the admin panel in Phase 3b
 - 1.3 (2026-11-14): audit against the code of 2026-11-14: a public service (1.1, NFR-04) and no personal data stored; the data sources (BDOT10k without CORINE, SoilGrids, streams from the DEM; PMAXTP with 16 durations and 27 probabilities, also in US-03); the default base layer; notes on the milestones replaced since: `/api/select-stream`, the export, the shell, the base layers, the modules and the admin panel of ADR-086
 - 1.2 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
 - 1.1 (2026-03-01): last content update

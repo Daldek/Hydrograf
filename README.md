@@ -317,7 +317,7 @@ of a pull request.
 
 ## Status, licence, author
 
-Alpha. Releases are the tags `vX.Y.Z` of `main`; 0.5.0 is in the first joint release of
-Nogat. Licence: MIT
+Alpha. Releases are the tags `vX.Y.Z` of `main`; 0.6.0, with Hydrolog 0.9.0 and Obserwator
+3.1.0, is in the release set of Nogat 0.2.0 (standard 1.1). Licence: MIT
 ([LICENSE](https://github.com/Daldek/Hydrograf/blob/main/LICENSE)). Author:
 [Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/).

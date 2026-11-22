@@ -1,11 +1,12 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.9
-**Data:** 2026-11-21
+**Wersja:** 1.10
+**Data:** 2026-11-22
 **Status:** Approved
 
 **History:**
+- 1.10 (2026-11-22): the release of 0.6.0 (Hydrolog 0.9.0): §6.4 the example's `hydrolog_version` 0.9.0 (it named a development version) and its `formula_versions` with `equal_area_slope` and `tr55_cn`, which the full path joins from the delineated watershed of §6.2; `precipitation.times_min` the ends of the steps, 5 to 60 min.
 - 1.9 (2026-11-21): Hydrolog 0.9.0 (ADR-088): §6.2 `flow_path_equal_area_slope_m_per_m` in the morphometry and the watershed's `formula_versions`; §6.3 the whole steps of a design storm (`storm_not_whole_steps`, `euler_ii_step_below_curve`); §6.4 the notice `outside_applicability`, `hydrolog_version` and `formula_versions`, Euler II's `depth_duration_mm` in the hand-off.
 - 1.8 (2026-11-14): audit against the code of 2026-11-14: the ERD and §4–§5 with `feedback`, `processing_runs` and `processing_units` and the partial indexes of migration 004; `stream_network.source` without a default (`DEM_DERIVED` only), `precipitation_data.source` `IMGW_PMAXTP` only, `sewer_network.source` VARCHAR(255); `perimeter_km` and `hydraulic_length_km` of `stream_catchments` written but no longer read; the limit of `feedback.context` in bytes; §6 the models of `models/schemas.py`; §7 without the data classes that do not exist; no maintenance job.
 
@@ -1132,7 +1133,7 @@ A PMAXTP design storm is made of whole time steps (Hydrolog ADR-0046): a `durati
     "duration_min": 60,
     "probability_percent": 10,
     "timestep_min": 5,
-    "times_min": [0, 5, 10, ..., 55],
+    "times_min": [5, 10, 15, ..., 60],
     "intensities_mm": [1.0, 2.5, 6.0, ..., 0.0],
     "effective_mm": [0.0, 0.0, 0.4, ..., 0.0],
     "interpolation": "thiessen",
@@ -1168,8 +1169,8 @@ A PMAXTP design storm is made of whole time steps (Hydrolog ADR-0046): a `durati
   "notices": [
     {"level": "warning", "code": "outside_applicability", "message": "Hydrogram jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej zakresu stosowania 0–51,8 km². Wynik może być niewiarygodny."}
   ],
-  "hydrolog_version": "0.9.0.dev5",
-  "formula_versions": {"beta_hyetograph": 1, "nrcs": 1, "scs": 1, "scs_cn_retention": 1, "scs_cn_runoff": 1, "thiessen_precipitation": 1, "uh_convolution": 1}
+  "hydrolog_version": "0.9.0",
+  "formula_versions": {"beta_hyetograph": 1, "equal_area_slope": 1, "nrcs": 1, "scs": 1, "scs_cn_retention": 1, "scs_cn_runoff": 1, "thiessen_precipitation": 1, "tr55_cn": 1, "uh_convolution": 1}
 }
 ```
 
@@ -1352,8 +1353,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.9
-**Data ostatniej aktualizacji:** 2026-11-21
+**Wersja dokumentu:** 1.10
+**Data ostatniej aktualizacji:** 2026-11-22
 **Status:** Approved
 
 ---

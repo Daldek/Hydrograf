@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.10 | Data: 2026-11-21
+> Wersja: 1.11 | Data: 2026-11-22
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -362,7 +362,7 @@ Klucze wyjściowe (wybór):
 
 ## Faza 4: Dane opadowe
 
-**Moduł:** `backend/core/precipitation.py` (479 lines)
+**Moduł:** `backend/core/precipitation.py` (495 lines)
 
 ### 4.1 Walidacja parametrów
 
@@ -834,5 +834,6 @@ CREATE TABLE land_cover (
 ---
 
 **Change history:**
+- 1.11 (2026-11-22): the release audit of 0.6.0 against the code: Phase 4 `core/precipitation.py` has 495 lines (479 before the fix of E5b-09 in 0.5.1)
 - 1.10 (2026-11-21): Hydrolog 0.9.0.dev5: the equal-area slope `flow_path_equal_area_slope_m_per_m` of the longest flow path on the filled DEM read at request time (§3.2a, §3.7); Strahler's HI stages in 3.4; the up-front checks of a design storm in 6.1; Euler II from the PMAXTP depth–duration curve, no `peak_position` (6.3); Snyder's L and Lutz's L and Jg on the longest flow path (6.5a); `hydrolog_version` and `formula_versions` (6.8)
 - 1.9 (2026-11-14): audit against the code of 2026-11-14: Phase 1 names the module of each function instead of line numbers of the former monolith, `process_dem.py` ~1,960 lines without re-exports, no `temp_flow_import`, no simplification of the sub-catchment polygons (`zonal_summary`); the graph's attributes without `perimeter_km`; `select_stream.py` merged into `watershed.py` (ADR-050); 4.1 the 16 durations and 27 probabilities of PMAXTP; 6.3 `HietogramResult`; 6.5 and 6.6 the SCS unit hydrograph and the convolution of Hydrolog (qp = 0.208 A/tp, the dimensionless table, no `× A`); the migration numbers of before the squash dropped; `HYDROGRAPH_AREA_LIMIT_KM2` in `core/constants.py`

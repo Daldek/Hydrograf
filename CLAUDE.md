@@ -4,9 +4,9 @@ Hydrograf is a web application for watershed delineation, catchment parameters a
 hydrographs in Poland: a FastAPI service over PostGIS, a static map front end and an admin
 panel, built on Hydrolog (calculations), Kartograf (spatial data) and Obserwator
 (precipitation). Profile `app` (DEV-1.1; `ecosystem.yaml` is authoritative).
-Introduction: [README.md](README.md). The Nogat standard 1.0 is in
+Introduction: [README.md](README.md). The Nogat standard 1.1 is in
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards)
-(DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY).
+(DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY, COMPUTATIONS).
 
 ## Critical rules
 

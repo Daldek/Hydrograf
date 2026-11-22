@@ -126,7 +126,7 @@
   <h2>Obszar danych i status wyników</h2>
   <div class="grid three">
     <div class="card"><span class="label">Obszar danych</span><p>Dane obejmują tylko zlewnię Kaczawy powyżej punktu 51,222825°&nbsp;N, 16,179380°&nbsp;E (ok.&nbsp;792&nbsp;km²). Po otwarciu mapa sama pokazuje ten obszar, a warstwy kończą się na jego granicy.</p></div>
-    <div class="card"><span class="label">Poza obszarem</span><p>Kliknięcie w trybie „Wybierz zlewnię” poza liniami spływu kończy się komunikatem „Nie znaleziono zlewni cząstkowej w tym punkcie. Kliknij w obszarze pokrytym liniami spływu.” Profil przecinający granicę danych może pokazać 0&nbsp;m na odcinku bez danych; profil całkiem poza nimi może zwrócić błąd.</p></div>
+    <div class="card"><span class="label">Poza obszarem</span><p>Kliknięcie w trybie „Wybierz zlewnię” poza liniami spływu kończy się komunikatem „Nie znaleziono zlewni cząstkowej w tym miejscu. Kliknij w obszarze zlewni.” Profil przecinający granicę danych ma przerwę na odcinku bez danych NMT; profil całkiem poza nimi kończy się komunikatem „Linia leży poza zasięgiem NMT: brak danych wysokościowych.”</p></div>
     <div class="card"><span class="label">Status wyników</span><p>To wersja rozwojowa: wartości i funkcje mogą się zmieniać. Hietogram i hydrogram powstają tylko dla zlewni do 250&nbsp;km². Mapa głębokości wody SFINCS to wynik wstępny, do podmiany.</p></div>
   </div>
   <p class="hint">Zgubiłeś obszar? Ikona ramki „Przybliż do zasięgu warstw” w panelu „Warstwy” pokazuje zasięg włączonych warstw, a gdy żadna nie jest włączona — cały obszar danych.</p>
@@ -276,7 +276,7 @@
     <div class="step"><span class="number">03</span><strong>Poczekaj na granicę</strong><p>Zlewnie cząstkowe zapalają się od ujścia w górę i pulsują, aż serwer scali granicę — przy setkach km² nawet ponad minutę. Wynik trafi do panelu „Zlewnia”.</p></div>
   </div>
   <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu.</p>
-  <p class="hint">Nowe kliknięcie od razu zastępuje poprzedni wynik. Poza obszarem danych panel pokaże „Błąd: Nie znaleziono zlewni cząstkowej w tym punkcie…”.</p>
+  <p class="hint">Nowe kliknięcie od razu zastępuje poprzedni wynik. Poza obszarem danych panel pokaże „Błąd: Nie znaleziono zlewni cząstkowej w tym miejscu…”.</p>
   <div class="footer"><span>OD KLIKNIĘCIA DO GRANICY ZLEWNI</span><span>15 / 33</span></div>
 </section>
 <section class="slide" id="wynik" aria-label="Slajd 16: wynik na mapie i w panelu">
@@ -356,7 +356,7 @@
       <div class="card"><span class="label">Co zawiera</span><p>Definicję z symbolem, wzór, „gdzie:” ze zmiennymi i jednostkami, „Jednostka:”, zdanie lub dwa o tym, jak odczytać wartość, i „Źródła:”. „Więcej w instrukcji” otwiera dłuższe objaśnienie z części instrukcji „Objaśnienia wielkości i metod”.</p></div>
     </div>
   </div>
-  <p class="hint">Pod polami „Model UH”, „Metoda Tc” i „Estymacja Nash” zawsze widać „Zakres stosowalności” wybranej opcji.</p>
+  <p class="hint">Pod polami „Model UH”, „Metoda Tc” i „Estymacja Nash” widać „Zakres stosowalności” wybranej opcji; przy Snyderze „Metoda Tc” jest wyłączona z uwagą, że Snyder nie używa Tc.</p>
   <div class="footer"><span>DEFINICJA · WZÓR · ODCZYT · ŹRÓDŁA</span><span>19 / 33</span></div>
 </section>
 <section class="slide" id="hietogram" aria-label="Slajd 20: hietogram PMAXTP">
@@ -471,11 +471,11 @@
   <h2>Przekazanie do Hydrologa</h2>
   <div class="grid four">
     <div class="step"><span class="number">01</span><strong>Wyznacz zlewnię</strong><p>Pod sekcjami panelu „Zlewnia” jest część „Przekazanie do Hydrologa”. Opisuje, co przekaże: parametry zlewni, a gdy hydrogram jest obliczony — także opad, model i wynik.</p></div>
-    <div class="step"><span class="number">02</span><strong>Kopiuj albo zapisz</strong><p>„Kopiuj do Hydrologa” kładzie przekazanie (JSON <code>nogat-handoff/1</code>) do schowka, „Plik przekazania” pobiera je jako plik <code>hydrograf_handoff_&lt;nazwa&gt;.json</code>. Idzie to, co pokazuje panel, także zmiany trybu zaawansowanego.</p></div>
+    <div class="step"><span class="number">02</span><strong>Kopiuj albo zapisz</strong><p>„Kopiuj do Hydrologa” kładzie przekazanie (JSON <code>nogat-handoff/1</code>) do schowka, „Plik przekazania” pobiera je jako plik <code>hydrograf_handoff_<wbr>&lt;nazwa&gt;.json</code>. Idzie to, co pokazuje panel, także zmiany trybu zaawansowanego.</p></div>
     <div class="step"><span class="number">03</span><strong>Wczytaj w Hydrologu</strong><p>W „Hydrogramie zlewni” Hydrologa: „Wczytaj z Hydrografa”, a w nim „Wklej ze schowka” albo „Plik przekazania…”. Opad PMAXTP otwiera się z punktem i wysokością z Hydrografa, a Euler II — także z krzywą wysokość–czas trwania, z której go zbudowano.</p></div>
     <div class="step"><span class="number">04</span><strong>Porównaj wynik</strong><p>Hydrolog liczy hydrogram sam i stawia Qmax, czas do szczytu i objętość obok wyniku Hydrografa, z wersją Hydrologa, którą liczył każdy z nich.</p></div>
   </div>
-  <p class="hint">Gdy przeglądarka nie daje dostępu do schowka (strona otwarta przez zwykłe HTTP), pojawia się pole z zaznaczonym tekstem przekazania: skopiuj go <kbd>Ctrl</kbd>+<kbd>C</kbd>. Czas koncentracji przechodzi jako liczba, bo Hydrograf liczy go po najdłuższej drodze spływu. Samą zlewnię, bez obliczonego hydrogramu, Hydrolog na razie odrzuca („nie ma opadu”). Całą sieć z „Wybierz zlewnię” → „Sieć zlewni” przekazują te same przyciski — slajd 28.</p>
+  <p class="hint">Gdy przeglądarka nie daje dostępu do schowka (strona otwarta przez zwykłe HTTP), pojawia się pole z zaznaczonym tekstem przekazania: skopiuj go <kbd>Ctrl</kbd>+<kbd>C</kbd>. Czas koncentracji przechodzi jako metoda Tc: Hydrolog liczy go sam. Samą zlewnię, bez obliczonego hydrogramu, Hydrolog otwiera z opadem PMAXTP w ujściu; prawdopodobieństwo i czas trwania wybierasz tam. Całą sieć z „Wybierz zlewnię” → „Sieć zlewni” przekazują te same przyciski — slajd 28.</p>
   <div class="footer"><span>KOPIUJ · PLIK · WCZYTAJ · PORÓWNAJ</span><span>26 / 33</span></div>
 </section>
 <section class="slide" id="siec" aria-label="Slajd 27: sieć zlewni — punkty i podgląd">
@@ -548,7 +548,7 @@
       <div class="step"><span class="number">04</span><strong>Odczytaj i zacznij od nowa</strong><p>Najechanie na wykres wskaże miejsce na linii. Kliknięcie mapy zaczyna nową linię; × w szufladzie zamyka profil.</p></div>
     </div>
   </div>
-  <p class="hint">Wykres ma zawsze 100&nbsp;punktów — przy długiej linii drobne formy terenu znikają. Część linii poza obszarem danych spada do 0&nbsp;m; linia całkiem poza nim daje „Nie udało się pobrać profilu terenu”. <strong>Woda na wykresie:</strong> gdy w panelu „Warstwy” jest włączony wynik modelu (np. SFINCS), a linia przecina zalany teren, wykres pokaże wodę na niebiesko — do najwyższego poziomu z symulacji. Najechanie na wodę poda poziom wody i głębokość.</p>
+  <p class="hint">Wykres ma zawsze 100&nbsp;punktów — przy długiej linii drobne formy terenu znikają. Odcinek linii poza zasięgiem NMT to przerwa w wykresie; linia całkiem poza tym zasięgiem daje „Linia leży poza zasięgiem NMT: brak danych wysokościowych.” <strong>Woda na wykresie:</strong> gdy w panelu „Warstwy” jest włączony wynik modelu (np. SFINCS), a linia przecina zalany teren, wykres pokaże wodę na niebiesko — do najwyższego poziomu z symulacji. Najechanie na wodę poda poziom wody i głębokość.</p>
   <div class="footer"><span>LINIA PROFILU · SZUFLADA · WYKRES WYSOKOŚCI</span><span>31 / 33</span></div>
 </section>
 <section class="slide" id="telefon" aria-label="Slajd 32: telefon i motyw">
@@ -557,9 +557,9 @@
   <div class="split">
     <img class="app-shot fit-shot" src="../frontend/instrukcja/Hydrograf-v2-telefon.png" width="488" height="1055" alt="Widok aplikacji na telefonie: górny pasek z ikonami, panel zlewni, pasek źródeł i dolna nawigacja Mapa, Logowanie oraz Regulamin.">
     <div class="stack">
-      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie · Regulamin staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne), „Aplikacje” (lista rozwija się pod paskiem) i przełącznik motywu.</p></div>
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie · Regulamin staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne), „Aplikacje” (lista rozwija się pod paskiem) i przełącznik motywu. Pasek źródeł zwija się do jednego wiersza: „więcej” rozwija go, „zwiń” zwija.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” (w „Sieci zlewni” — „Sieć”) wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
-      <div class="card"><span class="label">Dotyk</span><p>Przy 390 px cztery tryby mieszczą się nad mapą w dwóch wierszach. Podpowiedzi trybu są ukryte. Profil narysujesz, dotykając kolejnych punktów linii; sieć zlewni — wskazując przekrój zamykający i potem punkty powyżej.</p></div>
+      <div class="card"><span class="label">Dotyk</span><p>Przy 390 px pasek nad mapą ma dwa wiersze: przyciski „Warstwy” i „Zlewnia”, a pod nimi cztery tryby. Podpowiedzi trybu są ukryte. Profil narysujesz, dotykając kolejnych punktów linii; sieć zlewni — wskazując przekrój zamykający i potem punkty powyżej.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
     </div>
   </div>
