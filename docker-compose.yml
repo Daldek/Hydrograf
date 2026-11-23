@@ -135,7 +135,7 @@ services:
       - /tmp:size=2G  # BDOT10k downloads need ~1-2G temp space during bootstrap
 
   nginx:
-    image: nginx:1.31.9-alpine@sha256:0563c36f94a6d3ec3584161b77859f740f7e20b4853f52c796a864ce6908e8ea
+    image: nginx:1.31.9-alpine@sha256:fb4658584bd9a916ffb6f6e365f97c25cfdb2923801f551ea08356e695f14ff7
     container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_nginx
     ports:
       - "127.0.0.1:${HYDROGRAF_PORT:-8080}:80"
