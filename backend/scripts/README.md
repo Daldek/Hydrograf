@@ -9,7 +9,7 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
   `.venv/bin/python -m scripts.<name>` (or `uv run python -m scripts.<name>`).
 - A running PostgreSQL/PostGIS database with the Alembic migrations applied (`bootstrap.py` does
   both).
-- [Kartograf](https://github.com/Daldek/Kartograf), pinned by its commit `630af02` (0.9.0.dev0, Nogat's release set
+- [Kartograf](https://github.com/Daldek/Kartograf), pinned by its commit `05052b3` (0.9.0.dev0, Nogat's release set
   candidate-13) in `backend/pyproject.toml` (range `>=0.9.0.dev0,<0.10`, installed by `uv sync --locked`; details in
   [docs/integrations/KARTOGRAF.md](../../docs/integrations/KARTOGRAF.md)):
   - NMT (DEM): elevation data from GUGiK
@@ -1022,7 +1022,7 @@ them group D (ADR-078).
 ### `preprocess_precipitation.py`: IMGW precipitation
 
 Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator 3.2.1, the package
-`obserwator` pinned by its commit `472446d` of `hotfix/3.2.1`, range `>=3.1.0,<4`) for a grid of points inside a
+`obserwator` pinned by its commit `ffcaa23` of `hotfix/3.2.1`, range `>=3.1.0,<4`) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 

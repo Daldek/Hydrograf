@@ -100,12 +100,12 @@ package = false
 
 [tool.uv.sources]
 # The commits of Nogat's release set candidate-13 (the release round of 2026-11-24), not
-# tagged yet (REL-5.3): Kartograf 630af02 of `develop` (0.9.0.dev0), Obserwator 472446d
-# of `hotfix/3.2.1` (3.2.1) and Hydrolog a59753c of `hotfix/0.9.1` (0.9.1). The release
+# tagged yet (REL-5.3): Kartograf 05052b3 of `develop` (0.9.0.dev0), Obserwator ffcaa23
+# of `hotfix/3.2.1` (3.2.1) and Hydrolog 146a96b of `hotfix/0.9.1` (0.9.1). The release
 # commit replaces them with the tags v0.9.0, v3.2.1 and v0.9.1. The commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "472446d3d3ac29cc9b4f46b89e4fba83e555f1ba" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "630af02d1739e4979a817951490667c3fc2f9cdd" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "a59753cc8bddc333a3c2d813a66514c1fadfdbb6" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ffcaa23a066aaf424eb0a64fb6c4c63c52e19aab" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "05052b3a924bfabd5d0fbb21bf30c9e78a8d640a" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "146a96b758c2863aa30b610763a7de6872306683" }
 
 [tool.ruff]
 target-version = "py312"
