@@ -1,6 +1,6 @@
 [project]
 name = "hydrograf"
-version = "0.6.0"
+version = "0.6.1.dev0"
 description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
@@ -59,9 +59,11 @@ dependencies = [
     # Obserwator, spatial data download of Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and
     # the calculations of Hydrolog. The range is the one the code supports from the
     # producer's release (REL-5.6): Hydrolog 0.9.0 builds Euler II from a depth-duration
-    # curve and gives the equal-area slope; the pin is in `[tool.uv.sources]`.
+    # curve and gives the equal-area slope; the pin is in `[tool.uv.sources]`. While
+    # Kartograf's commit is pinned its range admits the development versions of 0.9.0
+    # (`>=0.9.0.dev0`); the release commit narrows it to `>=0.9.0,<0.10`.
     "obserwator>=3.1.0,<4",
-    "kartograf>=0.8.0,<0.9",
+    "kartograf>=0.9.0.dev0,<0.10",
     "hydrolog>=0.9.0,<0.10",
     "requests>=2.31",
     # Process monitoring, utilities, caching
@@ -97,12 +99,13 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The releases of Nogat's release set v0.2.0 (the release round of 2026-11-21, Nogat
-# plan 2026-11-19-hydrolog-0.9.0-consumers): Hydrolog v0.9.0, Obserwator v3.1.0 and
-# Kartograf v0.8.2, Git tags (REL-5.1).
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.1.0" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.8.2" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.9.0" }
+# The commits of Nogat's release set candidate-13 (the release round of 2026-11-24), not
+# tagged yet (REL-5.3): Kartograf 630af02 of `develop` (0.9.0.dev0), Obserwator 472446d
+# of `hotfix/3.2.1` (3.2.1) and Hydrolog a59753c of `hotfix/0.9.1` (0.9.1). The release
+# commit replaces them with the tags v0.9.0, v3.2.1 and v0.9.1. The commits are on GitHub.
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "472446d3d3ac29cc9b4f46b89e4fba83e555f1ba" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "630af02d1739e4979a817951490667c3fc2f9cdd" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "a59753cc8bddc333a3c2d813a66514c1fadfdbb6" }
 
 [tool.ruff]
 target-version = "py312"

@@ -5,6 +5,11 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The producers of Nogat's release set candidate-13, pinned by commit** (`backend/pyproject.toml`, `backend/uv.lock`; the release round of 2026-11-24, REL-5.3): Kartograf `630af02` of its `develop` (0.9.0.dev0, was `v0.8.2`), Obserwator `472446d` of `hotfix/3.2.1` (3.2.1, was `v3.1.0`) and Hydrolog `a59753c` of `hotfix/0.9.1` (0.9.1, was `v0.9.0`). While Kartograf's commit is pinned the backend declares `kartograf>=0.9.0.dev0,<0.10` (was `>=0.8.0,<0.9`; REL-5.6); `obserwator>=3.1.0,<4` and `hydrolog>=0.9.0,<0.10` admit 3.2.1 and 0.9.1 and are unchanged. Nothing Hydrograf calls changes: Kartograf 0.9.0 adds CAMELS-PL and the reading of ZIP members by range requests, and its sidecar functions gain an optional `attribution=`; of Obserwator 3.2.0 and 3.2.1 `fetch_pmaxtp`, `build_pmaxtp_url` and the three `Obserwator*Error` exceptions are unchanged, and PMAXTP's answers are no capture; Hydrolog 0.9.1 changes only the Obserwator of its extras. The release commit replaces the commits with the tags `v0.9.0`, `v3.2.1` and `v0.9.1` and narrows Kartograf's range to `>=0.9.0,<0.10`. `develop` opens 0.6.1 at `0.6.1.dev0` (REL-1.1).
+
 ## [0.6.0] - 2026-11-22
 
 The adaptation to Hydrolog 0.9.0 of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2), with Nogat's kit 1.1.0, its rule for the names of files (DEV-19.21) and the standard 1.1: Hydrograf pins Hydrolog 0.9.0 (`v0.9.0`), Obserwator 3.1.0 (`v3.1.0`) and Kartograf 0.8.2 (`v0.8.2`), the members of Nogat's release set 0.2.0. Of Obserwator 3.1.0 Hydrograf calls only `fetch_pmaxtp` and its three exceptions, whose texts alone changed. What was planned for 0.6.0 before moves to 0.7.0.
