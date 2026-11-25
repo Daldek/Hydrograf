@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.27
+**Version:** 2.28
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -266,6 +266,7 @@ backend/
 │   ├── integration/               # 20+ integration test files (TestClient; marker db: PostGIS)
 │   ├── contract/                  # Contracts: error registry, messages, OpenAPI, problems, README, .env.example, kit, vendor
 │   ├── performance/               # Performance tests (benchmarks)
+│   ├── e2e/                       # Browser tests of the map and the panels in Chromium (marker e2e: PostGIS, Playwright)
 │   ├── fixtures/                  # Test data
 │   └── conftest.py
 │
@@ -1390,6 +1391,8 @@ map.on('click', function (e) {
 
 `app.js` routes the click by `state.clickMode`: `browse`, `select`, `network`, `profile` or `identify`.
 
+**What the map draws, for the browser tests** (`tests/e2e`; Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): `Hydrograf.map.describe()` returns the view (`center` and `bounds` in degrees, `scale`: metres of EPSG:3857 per CSS pixel over the standard pixel of 0.28 mm, as a WMS computes it), the overlays on the map from the bottom up with their opacity as a whole (`dem`, `hazard`, `landcover`, `result:<id>`, `streams`, `preview`, `bdot-lakes`, `hsg`, `bdot-streams`, `depressions`, `sewer`, `watershed`, `main-channel`, `longest-flow-path`, `divide-flow-path`, `outlet`, `network`, `draw`, `profile-line`, `profile-marker`, `identify-marker`; the place of a one-point overlay) and the network's points. A module names the layer of an overlay with `Hydrograf.map.nameOverlay(layer, id)`; the order is the drawn one (the panes, then the order within a pane). The tests read the map only through it, the panels and the requests, so that they hold for the map on MapLibre too.
+
 #### 4.2.2 API Client
 ```javascript
 // api.js (abridged): same-origin URLs through nginx; Accept-Language: pl for Polish problems
@@ -2242,9 +2245,10 @@ def effective_rainfall_slow(intensities, cn):
 - `integration/` — the routes through FastAPI's `TestClient`, and the database code against PostGIS (marker `db`)
 - `contract/` — the error registry, the message catalogue, the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies and the vendored files
 - `performance/` — timing tests of the PostGIS queries (marker `benchmark`, with the database)
+- `e2e/` — the map and the panels in Chromium through Playwright (marker `e2e`): a session fixture runs the synthetic DEM of `tests/fixtures/pipeline_run.py` through the pipeline into a private database and a temporary data root (the DEM's tiles, the streams' tiles of `generate_tiles.py` where tippecanoe is present, the depressions, the sewer, an analysis result of two levels), the API under uvicorn, and `frontend/` by a server of the tests' own that routes as `docker/nginx.conf` and sends its two CSP values; the outside base maps and the WMS are answered from recorded files (`tests/e2e/recorded/`). Without PostGIS or Chromium the tests are skipped, under `CI` they fail
 - `fixtures/` — test data
 
-The markers are `live` (real network services), `db` (PostGIS), `slow` and `benchmark`; the default run and `scripts/gate.sh` leave out `live`, `db` and `benchmark`. The gate runs `ruff format --check`, `ruff check`, `mypy`, one pytest call with coverage (`fail_under = 80`), `scripts/bump_asset_versions.py --check` and the commit checks. The preprocessing pipeline (`scripts/`) is run by hand on real data and is not measured by the coverage.
+The markers are `live` (real network services), `db` (PostGIS), `slow`, `benchmark` and `e2e` (PostGIS and Chromium); the default run and `scripts/gate.sh` leave out `live`, `db`, `benchmark` and `e2e`. The gate runs `ruff format --check`, `ruff check`, `mypy`, one pytest call with coverage (`fail_under = 80`), `scripts/bump_asset_versions.py --check` and the commit checks. The preprocessing pipeline (`scripts/`) is run by hand on real data and is not measured by the coverage.
 
 ---
 
@@ -2254,6 +2258,7 @@ The markers are `live` (real network services), `db` (PostGIS), `slow` and `benc
 - `frontend-assets` — `python3 scripts/bump_asset_versions.py --check`
 - `gate` — `scripts/gate.sh` on `ubuntu-latest` with Python 3.12 (required) and 3.15 (reported, not blocking; it installs `libgdal-dev` first, so that Fiona builds); the commit checks run only on pull requests into `develop` and of `hotfix/*` into `main`
 - `db` — the tests marked `db` (not `benchmark`) against the service `postgis/postgis:16-3.4` after `alembic upgrade head`
+- `e2e` — the tests of `tests/e2e` against the same service, with `gdal-bin`, `python3-gdal` and `tippecanoe` from apt and Playwright's Chromium (`playwright install --with-deps chromium`)
 - `audit` — `pip-audit --strict` over the locked PyPI dependencies (`uv export --locked`), the ecosystem's own packages left out
 
 The actions are pinned by commit SHA and updated by Dependabot (`.github/dependabot.yml`); the required checks are `gate` of Python 3.12 and `db`. No job builds or deploys an image.
@@ -2305,11 +2310,12 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.27
+**Document version:** 2.28
 **Date of the last update:** 2026-11-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.28 (2026-11-25): the browser tests (Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): §2.1 `tests/e2e`; §4.2.1 `Hydrograf.map.describe()` and `nameOverlay()`; §11.1 the marker `e2e`; §11.2 the job `e2e`; the header and the footer 2.28
 - 2.27 (2026-11-25): §2.4.7 Hydrolog pinned by its tag `v0.9.1` (Hydrograf 0.6.1); the header and the footer 2.27
 - 2.26 (2026-11-24): §2.4.7 Hydrolog pinned by its commit `1b25a91` (0.9.1) of Nogat's release set candidate-13; the header and the footer 2.26
 - 2.25 (2026-11-22): the release audit of 0.6.0 against the code: §2.1 `core/_errors.py` the registry of the Nogat standard 1.1; §2.2.1 the example `version` 0.6.0; §2.2.3 the message IDs of Hydrolog's refusals, and no code fence left open after the block; §2.4.7 Hydrolog pinned by its tag `v0.9.0`, the equal-area slope among its tasks; §4.1 the names of the downloads of `rain-export.js` and of the statistics of `nogat-admin.js` (Nogat DEV-19.21); §4.2.0 76 entries keyed by a field, a control or a kind, 68 with a section of the guide, the notices of a value outside the applicability range; the header and the footer 2.25 like this history (the footer said 2.23)

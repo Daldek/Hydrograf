@@ -5,3 +5,5 @@
 frontend/vendor/** -text
 # Obserwator's series exports as `series export` writes them (CRLF rows), byte for byte.
 backend/tests/fixtures/obserwator/** -text
+# The answers of the outside services recorded for the browser tests, as they came
+backend/tests/e2e/recorded/** -text

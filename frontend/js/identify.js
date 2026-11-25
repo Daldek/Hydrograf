@@ -337,7 +337,9 @@
             _marker.setLatLng([lat, lng]);
         } else {
             // Not interactive: a click on it identifies the point under it
-            _marker = L.circleMarker([lat, lng], Object.assign({ interactive: false }, markerStyle())).addTo(map);
+            _marker = Hydrograf.map.nameOverlay(
+                L.circleMarker([lat, lng], Object.assign({ interactive: false }, markerStyle())), 'identify-marker'
+            ).addTo(map);
         }
     }
 

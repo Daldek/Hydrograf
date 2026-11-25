@@ -75,14 +75,15 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
 cd backend && uv sync --locked          # environment in backend/.venv
 scripts/gate.sh                         # ruff format, ruff check, mypy, pytest + coverage, asset versions, commits
 uv run pytest tests/unit -q             # in backend/: a part of the tests, no coverage
-docker compose up -d db                 # PostGIS for development and for the `db` tests
+uv run pytest tests/e2e -m e2e          # in backend/: the browser tests (PostGIS; once: uv run playwright install chromium)
+docker compose up -d db                 # PostGIS for development and for the `db` and `e2e` tests
 uv run alembic upgrade head             # in backend/: migrations
 uv run uvicorn api.main:app --reload    # in backend/: API on :8000
 uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"   # one-off preprocessing
 ```
 
-Python 3.12 or newer. The default run and the gate leave out the markers `live`, `db` and
-`benchmark`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
+Python 3.12 or newer. The default run and the gate leave out the markers `live`, `db`,
+`benchmark` and `e2e`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
 `fail_under = 80` in `backend/pyproject.toml` (DEV-7.5).
 
 Running the service: the stack runs on the system Docker daemon (the agent user is in the
@@ -103,7 +104,7 @@ backend/                 # the Python project: pyproject.toml, uv.lock, .venv (n
 ├── utils/               # geometry, raster, sheet and NMT-coverage helpers, the Kartograf
 │                        #   store, the Archiwista project
 ├── migrations/          # Alembic
-└── tests/               # unit, integration, contract, performance, fixtures
+└── tests/               # unit, integration, contract, performance, e2e, fixtures
 frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
                          #   admin/, instrukcja/, nogat/ (Nogat's copies), vendor/
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
@@ -152,8 +153,8 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
 - DEV-2.1: the Python docstrings, comments and log messages, the user-facing texts of the
   API, and the documents under `docs/` that `docs/PROGRESS.md` lists are still Polish until
   they are translated.
-- DEV-5.2: `tests/performance` (timing tests that need the database) stands beside the
-  standard tree.
+- DEV-5.2: `tests/performance` (timing tests that need the database) and `tests/e2e` (the
+  browser tests, one Chromium per package) stand beside the standard tree.
 - DEV-6.2: the environment is `backend/.venv`, not `.venv` in the repository root: the
   Python project is `backend/`.
 - DEV-6.3: GDAL's Python binding must equal the system library of the image, so the
@@ -174,9 +175,8 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
   measured.
 - DEV-7.7: CI runs on Linux only: Hydrograf is deployed with Docker on Linux, and an `app`
   MAY skip the platform matrix.
-- DEV-10.1: `benchmark` is a marker besides `live`, `db` and `slow` (timing tests of
-  `tests/performance`); the default run and the gate leave it out. The `db` tests run in
-  the `db` job of CI.
+- DEV-10.1: markers besides `live`, `db` and `slow`: `benchmark` (`tests/performance`) and
+  `e2e` (`tests/e2e`); the gate leaves them out, the `db` and `e2e` jobs of CI run theirs.
 - DEV-12.3: about half of the 780 log calls use f-strings; new log calls use
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
