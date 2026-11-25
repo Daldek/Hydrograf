@@ -132,12 +132,12 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      compile no longer catches their warnings; Hydrolog 0.8.1 the other: the first network beside
      a hydrograph gave 500), E5b-10 (the network preview does not warn of a window above 60 M
      cells).
-   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0, waits for the author with E3-04:
-     `obserwator-series-csv` is refused as an own series; the file carries IMGW-PIB's or ČHMÚ's
-     lines, which a consumer carries on by Nogat DEV-20.6, while ADR-083 says an imported file
-     carries no lines and `derived_from` knows PMAXTP alone, so accepting it needs the amendment
-     of ADR-083 that E3-04 waits for, B2 or B3 of its options), E3-04 (*0.5.1*:
-     `custom_precipitation` carries no provider lines), E5b-05
+   - *Lines, rainfall and warnings (B4, B5):* E3-03 and E3-04 (*fixed for 0.7.0*, ADR-083 amended
+     2026-11-25 by option B3, the coordinator's decision by delegation of the author: „Importuj
+     CSV” opens `obserwator-series-csv`, `derived_from` takes `imgw` and `chmu`, the API checks
+     the file's lines against Nogat DEV §20's and refuses an unknown one,
+     `unknown_attribution_line`; Nogat's `ecosystem.yaml` still lacks the edge Obserwator →
+     Hydrograf for the file, Nogat's to add), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings
      reached only the log; the hydrograph's response now carries them as `notices` in Polish and
      the panel shows them under „Hydrogram”), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an

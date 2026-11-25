@@ -43,9 +43,11 @@ from core.attribution import (
     CATCHMENT,
     NO_PROVIDER,
     PMAXTP,
+    SERIES_ORIGINS,
     ProviderLines,
     instance_lines,
     merge,
+    unknown_series_line,
 )
 from core.config import get_settings
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
@@ -98,6 +100,7 @@ from core.watershed_service import (
 )
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
+    CustomPrecipitation,
     HydrographInfo,
     HydrographMetadata,
     HydrographRequest,
@@ -158,6 +161,46 @@ def _require_area_within_limit(area_km2: float) -> None:
             area_km2=float(area_km2),
             limit_km2=HYDROGRAPH_AREA_LIMIT_KM2,
         )
+
+
+def _series_lines(custom: CustomPrecipitation) -> ProviderLines:
+    """Return the lines of the products made with an own rainfall series.
+
+    Parameters
+    ----------
+    custom : CustomPrecipitation
+        The series of the request.
+
+    Returns
+    -------
+    ProviderLines
+        Those of the data ``derived_from`` names (ADR-083, amended 2026-11-25), from
+        ``core.attribution``; none for the user's own data.
+
+    Raises
+    ------
+    InvalidRequestError
+        ``validation_error`` (400, reason ``unknown_attribution_line``) for a line the
+        series brings from its file that is not one of those data's, or that comes
+        without ``derived_from``.
+    """
+    origin = custom.derived_from
+    line = unknown_series_line(origin, custom.attribution, custom.terms_notice)
+    if line is not None and origin is None:
+        raise InvalidRequestError(
+            "attribution_line_without_origin",
+            reason="unknown_attribution_line",
+            line=line,
+        )
+    if line is not None and origin is not None:
+        raise InvalidRequestError(
+            "unknown_attribution_line",
+            reason="unknown_attribution_line",
+            line=line,
+            derived_from=origin,
+            provider=SERIES_ORIGINS[origin][0],
+        )
+    return NO_PROVIDER if origin is None else SERIES_ORIGINS[origin][1]
 
 
 def _compute_watershed(
@@ -923,10 +966,13 @@ def generate_hydrograph(
             probability: float | None = design_probability
             duration_min = float(DURATION_STR_TO_MIN[duration_str])
             timestep_min = request.timestep_min
+            rain_lines = PMAXTP
         else:
             probability = None
             duration_min = len(custom.depths_mm) * custom.timestep_min
             timestep_min = custom.timestep_min
+            # The lines of the data the series came from, its file's checked first
+            rain_lines = _series_lines(custom)
         amc = AMC_BY_CODE[request.amc]
 
         # ===== STEP 2: Transform coordinates =====
@@ -964,20 +1010,16 @@ def generate_hydrograph(
 
         # ===== Precipitation: own series or PMAXTP design storm =====
         depth: DesignDepth | None = None
-        rain_lines: ProviderLines
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
             handoff_rainfall = rainfall_series(custom.depths_mm, timestep_min)
             rainfall_origin = given_origin()
-            # A copy of a PMAXTP hyetogram still carries PMAXTP's lines (ADR-083)
-            rain_lines = PMAXTP if custom.derived_from == "pmaxtp" else NO_PROVIDER
             logger.debug(
                 f"Custom precipitation: {precip_result.total_mm:.1f} mm "
                 f"in {duration_min:.0f} min"
             )
         else:
-            rain_lines = PMAXTP
             # PMAXTP depth: the watershed mean, or at the point without the grid
             depth = _design_depth(
                 request, point_2180, pmaxtp_cells, duration_str, design_probability, db

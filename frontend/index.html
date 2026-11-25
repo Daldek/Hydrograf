@@ -373,7 +373,7 @@
                                                 </button>
                                                 <input id="custom-rain-file" type="file" accept=".csv,.txt,text/csv,text/plain" class="d-none" tabindex="-1" aria-hidden="true">
                                             </div>
-                                            <p id="custom-rain-csv-hint" class="custom-rain-hint">CSV: jedna kolumna opadu [mm] (z bieżącym krokiem) albo dwie kolumny: czas [min], opad [mm] z równym krokiem. Separator <code>,</code> <code>;</code> lub tabulator; przy <code>;</code> i tabulatorze także przecinek dziesiętny.</p>
+                                            <p id="custom-rain-csv-hint" class="custom-rain-hint">CSV: jedna kolumna opadu [mm] (z bieżącym krokiem) albo dwie kolumny: czas [min], opad [mm] z równym krokiem. Separator <code>,</code> <code>;</code> lub tabulator; przy <code>;</code> i tabulatorze także przecinek dziesiętny. Także eksport szeregu Obserwatora (<code>obserwator series export … --variables P --format csv</code>) z opadem dobowym IMGW-PIB lub ČHMÚ: kolumna „P [mm]” dzień po dniu (krok 1440 min), najwyżej 2000 dni (dłuższy zakres skróć opcjami <code>--start</code>, <code>--end</code>); linie źródła danych z pliku idą z hydrogramem i jego plikami.</p>
                                             <div class="custom-rain-table">
                                                 <table>
                                                     <thead><tr><th scope="col">Czas [min]</th><th scope="col">Opad [mm]</th></tr></thead>
@@ -639,12 +639,12 @@
         integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"></script>
 
 <!-- Application modules -->
-<script defer src="js/api.js?v=c0b32806e6"></script>
+<script defer src="js/api.js?v=ee443b8155"></script>
 <script defer src="js/shell.js?v=a6c0a452bb"></script>
 <script defer src="js/map.js?v=0c8736cd0d"></script>
 <script defer src="js/coords.js?v=27329dc5f5"></script>
 <script defer src="js/charts.js?v=2b24ce6ee8"></script>
-<script defer src="js/attribution.js?v=a6d3a7d5a1"></script>
+<script defer src="js/attribution.js?v=2fb9e7c755"></script>
 <script defer src="js/layers.js?v=2d93617b04"></script>
 <script defer src="js/profile.js?v=21311f8e10"></script>
 <script defer src="js/info-texts.js?v=612819bf64"></script>
@@ -652,7 +652,7 @@
 <script defer src="js/hydrograph.js?v=4550fafaea"></script>
 <script defer src="js/rain-export.js?v=5fc6dced8e"></script>
 <script defer src="js/advanced.js?v=292cbb391f"></script>
-<script defer src="js/custom-rain.js?v=ea6f4793f4"></script>
+<script defer src="js/custom-rain.js?v=f4943ec49a"></script>
 <script defer src="js/depressions.js?v=3ff4ef17dc"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
 <script defer src="js/results.js?v=5a51c06405"></script>

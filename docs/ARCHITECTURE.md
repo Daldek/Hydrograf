@@ -521,7 +521,10 @@ Request:
   "custom_precipitation": {    // optional: your own series instead of PMAXTP and the hietogram
     "timestep_min": 10,        // > 0 and ≤ 1440
     "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0],  // ≥ 0, 1–2000 values, sum > 0
-    "derived_from": null       // "pmaxtp": a copy of a PMAXTP hyetogram (ADR-083)
+    "derived_from": null,      // "pmaxtp": a copy of a PMAXTP hyetogram; "imgw", "chmu": a series of
+                               // IMGW-PIB's archives or ČHMÚ's open data (ADR-083, amended 2026-11-25)
+    "attribution": [],         // the lines of the series' file unchanged (Obserwator's series export),
+    "terms_notice": []         // each a line of the data derived_from names, ≤ 20 of ≤ 1000 characters
   },
   "morphometry": { ... }       // optional: the fast path (advanced mode), fractional cn
 }
@@ -530,8 +533,9 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
   water_balance.cn_used: float (the CN after the AMC conversion)
   metadata.amc; metadata.hietogram_type = null for your own series
-  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, then G and SG of
-  the watershed's data (delineated, or with morphometry_origin); terms_notice: [RK] with PMAXTP;
+  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, IMGW-PIB's [S, P] or
+  ČHMÚ's [C, CP] for a series of their data, then G and SG of the watershed's data (delineated,
+  or with morphometry_origin); terms_notice: [RK] with PMAXTP, [RD] with IMGW-PIB's archives;
   [] and [] for your own rainfall on your own morphometry (ADR-083, ADR-085); the hand-off has
   the same fields, without them when they are empty
   notices: [{"level": "warning", "code": "outside_applicability", "message": "Hydrogram
@@ -548,7 +552,9 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   delineated watershed, its tr55_cn and equal_area_slope; the hand-off's result.computed_with
   carries both
 Response: 400 validation_error (application/problem+json), e.g. for the rainfall series; before
-          anything is computed, storm_not_whole_steps (reason not_multiple) for a duration that
+          anything is computed, unknown_attribution_line (with details.line) for a line of
+          custom_precipitation that is not one of the data derived_from names, or that comes
+          without derived_from; storm_not_whole_steps (reason not_multiple) for a duration that
           is not a whole number of timestep_min, euler_ii_step_below_curve (reason not_covered)
           for an Euler II step under 5 min (Hydrolog ADR-0046, ADR-0042); Hydrolog's refusals of
           an input by the standard's reason (outside_physical_range, invalid_type,

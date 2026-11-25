@@ -391,7 +391,7 @@
     <div class="stack">
       <div class="card"><span class="label">Tabela</span><p>W „Hietogramie” wybierz „Własna seria”. Czas trwania i krok [min] tworzą tabelę: czas trwania to wielokrotność kroku, krok do 1440&nbsp;min, najwyżej 2000&nbsp;kroków. „Czas [min]” to koniec kroku.</p></div>
       <div class="card"><span class="label">Wartości</span><p>W „Opad [mm]” wpisz wysokość opadu w kroku (≥&nbsp;0, suma&nbsp;&gt;&nbsp;0) — nie natężenie w mm/h. Kolumnę z arkusza wklejasz od wybranej komórki w dół.</p></div>
-      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny.</p></div>
+      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny. Otworzysz też eksport szeregu Obserwatora (<code>obserwator series export … --variables P --format csv</code>) z opadem dobowym IMGW-PIB lub ČHMÚ: kolumna „P [mm]” dzień po dniu (krok 1440&nbsp;min), najwyżej 2000&nbsp;dni — dłuższy plik jest odrzucany, wyeksportuj krótszy zakres (<code>--start</code>, <code>--end</code>). Linie źródła danych z pliku idą z hydrogramem i jego plikami.</p></div>
       <div class="card"><span class="label">Przyciski</span><p>„Wczytaj z bieżącego hietogramu” kopiuje ostatni hietogram PMAXTP, „Wyczyść” opróżnia tabelę. Seria dotyczy jednej zlewni — nowa zlewnia ją czyści.</p></div>
     </div>
   </div>

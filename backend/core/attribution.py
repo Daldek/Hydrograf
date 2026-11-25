@@ -17,7 +17,11 @@ DEV-20.7 in ``terms_notice``, byte for byte (ECO-060; ECO-065: linked, never res
 Every product made with GUGiK or SoilGrids data carries G or SG (DEV §20, Nogat's plan
 ``2026-11-13-terms-fix``): G names the GUGiK products used, the years their data were
 created and the days they were downloaded, from the Kartograf metadata of the files
-(``core.data_sources``); SG names ISRIC and the licence. Neither has a terms line.
+(``core.data_sources``); SG names ISRIC and the licence. Neither has a terms line. An
+own rainfall series may hold IMGW-PIB's archives or ČHMÚ's open data, as Obserwator's
+series export writes them (ADR-083, amended 2026-11-25): a product made with it carries
+S, P and the link to the terms of danepubliczne.imgw.pl (DEV-20.1, DEV-20.7), or C and
+CP (DEV-20.3), and every line the series brings from its file must be one of them.
 
 This module is the one place of the lines in the code (DEV-20.4): the API responses
 carry them and the front end shows and exports what a response carries; the strip of
@@ -57,8 +61,28 @@ PMAXTP_MONOGRAPH: Final = (
 )
 # RK: the link to the PMAXTP terms (DEV-20.7)
 PMAXTP_TERMS: Final = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
-# CP: ČHMÚ's data were processed, never how (DEV §20, ECO-071). Hydrograf has no ČHMÚ
-# data, but a result of the manifest or an older ATTRIBUTION.txt may carry the line
+# S: the source of IMGW-PIB's data other than PMAXTP (DEV-20.1), such as the archives of
+# danepubliczne.imgw.pl that an own series exported by Obserwator holds
+IMGW_SOURCE: Final = (
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – "
+    "Państwowy Instytut Badawczy"
+)
+# P: IMGW-PIB's data were processed (DEV-20.1), as every hydrograph of a series is
+IMGW_PROCESSED: Final = (
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu "
+    "Badawczego zostały przetworzone"
+)
+# RD: the link to the terms of danepubliczne.imgw.pl (DEV-20.7)
+IMGW_TERMS: Final = (
+    "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
+)
+# C: the source of ČHMÚ's open data, with its licence (DEV-20.3)
+CHMU_SOURCE: Final = (
+    "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, "
+    "licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
+)
+# CP: ČHMÚ's data were processed, never how (DEV §20, ECO-071); a result of the
+# manifest or an older ATTRIBUTION.txt may carry the line too
 CHMU_PROCESSED: Final = "Dane ČHMÚ zostały przetworzone"
 # G: the source of GUGiK data, with the products used, the years in which their data
 # were created and the days on which they were downloaded (DEV §20)
@@ -129,6 +153,23 @@ PMAXTP: Final = ProviderLines(
     terms_notice=(PMAXTP_TERMS,),
 )
 
+# A product made with a series of IMGW-PIB's archives or of ČHMÚ's open data, as
+# Obserwator's series export holds them: Hydrograf processes every series it computes
+# with (DEV-20.1, DEV-20.3); ČHMÚ's data have no terms line
+IMGW: Final = ProviderLines(
+    attribution=(IMGW_SOURCE, IMGW_PROCESSED), terms_notice=(IMGW_TERMS,)
+)
+CHMU: Final = ProviderLines(attribution=(CHMU_SOURCE, CHMU_PROCESSED))
+
+# The data an own rainfall series came from, by the request's `derived_from` (ADR-083
+# and its amendment of 2026-11-25): the provider as people name it, and the lines of
+# a product made with the series
+SERIES_ORIGINS: Final = {
+    "pmaxtp": ("PMAXTP", PMAXTP),
+    "imgw": ("IMGW-PIB", IMGW),
+    "chmu": ("ČHMÚ", CHMU),
+}
+
 
 def merge(lines: Iterable[ProviderLines]) -> ProviderLines:
     """Return the lines of a product with the data of several products.
@@ -167,6 +208,43 @@ def canonical(line: str) -> str:
 def is_terms(line: str) -> bool:
     """Tell a terms line of DEV-20.7 (RD, RH, RK) from an attribution line."""
     return _TERMS_LINE.fullmatch(line) is not None
+
+
+def unknown_series_line(
+    origin: str | None, attribution: Iterable[str], terms_notice: Iterable[str]
+) -> str | None:
+    """Return the first line an own series brings that its data do not have.
+
+    A series read from a file brings the file's lines (Obserwator's series export
+    writes them in its columns ``attribution`` and ``terms_notice``). Each must be one
+    of the lines of the data that ``derived_from`` names, byte for byte (a CP written
+    before ECO-071 is CP, ``canonical``): the products carry those data's lines from
+    this module, never a text of the client (ADR-083, B2).
+
+    Parameters
+    ----------
+    origin : str or None
+        The request's ``derived_from``, a key of ``SERIES_ORIGINS``; None for data of
+        the user's own, which have no line.
+    attribution : Iterable[str]
+        The attribution lines the series came with.
+    terms_notice : Iterable[str]
+        The terms lines the series came with.
+
+    Returns
+    -------
+    str or None
+        The first attribution line, then terms line, that is not one of the data's;
+        None when every line is.
+    """
+    known = NO_PROVIDER if origin is None else SERIES_ORIGINS[origin][1]
+    for line in attribution:
+        if canonical(line) not in known.attribution:
+            return line
+    for line in terms_notice:
+        if line not in known.terms_notice:
+            return line
+    return None
 
 
 def _span(values: Iterable[str], dash: str) -> str:

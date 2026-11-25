@@ -12,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StringConstraints,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -957,6 +958,10 @@ class DelineateNetworkPreviewResponse(BaseModel):
 
 CUSTOM_PRECIPITATION_MAX_STEPS = 2000
 
+# A line of a provider as a series brings it from its file (Nogat DEV §20): the longest
+# line of the standard's table has about 330 characters
+SeriesLine = Annotated[str, StringConstraints(max_length=1000)]
+
 
 class CustomPrecipitation(BaseModel):
     """
@@ -969,8 +974,14 @@ class CustomPrecipitation(BaseModel):
     depths_mm : list[float]
         Rainfall depth in each interval [mm], >= 0, 1-2000 values
     derived_from : str, optional
-        ``"pmaxtp"`` when the series started as a copy of a PMAXTP hyetogram, so the
-        products made with it carry PMAXTP's attribution (Nogat DEV-20.2)
+        The provider's data the series came from, so that the products made with it
+        carry their lines (Nogat DEV §20; ADR-083): ``"pmaxtp"`` for a copy of a
+        PMAXTP hyetogram, ``"imgw"`` and ``"chmu"`` for a series of IMGW-PIB's
+        archives or of ČHMÚ's open data, as Obserwator's series export holds them
+    attribution : list[str]
+        The attribution lines of the file the series was read from, unchanged
+    terms_notice : list[str]
+        The terms lines of the file the series was read from, unchanged
     """
 
     timestep_min: float = Field(
@@ -981,12 +992,30 @@ class CustomPrecipitation(BaseModel):
         description="Rainfall depth per interval [mm]",
         examples=[[0.5, 2.0, 6.5, 3.0, 1.0]],
     )
-    derived_from: Literal["pmaxtp"] | None = Field(
+    derived_from: Literal["pmaxtp", "imgw", "chmu"] | None = Field(
         None,
-        description="`pmaxtp` when the series started as a copy of a PMAXTP "
-        "hyetogram of this server (the interface's „Wczytaj z bieżącego "
-        "hietogramu”), edited or not: the response and its hand-off then carry "
-        "PMAXTP's `attribution` and `terms_notice`; null for the user's own data",
+        description="The data the series came from, edited or not: `pmaxtp`, a copy "
+        "of a PMAXTP hyetogram of this server (the interface's „Wczytaj z bieżącego "
+        "hietogramu”); `imgw` and `chmu`, a series of IMGW-PIB's archives "
+        "(danepubliczne.imgw.pl) or of ČHMÚ's open data, such as Obserwator's series "
+        "export (`obserwator-series-csv`) holds. The response and its hand-off then "
+        "carry those data's `attribution` and `terms_notice` (Nogat DEV §20); null "
+        "for the user's own data",
+    )
+    attribution: list[SeriesLine] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The attribution lines of the file the series was read from, "
+        "unchanged (the column `attribution` of Obserwator's series export): each "
+        "must be a line of the data `derived_from` names, else 400 `validation_error` "
+        "with reason `unknown_attribution_line`",
+    )
+    terms_notice: list[SeriesLine] = Field(
+        default_factory=list,
+        max_length=20,
+        description="The terms lines of the file the series was read from, "
+        "unchanged (the column `terms_notice` of Obserwator's series export), "
+        "checked as `attribution`",
     )
 
     @field_validator("timestep_min")
@@ -1464,18 +1493,21 @@ class HydrographResponse(BaseModel):
             "DEV §20, ADR-083), in the order of DEV-20.4: for a PMAXTP rainfall, and "
             "an own series derived from one, the source with the address of the "
             "PMAXTP page, the note that the data were processed and the monograph of "
-            "the project; then G for the GUGiK products of a watershed Hydrograf "
-            "delineated (NMT, BDOT10k) with the years their data were created and "
-            "the days they were downloaded, and SG for its soil groups; empty for "
-            "the user's own series and watershed"
+            "the project; for an own series of IMGW-PIB's archives or of ČHMÚ's open "
+            "data (`derived_from` `imgw`, `chmu`) the source and the note that the "
+            "data were processed; then G for the GUGiK products of a watershed "
+            "Hydrograf delineated (NMT, BDOT10k) with the years their data were "
+            "created and the days they were downloaded, and SG for its soil groups; "
+            "empty for the user's own series and watershed"
         ),
     )
     terms_notice: list[str] = Field(
         ...,
         description=(
             "The links to the terms of the same providers, one line each (Nogat "
-            "DEV-20.7): for PMAXTP data the link to the PMAXTP terms; shown right "
-            "after `attribution`; G and SG need none"
+            "DEV-20.7): for PMAXTP data the link to the PMAXTP terms, for IMGW-PIB's "
+            "archives that to the terms of danepubliczne.imgw.pl; shown right after "
+            "`attribution`; ČHMÚ's data, G and SG need none"
         ),
     )
     notices: list[HydrographNotice] = Field(
