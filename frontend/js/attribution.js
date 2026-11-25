@@ -2,7 +2,8 @@
  * Hydrograf provider lines (Nogat DEV §20).
  *
  * A product made with a provider's data (the PMAXTP precipitation of IMGW-PIB and
- * the analysis results made with it, the NMT and BDOT10k of GUGiK and the SoilGrids
+ * the analysis results made with it, an own rainfall series of IMGW-PIB's or ČHMÚ's
+ * data from Obserwator's series export, the NMT and BDOT10k of GUGiK and the SoilGrids
  * of ISRIC behind every layer and result of Hydrograf) carries the lines the
  * provider's terms require: `attribution`, then `terms_notice`, arrays of strings in
  * the API responses and the entries of the results manifest
@@ -29,6 +30,12 @@
     // GUGiK (G), ISRIC (SG), ČÚZK (Z); a line of another provider follows them. The
     // lines themselves come from the responses, in their order within a provider.
     var PROVIDERS = [/Meteorologii i Gospodarki Wodnej/, /ČHMÚ/, /GUGiK/, /ISRIC/, /ČÚZK/];
+    // The providers an own rainfall series may come from, by their place in PROVIDERS:
+    // the series' `derived_from` in the hydrograph request, and the provider's name
+    var SERIES_ORIGINS = [
+        { derived_from: 'imgw', provider: 'IMGW-PIB' },
+        { derived_from: 'chmu', provider: 'ČHMÚ' },
+    ];
 
     /** The place of a line's provider in the order of DEV-20.4. */
     function providerRank(text) {
@@ -36,6 +43,24 @@
             if (PROVIDERS[i].test(text)) return i;
         }
         return PROVIDERS.length;
+    }
+
+    /**
+     * The origin of an own rainfall series from the provider lines of its file
+     * (Obserwator's series export): { derived_from, provider } of IMGW-PIB when
+     * every attribution line is IMGW-PIB's, of ČHMÚ when every one is ČHMÚ's;
+     * null without attribution lines, with another provider's line or with
+     * both. The terms lines name terms, not providers: the API checks them with
+     * the rest against the lines of the provider `derived_from` names.
+     */
+    function seriesOrigin(source) {
+        var texts = lines(source).attribution;
+        if (!texts.length) return null;
+        var rank = providerRank(texts[0]);
+        var one = texts.every(function (text) { return providerRank(text) === rank; });
+        return one && rank < SERIES_ORIGINS.length
+            ? { derived_from: SERIES_ORIGINS[rank].derived_from, provider: SERIES_ORIGINS[rank].provider }
+            : null;
     }
 
     /** The lines grouped by provider in the order of DEV-20.4, each group in its order. */
@@ -197,6 +222,7 @@
 
     window.Hydrograf.attribution = {
         lines: lines,
+        seriesOrigin: seriesOrigin,
         merge: merge,
         show: show,
         csvTable: csvTable,

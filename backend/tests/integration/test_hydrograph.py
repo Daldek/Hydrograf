@@ -1,13 +1,15 @@
 """
 Integration tests for hydrograph generation endpoint.
 
-Tests the CatchmentGraph-based hydrograph endpoint by mocking:
+The full path (no ``morphometry``) delineates the watershed with the code of
+``POST /api/delineate-watershed``; the tests mock:
 - loaded_catchment_graph() -> CatchmentGraph with traverse/aggregate
 - get_stream_info_by_segment_idx() -> stream segment dict
 - merge_catchment_boundaries() -> MultiPolygon boundary
 - get_segment_outlet() -> outlet coordinates
 - build_morph_dict_from_graph() -> morphometric dict for Hydrolog
 - get_land_cover_for_boundary() -> None (default CN=75)
+- build_hsg_stats() -> None (no soil groups)
 - DB session for precipitation query (IDW interpolation)
 """
 
@@ -22,9 +24,12 @@ from shapely.geometry import MultiPolygon, Polygon
 from api.main import app
 from core.attribution import SOILGRIDS_SOURCE
 from core.database import get_db
+from models.schemas import HsgCategory, HsgStats
 
-# Module path for patching
+# Module paths for patching: the hydrograph merges the boundary of the sub-catchments
+# the delineation selects, and the delineation builds the watershed
 _HG = "api.endpoints.hydrograph"
+_WS = "api.endpoints.watershed"
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +166,8 @@ def _patch_happy_path(cn: int = 75):
     """
     Return a stack of patches for a successful hydrograph generation.
 
-    Patches all 6 external functions the endpoint calls, plus the
-    DB override for precipitation.
+    Patches the external functions the delineation of the full path calls, plus
+    the DB override for precipitation.
     """
     boundary = _make_boundary()
     morph = _make_morph_dict(cn)
@@ -170,15 +175,16 @@ def _patch_happy_path(cn: int = 75):
     segment = _make_segment_dict()
 
     patches = {
-        "cg": patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
-        "seg": patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
+        "cg": patch(f"{_WS}.loaded_catchment_graph", return_value=mock_cg),
+        "seg": patch(f"{_WS}.get_stream_info_by_segment_idx", return_value=segment),
         "merge": patch(f"{_HG}.merge_catchment_boundaries", return_value=boundary),
         "outlet": patch(
-            f"{_HG}.get_segment_outlet",
+            f"{_WS}.get_segment_outlet",
             return_value={"x": 639139.0, "y": 486706.0},
         ),
-        "morph": patch(f"{_HG}.build_morph_dict_from_graph", return_value=morph),
-        "lc": patch(f"{_HG}.get_land_cover_for_boundary", return_value=None),
+        "morph": patch(f"{_WS}.build_morph_dict_from_graph", return_value=morph),
+        "lc": patch("core.land_cover.get_land_cover_for_boundary", return_value=None),
+        "hsg": patch(f"{_WS}.build_hsg_stats", return_value=None),
     }
     return patches
 
@@ -419,33 +425,28 @@ class TestGenerateHydrographEndpoint:
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 6b. test_full_path_lines_follow_the_soil_groups_of_its_cn ----
+    # ---- 6b. test_full_path_lines_are_those_of_its_delineation ----
 
-    @pytest.mark.parametrize(("assumed_pct", "with_sg"), [(0.0, True), (100.0, False)])
-    def test_full_path_lines_follow_the_soil_groups_of_its_cn(
-        self, client, assumed_pct, with_sg
+    @pytest.mark.parametrize("with_soil_groups", [True, False])
+    def test_full_path_lines_are_those_of_its_delineation(
+        self, client, with_soil_groups
     ):
-        """The CN on SoilGrids' soil groups gives SG, as the delineation does."""
+        """The soil groups of the delineated watershed give SG, as the delineation."""
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
-        land_cover = {
-            "categories": [],
-            "total_area_m2": 10_000_000.0,
-            "weighted_cn": 70.0,
-            "weighted_imperviousness": 0.08,
-            "forest_pct": 40.0,
-            "urban_pct": 5.0,
-            "hsg_assumed_pct": assumed_pct,
-        }
+        soil_groups = HsgStats(
+            categories=[HsgCategory(group="B", percentage=100.0, area_m2=1e7)],
+            dominant_group="B",
+        )
 
         try:
             with _HappyPathContext() as mocks:
-                mocks["lc"].return_value = land_cover
+                mocks["hsg"].return_value = soil_groups if with_soil_groups else None
                 response = self._post(client)
 
             assert response.status_code == 200, response.text
             data = response.json()
-            assert (SOILGRIDS_SOURCE in data["attribution"]) == with_sg
+            assert (SOILGRIDS_SOURCE in data["attribution"]) == with_soil_groups
             assert data["handoff"]["attribution"] == data["attribution"]
         finally:
             app.dependency_overrides.clear()
@@ -464,7 +465,7 @@ class TestGenerateHydrographEndpoint:
         )
 
         try:
-            with patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg):
+            with patch(f"{_WS}.loaded_catchment_graph", return_value=mock_cg):
                 response = self._post(
                     client,
                     {
@@ -484,7 +485,7 @@ class TestGenerateHydrographEndpoint:
     # ---- 8. test_area_too_large_returns_422 ----
 
     def test_area_too_large_returns_422(self, client):
-        """Test that watershed > 250 km2 is unsupported (422)."""
+        """A watershed > 250 km2 is unsupported (422) before its boundary is merged."""
         mock_db = MagicMock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -498,12 +499,11 @@ class TestGenerateHydrographEndpoint:
             "mean_slope_m_per_m": 0.03,
             "stream_length_km": 20.0,
         }
-        segment = _make_segment_dict()
 
         try:
             with (
-                patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
-                patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
+                patch(f"{_WS}.loaded_catchment_graph", return_value=mock_cg),
+                patch(f"{_HG}.merge_catchment_boundaries") as merge,
             ):
                 response = self._post(client)
 
@@ -512,6 +512,35 @@ class TestGenerateHydrographEndpoint:
             assert problem["code"] == "unsupported"
             assert problem["details"]["limit_km2"] == 250
             assert problem["details"]["area_km2"] == 300.0
+            merge.assert_not_called()
+        finally:
+            app.dependency_overrides.clear()
+
+    # ---- 8a. test_full_path_merges_from_a_coarser_threshold_above_300 ----
+
+    def test_full_path_merges_from_a_coarser_threshold_above_300(self, client):
+        """Above 300 sub-catchments at 1 ha the boundary is merged from a coarser
+        threshold, as the delineation cascades (E5b-04: the merge of thousands of
+        1 ha sub-catchments took minutes)."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        fine = list(range(1, 302))  # 301 sub-catchments at 10 000 m2
+        coarse = [7, 8]
+
+        try:
+            with _HappyPathContext() as mocks:
+                cg = mocks["cg"].return_value
+                cg.thresholds_m2.return_value = [10_000, 100_000]
+                cg.find_catchment_at_point.side_effect = lambda x, y, threshold, db: (
+                    0 if threshold == 10_000 else 5
+                )
+                cg.get_segment_indices.side_effect = lambda upstream, threshold: (
+                    fine if threshold == 10_000 else coarse
+                )
+                response = self._post(client)
+
+            assert response.status_code == 200, response.text
+            mocks["merge"].assert_called_once_with(coarse, 100_000, mock_db)
         finally:
             app.dependency_overrides.clear()
 

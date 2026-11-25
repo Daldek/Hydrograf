@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
@@ -84,21 +84,93 @@ router = APIRouter(dependencies=[Depends(verify_admin_key)])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-_dir_size_cache: dict[str, tuple[float, float]] = {}  # path -> (timestamp, size_mb)
-_DIR_SIZE_TTL = 30.0  # seconds
+# The sizes of the data directories, each walked in a thread of its own: the walk of the
+# tiles of a large instance outlasts the admin proxy (E5b-02: 2.15 M files, 48.9 s
+# against nginx's 30 s), so a route waits for the walks it starts at most
+# _DIR_SIZE_WAIT_S and then answers the last size it knows, null before the first
+_DIR_SIZE_TTL = 30.0  # seconds a measured size is reused
+_DIR_SIZE_WAIT_S = 5.0  # seconds a route waits for the walks of its directories
 
 
-def _dir_size_mb(path: Path) -> float:
-    """Sum file sizes recursively, return MB. Cached for 30s."""
-    key = str(path)
-    now = time.time()
-    cached = _dir_size_cache.get(key)
-    if cached and now - cached[0] < _DIR_SIZE_TTL:
-        return cached[1]
+class _DirSizes:
+    """The sizes of directories in MB, each walked by at most one thread at a time."""
 
-    result = round(dir_size(path) / (1024 * 1024), 2)
-    _dir_size_cache[key] = (now, result)
-    return result
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sizes: dict[Path, tuple[float, float]] = {}  # path -> (monotonic, MB)
+        self._walks: dict[Path, threading.Thread] = {}
+
+    def _walk(self, path: Path) -> None:
+        """Measure one directory and keep its size; a failed walk keeps the last one."""
+        size_mb: float | None = None
+        try:
+            size_mb = round(dir_size(path) / (1024 * 1024), 2)
+        except OSError as e:
+            logger.warning("Could not measure the size of %s: %s", path, e)
+        finally:
+            with self._lock:
+                if size_mb is not None:
+                    self._sizes[path] = (time.monotonic(), size_mb)
+                del self._walks[path]
+
+    def measure(
+        self, paths: Iterable[Path], wait_s: float = _DIR_SIZE_WAIT_S
+    ) -> dict[Path, float | None]:
+        """Return the size of each directory in MB, walking those not measured lately.
+
+        Parameters
+        ----------
+        paths : Iterable[Path]
+            The directories (a missing one measures 0.0).
+        wait_s : float
+            How long to wait for the walks that run [s]; a walk not done by then
+            goes on in its thread.
+
+        Returns
+        -------
+        dict[Path, float | None]
+            The size of each directory: measured within ``_DIR_SIZE_TTL``, the last
+            one known while a new walk runs, or None before its first walk ends.
+        """
+        unique = list(dict.fromkeys(paths))
+        now = time.monotonic()
+        with self._lock:
+            for path in unique:
+                measured = self._sizes.get(path)
+                fresh = measured is not None and now - measured[0] < _DIR_SIZE_TTL
+                if not fresh and path not in self._walks:
+                    walk = threading.Thread(
+                        target=self._walk,
+                        args=(path,),
+                        name=f"dir-size-{path.name}",
+                        daemon=True,
+                    )
+                    # The walk ends by taking the lock this call holds, so it is
+                    # registered before it can end
+                    walk.start()
+                    self._walks[path] = walk
+            walks = [self._walks[path] for path in unique if path in self._walks]
+        deadline = time.monotonic() + wait_s
+        for walk in walks:
+            walk.join(max(0.0, deadline - time.monotonic()))
+        with self._lock:
+            return {
+                path: self._sizes[path][1] if path in self._sizes else None
+                for path in unique
+            }
+
+
+_DIR_SIZES = _DirSizes()
+
+
+def _sum_mb(sizes: Iterable[float | None]) -> float | None:
+    """Return the sum of sizes in MB, None when one of them is not known yet."""
+    total = 0.0
+    for size in sizes:
+        if size is None:
+            return None
+        total += size
+    return round(total, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +393,11 @@ class ResourcesResponse(BaseModel):
     catchment_graph: dict[str, Any] = Field(description="Catchment graph status")
     db_size_mb: float = Field(description="Database size in MB")
     tables: dict[str, int] = Field(description="Row counts per table")
-    disk: dict[str, float] = Field(description="Disk usage in MB")
+    disk: dict[str, float | None] = Field(
+        description="Disk usage in MB: frontend_data_mb, frontend_tiles_mb, "
+        "nmt_data_mb, cache_mb and their total_mb; null for a directory whose first "
+        "walk is still running, and total_mb null with it (E5b-02)"
+    )
 
 
 @router.get("/resources", response_model=ResourcesResponse)
@@ -387,11 +463,14 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
             db.rollback()
             tables[table] = 0
 
-    # Disk usage
-    frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
-    frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
-    nmt_data_mb = _dir_size_mb(DATA_NMT)
-    cache_mb = _dir_size_mb(CACHE_DIR)
+    # Disk usage: the directories are walked in threads of their own (E5b-02)
+    sizes = _DIR_SIZES.measure([FRONTEND_DATA, FRONTEND_TILES, DATA_NMT, CACHE_DIR])
+    disk = {
+        "frontend_data_mb": sizes[FRONTEND_DATA],
+        "frontend_tiles_mb": sizes[FRONTEND_TILES],
+        "nmt_data_mb": sizes[DATA_NMT],
+        "cache_mb": sizes[CACHE_DIR],
+    }
 
     return ResourcesResponse(
         process=process_info,
@@ -399,16 +478,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
         catchment_graph=cg_info,
         db_size_mb=db_size_mb,
         tables=tables,
-        disk={
-            "frontend_data_mb": frontend_data_mb,
-            "frontend_tiles_mb": frontend_tiles_mb,
-            "nmt_data_mb": nmt_data_mb,
-            "cache_mb": cache_mb,
-            "total_mb": round(
-                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
-                2,
-            ),
-        },
+        disk={**disk, "total_mb": _sum_mb(disk.values())},
     )
 
 
@@ -458,7 +528,10 @@ _ESTIMATE_DIRS = {
 class CleanupEstimateResponse(BaseModel):
     """Cleanup estimate response."""
 
-    targets: list[dict[str, Any]] = Field(description="List of targets with size_mb")
+    targets: list[dict[str, Any]] = Field(
+        description="List of targets with size_mb, null while a directory of the "
+        "target is still being walked (E5b-02)"
+    )
 
 
 class CleanupRequest(BaseModel):
@@ -478,24 +551,24 @@ def cleanup_estimate(
     db: Session = Depends(get_db),
 ) -> CleanupEstimateResponse:
     """Estimate cleanup sizes for all targets."""
-    # Aggregate disk sizes per cleanup target
+    # Aggregate disk sizes per cleanup target; the directories are walked in threads
+    # of their own (E5b-02)
+    sizes = _DIR_SIZES.measure(_ESTIMATE_DIRS.values())
     targets = []
     for key, info in _CLEANUP_COMPONENTS.items():
-        size_mb = 0.0
+        parts: list[float | None] = []
         for comp in info["components"]:
             if comp in _ESTIMATE_DIRS:
-                size_mb += _dir_size_mb(_ESTIMATE_DIRS[comp])
+                parts.append(sizes[_ESTIMATE_DIRS[comp]])
             elif comp == "db":
                 try:
                     result = db.execute(
                         text("SELECT pg_database_size(current_database())")
                     )
-                    size_mb += round((result.scalar() or 0) / (1024 * 1024), 2)
+                    parts.append(round((result.scalar() or 0) / (1024 * 1024), 2))
                 except Exception:
                     pass
-        targets.append(
-            {"key": key, "label": info["label"], "size_mb": round(size_mb, 2)}
-        )
+        targets.append({"key": key, "label": info["label"], "size_mb": _sum_mb(parts)})
     return CleanupEstimateResponse(targets=targets)
 
 

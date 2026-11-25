@@ -64,6 +64,7 @@ from core.watershed_service import (
     watershed_lines,
 )
 from models.schemas import (
+    DelineateNotice,
     DelineatePreviewRequest,
     DelineatePreviewResponse,
     DelineateRequest,
@@ -116,19 +117,26 @@ def _build_watershed_response(
     boundary_poly: Polygon,
     upstream_indices_for_stats: np.ndarray,
     outlet_idx_for_stats: int,
-    segment_idx: int,
-    threshold: int,
     merge_threshold: int,
     area_km2: float,
     stats: dict[str, Any],
     include_hypsometric_curve: bool,
     db: Session,
 ) -> WatershedResponse:
-    """Build WatershedResponse from computed data (shared by both modes)."""
+    """Build WatershedResponse from computed data (shared by both modes).
+
+    The outlet is the end of the segment of ``outlet_idx_for_stats`` at
+    ``merge_threshold``, where the merged sub-catchments close: after a cascade to a
+    coarser threshold (``cascade_escalate``) the end of the coarser segment, at or
+    below the end of the clicked one.
+    """
     # Outlet
-    outlet_info = get_segment_outlet(segment_idx, threshold, db)
+    outlet_segment_idx = cg.get_segment_idx(outlet_idx_for_stats)
+    outlet_info = get_segment_outlet(outlet_segment_idx, merge_threshold, db)
     if outlet_info is None:
-        segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
+        segment = get_stream_info_by_segment_idx(
+            outlet_segment_idx, merge_threshold, db
+        )
         if segment:
             outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
         else:
@@ -149,7 +157,7 @@ def _build_watershed_response(
         boundary_2180,
         outlet_x,
         outlet_y,
-        segment_idx,
+        outlet_segment_idx,
         merge_threshold,
         db=db,
         outlet_idx=outlet_idx_for_stats,
@@ -177,7 +185,7 @@ def _build_watershed_response(
     if main_stream_geojson is None:
         # The outlet segment of the merged threshold, not the clicked one
         main_stream_geojson = get_main_stream_geojson(
-            cg.get_segment_idx(outlet_idx_for_stats), merge_threshold, db
+            outlet_segment_idx, merge_threshold, db
         )
 
     # Hydrograph
@@ -251,6 +259,10 @@ _PREVIEW_MIN_TOLERANCE_M = 1.0
 # The preview carries at most this many sub-catchments, the ones nearest the
 # outlet in BFS order (the largest watershed of the current data has ~4400).
 _PREVIEW_MAX_CATCHMENTS = 5000
+
+# An outlet farther than this from the point of the request gets the notice
+# outlet_far_from_point (E7-GAP-04, Nogat plan 2026-11-16-large-basins, topic 4)
+OUTLET_NOTICE_DISTANCE_M = 500.0
 
 
 @dataclass(frozen=True)
@@ -423,8 +435,6 @@ def _delineate_precomputed(
         boundary_poly,
         selection.upstream_indices,
         selection.outlet_idx,
-        segment_idx,
-        threshold,
         selection.merge_threshold,
         selection.area_km2,
         selection.stats,
@@ -498,8 +508,6 @@ def _delineate_precise(
             threshold_m2=threshold,
         ) from e
 
-    segment_idx = cg.get_segment_idx(clicked_idx)
-
     # BFS at the finest threshold (for graph-based network stats)
     upstream_indices = cg.traverse_upstream(clicked_idx)
     upstream_indices_for_stats = upstream_indices
@@ -530,7 +538,6 @@ def _delineate_precise(
     boundary_poly = boundary_to_polygon(boundary_2180)
 
     # Build shared response
-    merge_threshold = threshold
     watershed_response = _build_watershed_response(
         cg,
         point_2180,
@@ -538,9 +545,7 @@ def _delineate_precise(
         boundary_poly,
         upstream_indices_for_stats,
         outlet_idx_for_stats,
-        segment_idx,
         threshold,
-        merge_threshold,
         area_km2,
         stats,
         include_hypsometric_curve,
@@ -585,6 +590,47 @@ def _watershed_handoff(
         watershed_origin=delineated_origin(outlet.latitude, outlet.longitude),
         lines=lines,
     )
+
+
+def _snap_distance_m(point_2180: Point, outlet: OutletInfo) -> float:
+    """Return the distance [m] from the point of the request to the outlet."""
+    outlet_2180 = transform_wgs84_to_pl1992(outlet.latitude, outlet.longitude)
+    return float(point_2180.distance(outlet_2180))
+
+
+def _outlet_notices(snap_distance_m: float) -> list[DelineateNotice]:
+    """Return the notice of an outlet far from the point of the request (E7-GAP-04).
+
+    Parameters
+    ----------
+    snap_distance_m : float
+        Distance from the point of the request to the outlet [m].
+
+    Returns
+    -------
+    list[DelineateNotice]
+        ``outlet_far_from_point`` above ``OUTLET_NOTICE_DISTANCE_M``, with the distance
+        in metres below 1 km and in km to 0.1 km above; none within it.
+    """
+    if snap_distance_m <= OUTLET_NOTICE_DISTANCE_M:
+        return []
+    distance = (
+        f"{snap_distance_m:.0f} m"
+        if snap_distance_m < 1000
+        else f"{snap_distance_m / 1000:.1f} km".replace(".", ",")
+    )
+    return [
+        DelineateNotice(
+            level="warning",
+            code="outlet_far_from_point",
+            message=(
+                f"Ujście zlewni leży {distance} od wskazanego punktu, na dolnym końcu "
+                "odcinka linii spływu, do którego spływa woda z tego miejsca. Zlewnia "
+                "obejmuje więc też teren, z którego woda dopływa między punktem a "
+                "ujściem."
+            ),
+        )
+    ]
 
 
 @router.post("/delineate-watershed", response_model=DelineateResponse)
@@ -634,6 +680,9 @@ def delineate_watershed(
         response.headers["Cache-Control"] = "public, max-age=3600"
 
         watershed = result["watershed_response"]
+        # One value for the field and the notice: the notice comes with a reported
+        # distance above OUTLET_NOTICE_DISTANCE_M, never with one at it
+        snap_distance_m = round(_snap_distance_m(point_2180, watershed.outlet), 1)
         lines = watershed_lines(watershed, get_settings().frontend_data_dir)
         return DelineateResponse(
             mode=mode,
@@ -642,6 +691,8 @@ def delineate_watershed(
             upstream_segment_indices=result.get("upstream_segment_indices"),
             display_threshold_m2=result.get("display_threshold_m2"),
             info_message=result.get("info_message"),
+            snap_distance_m=snap_distance_m,
+            notices=_outlet_notices(snap_distance_m),
             handoff=_watershed_handoff(watershed, lines),
             attribution=list(lines.attribution),
             terms_notice=list(lines.terms_notice),

@@ -28,7 +28,7 @@ import pytest
 import rasterio
 from fastapi.testclient import TestClient
 from rasterio.transform import from_origin
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Polygon, box
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
@@ -493,6 +493,94 @@ class TestDelineateWatershedEndpoint:
         assert problem["details"]["reason"] == "window_too_large"
         assert problem["details"]["max_cells"] == MAX_WINDOW_CELLS
         assert problem["detail"].startswith("Zlewnia tego punktu jest za duża")
+
+
+class TestOutletFarFromThePoint:
+    """snap_distance_m and the notice of an outlet far from the point (E7-GAP-04)."""
+
+    _POINT = {"latitude": 52.23, "longitude": 21.01}
+
+    def _post(self, client, outlets, cg=None, escalation=None):
+        """POST a precomputed delineation whose segments end east of the point.
+
+        ``outlets`` maps (segment_idx, threshold_m2) to the distance east of the point
+        [m] where that segment ends; the boundary holds every end.
+        """
+        point = transform_wgs84_to_pl1992(**self._POINT)
+        ends = {key: (point.x + east, point.y) for key, east in outlets.items()}
+        boundary = MultiPolygon(
+            [box(x - 50, y - 50, x + 50, y + 50) for x, y in ends.values()]
+        )
+
+        def outlet(segment_idx, threshold_m2, db):
+            x, y = ends[(segment_idx, threshold_m2)]
+            return {"x": x, "y": y}
+
+        patches = [
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg or _make_mock_cg()),
+            patch(
+                f"{_WS}.get_stream_info_by_segment_idx", return_value=_make_segment()
+            ),
+            patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
+            patch(f"{_WS}.get_segment_outlet", side_effect=outlet),
+            patch(
+                f"{_WS}.build_morph_dict_from_graph", return_value=_make_morph_dict()
+            ),
+            patch(f"{_WS}.get_main_stream_geojson", return_value=None),
+            patch(f"{_WS}.get_main_channel_feature_collection", return_value=None),
+            patch(f"{_WS}.build_land_cover_stats", return_value=None),
+            patch(f"{_WS}.build_hsg_stats", return_value=None),
+            patch(f"{_WS}.cascade_escalate", return_value=escalation),
+            patch(f"{_WS}.thiessen_cells", return_value=[]),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            response = client.post(
+                "/api/delineate-watershed", json={**self._POINT, "threshold_m2": 10000}
+            )
+        assert response.status_code == 200
+        return point, response.json()
+
+    def test_an_outlet_500_m_away_is_given_without_a_notice(self, client):
+        _, data = self._post(client, {(12, 10000): 500.0})
+
+        assert data["snap_distance_m"] == pytest.approx(500.0, abs=0.1)
+        assert data["notices"] == []
+
+    @pytest.mark.parametrize(
+        ("east_m", "distance"), [(500.2, "500 m"), (620.0, "620 m"), (1630.0, "1,6 km")]
+    )
+    def test_an_outlet_beyond_500_m_comes_with_a_warning_of_its_distance(
+        self, client, east_m, distance
+    ):
+        _, data = self._post(client, {(12, 10000): east_m})
+
+        assert data["snap_distance_m"] == pytest.approx(east_m, abs=0.1)
+        [notice] = data["notices"]
+        assert (notice["level"], notice["code"]) == ("warning", "outlet_far_from_point")
+        assert f"leży {distance} od wskazanego punktu" in notice["message"]
+
+    def test_after_a_cascade_the_outlet_ends_the_coarser_segment(self, client):
+        """The merged sub-catchments of 10 ha close 1.63 km down, not 100 m."""
+        cg = _make_mock_cg()
+        cg.get_segment_idx.side_effect = {0: 12, 7: 5}.get
+        stats = {"area_km2": 12.0, "elevation_min_m": 110.0}
+        escalation = ([5, 6], 100000, np.array([7, 8]), 7, stats, 12.0)
+
+        point, data = self._post(
+            client,
+            {(12, 10000): 100.0, (5, 100000): 1630.0},
+            cg=cg,
+            escalation=escalation,
+        )
+
+        outlet = data["watershed"]["outlet"]
+        outlet_2180 = transform_wgs84_to_pl1992(outlet["latitude"], outlet["longitude"])
+        assert outlet_2180.x == pytest.approx(point.x + 1630.0, abs=0.01)
+        assert outlet_2180.y == pytest.approx(point.y, abs=0.01)
+        assert data["snap_distance_m"] == pytest.approx(1630.0, abs=0.1)
+        assert [n["code"] for n in data["notices"]] == ["outlet_far_from_point"]
 
 
 class TestDelineateWatershedPreview:

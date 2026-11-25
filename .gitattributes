@@ -3,3 +3,5 @@
 # Vendored libraries are byte-exact: their `integrity` hashes cover the upstream bytes
 # (leaflet.css has CRLF line endings).
 frontend/vendor/** -text
+# Obserwator's series exports as `series export` writes them (CRLF rows), byte for byte.
+backend/tests/fixtures/obserwator/** -text

@@ -5,10 +5,17 @@
  * a table of depths per time step, typed in, pasted from a spreadsheet or
  * imported from CSV. While the own series is active hydrograph.js sends it as
  * `custom_precipitation` instead of duration, probability and hietogram.
- * A series loaded from the current PMAXTP hietogram stays derived from PMAXTP
- * through edits, pastes and a new size: it is sent with `derived_from: 'pmaxtp'`
- * and hands the provider lines of that result to the view's strip while the
- * table is shown (attribution.js) until "Wyczyść", a CSV import or a new watershed.
+ * The series keeps its origin through edits, pastes and a new size until
+ * "Wyczyść", another import or a new watershed:
+ * - loaded from the current PMAXTP hietogram, it is sent with
+ *   `derived_from: 'pmaxtp'` and hands the provider lines of that result to the
+ *   view's strip while the table is shown (attribution.js);
+ * - imported from Obserwator's series export (obserwator-series-csv: the daily
+ *   column "P [mm]" with its "P_flag" and the trailing columns `attribution`,
+ *   `terms_notice`), it is sent with `derived_from` of the provider of the
+ *   file's lines ('imgw' or 'chmu') and those lines, unchanged, which it also
+ *   hands to the strip; the API checks them against the provider's lines;
+ * - typed, pasted or imported from another CSV, it is the user's own data.
  * The series belongs to one delineated watershed; a new delineation resets it.
  */
 (function () {
@@ -30,7 +37,7 @@
     var _cells = [];                    // depth texts by step index (may outlast a shorter table)
     var _step = DEFAULT_STEP_MIN;       // step of the rendered rows [min]
     var _pmaxtp = null;                 // { watershed, step, depths, lines } of the last PMAXTP result
-    var _derived = null;                // provider lines of the PMAXTP result the series was copied from; null for own data
+    var _origin = null;                 // { derived_from, provider?, lines } of a PMAXTP copy or an Obserwator import; null for own data
     var _timer = null;
     var els = {};
 
@@ -230,11 +237,14 @@
         fillInputs();
     }
 
-    /** The series as a copy of a PMAXTP result (its provider lines), or the user's own data (null). */
-    function setDerived(lines) {
-        _derived = lines;
-        // In the view's strip while the table is laid out (attribution.js)
-        Hydrograf.attribution.show('custom-rain', lines, [els.form]);
+    /**
+     * The origin of the series: a copy of a PMAXTP result or an Obserwator import
+     * ({ derived_from, provider?, lines }), or the user's own data (null).
+     */
+    function setOrigin(origin) {
+        _origin = origin;
+        // Its lines in the view's strip while the table is laid out (attribution.js)
+        Hydrograf.attribution.show('custom-rain', origin ? origin.lines : null, [els.form]);
     }
 
     function updateLoadButton() {
@@ -259,7 +269,7 @@
         _watershed = data;
         _custom = false;
         _cells = [];
-        setDerived(null);
+        setOrigin(null);
         if (_pmaxtp && _pmaxtp.watershed !== data) _pmaxtp = null;
         els.duration.value = String(DEFAULT_DURATION_MIN);
         els.step.value = String(DEFAULT_STEP_MIN);
@@ -373,15 +383,22 @@
 
     /**
      * Parse an own series from CSV text.
-     * One column: depths [mm] with the current step. Two columns: time [min]
-     * (end of each step, or 0 for the start of the first one) and depth [mm]
-     * with a uniform step. Optional header row; separator `,` `;` or tab;
-     * decimal comma with `;` or tab (and in quoted cells).
+     * Obserwator's series export (header `date,…,attribution,terms_notice`):
+     * see parseObserwator. Otherwise one column: depths [mm] with the current
+     * step. Two columns: time [min] (end of each step, or 0 for the start of
+     * the first one) and depth [mm] with a uniform step. Optional header row;
+     * separator `,` `;` or tab; decimal comma with `;` or tab (and in quoted cells).
      * Returns { depths, step, columns } or { error } (Polish, with the line).
      */
     function parseCsv(text, currentStep) {
+        text = text.replace(/^\uFEFF/, '');
+        var head = text.split(/\r?\n/, 1)[0].split(',');
+        if (head[0] === 'date' && head.slice(-2).join(',') === 'attribution,terms_notice') {
+            return parseObserwator(csvRecords(text));
+        }
+
         var rows = [];
-        text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/).forEach(function (line, i) {
+        text.split(/\r\n|\r|\n/).forEach(function (line, i) {
             if (line.trim() !== '') rows.push({ line: i + 1, text: line });
         });
         if (!rows.length) return { error: 'plik jest pusty.' };
@@ -482,6 +499,176 @@
             : '';
     }
 
+    // ── Obserwator's series export ─────────────────────────────────────
+
+    var DAY_MS = 86400000;
+    var DAY_MIN = 1440;                 // the step of a daily series [min]
+    var DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+    var OBSERWATOR_CMD = 'obserwator series export … --variables P --format csv --start RRRR-MM-DD --end RRRR-MM-DD';
+
+    /**
+     * Records of comma-separated CSV text (RFC 4180): { line, cells }, `line`
+     * the file line the record starts on. A quoted cell may hold commas, doubled
+     * quotes and line feeds; records end with CRLF or LF; cells are kept as
+     * written (no trimming); empty lines are skipped.
+     */
+    function csvRecords(text) {
+        var records = [];
+        var cells = [];
+        var cell = '';
+        var quoted = false;
+        var line = 1;
+        var start = 1;
+        function endRecord() {
+            cells.push(cell);
+            if (cells.length > 1 || cell !== '') records.push({ line: start, cells: cells });
+            cells = [];
+            cell = '';
+        }
+        for (var i = 0; i < text.length; i++) {
+            var ch = text[i];
+            if (quoted) {
+                if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+                else if (ch === '"') quoted = false;
+                else {
+                    if (ch === '\n') line++;
+                    cell += ch;
+                }
+            } else if (ch === '"') {
+                quoted = true;
+            } else if (ch === ',') {
+                cells.push(cell);
+                cell = '';
+            } else if (ch === '\n' || (ch === '\r' && text[i + 1] === '\n')) {
+                if (ch === '\r') i++;
+                endRecord();
+                line++;
+                start = line;
+            } else {
+                cell += ch;
+            }
+        }
+        if (cells.length || cell !== '') endRecord();
+        return records;
+    }
+
+    /** Day number of a YYYY-MM-DD date, or null when it is not a valid date. */
+    function dayNumber(text) {
+        var m = DATE_RE.exec(text);
+        if (!m) return null;
+        var t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+        var d = new Date(t);
+        return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]
+            ? t / DAY_MS : null;
+    }
+
+    function dayText(n) {
+        return new Date(n * DAY_MS).toISOString().slice(0, 10);
+    }
+
+    /**
+     * Daily precipitation of Obserwator's series export (obserwator-series-csv):
+     * the column "P [mm]" with its flags "P_flag", one row per day without gaps
+     * (step 1440 min), at most _maxSteps days (a longer file is refused, never
+     * cut); a day without measurement ("missing") or with the sum of the days
+     * before it ("accumulated") is refused. Other columns are ignored. The lines
+     * of `attribution` and `terms_notice` (one per cell from the first data row
+     * down, the last cell may hold several joined by "\n") are kept unchanged,
+     * each once, and must be IMGW-PIB's or ČHMÚ's (attribution.js).
+     * Returns { depths, step, columns: 'obserwator', origin, first, last } with
+     * origin { derived_from, provider, lines }, or { error } (Polish).
+     */
+    function parseObserwator(records) {
+        var header = records[0].cells;
+        var depthCol = header.indexOf('P [mm]');
+        var flagCol = header.indexOf('P_flag');
+        var linesCol = { attribution: header.length - 2, terms_notice: header.length - 1 };
+        if (depthCol < 0) {
+            return { error: 'eksport szeregu Obserwatora bez kolumny „P [mm]” — wyeksportuj opad: obserwator series export … --variables P.' };
+        }
+        var rows = records.slice(1);
+        if (!rows.length) return { error: 'eksport szeregu Obserwatora bez dni, tylko nagłówek.' };
+        if (rows.length > _maxSteps) {
+            return {
+                error: 'eksport szeregu Obserwatora ma ' + rows.length + ' dni (' + rows[0].cells[0] + ' – ' +
+                    rows[rows.length - 1].cells[0] + '), a limit to ' + _maxSteps + ' kroków; szereg nie jest przycinany. ' +
+                    'Wyeksportuj w Obserwatorze krótszy zakres, najwyżej ' + _maxSteps + ' dni: ' + OBSERWATOR_CMD + '.',
+            };
+        }
+
+        var depths = [];
+        var lines = { attribution: [], terms_notice: [] };
+        var previous = null;
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            var date = r.cells[0];
+            var at = 'wiersz ' + r.line + ' (' + date + '): ';
+            if (r.cells.length !== header.length) {
+                return { error: at + 'liczba kolumn (' + r.cells.length + ') inna niż w nagłówku (' + header.length + ').' };
+            }
+            var day = dayNumber(date);
+            if (day === null) return { error: 'wiersz ' + r.line + ': data „' + date + '” nie ma postaci RRRR-MM-DD.' };
+            if (previous !== null && day !== previous + 1) {
+                return {
+                    error: at + (day > previous + 1
+                        ? 'luka w szeregu — ' + (day - previous > 2
+                            ? 'brak dni ' + dayText(previous + 1) + ' – ' + dayText(day - 1)
+                            : 'brak dnia ' + dayText(previous + 1)) + '.'
+                        : 'data nie następuje po ' + dayText(previous) + ' — szereg musi iść dzień po dniu.'),
+                };
+            }
+            previous = day;
+            var flag = flagCol < 0 ? 'value' : r.cells[flagCol];
+            if (flag === 'missing') {
+                return { error: at + 'brak pomiaru (P_flag „missing”). Wyeksportuj w Obserwatorze zakres bez braków.' };
+            }
+            if (flag === 'accumulated') {
+                return {
+                    error: at + 'suma z poprzednich dni bez pomiaru (P_flag „accumulated”), nie opad tego dnia. ' +
+                        'Wyeksportuj w Obserwatorze zakres bez braków.',
+                };
+            }
+            if (flag !== 'value' && flag !== 'no_phenomenon') {
+                return { error: at + 'nieznana flaga P_flag „' + flag + '”.' };
+            }
+            var depth = parseNumber(r.cells[depthCol]);
+            if (depth === null || !isFinite(depth) || depth < 0) {
+                return { error: at + 'opad „' + r.cells[depthCol] + '” nie jest liczbą ≥ 0.' };
+            }
+            depths.push(depth);
+            Object.keys(linesCol).forEach(function (key) {
+                var cell = r.cells[linesCol[key]];
+                if (cell === '') return;
+                cell.split(/\r?\n/).forEach(function (text) {
+                    if (text !== '' && lines[key].indexOf(text) < 0) lines[key].push(text);
+                });
+            });
+        }
+
+        if (!lines.attribution.length && !lines.terms_notice.length) {
+            return {
+                error: 'eksport szeregu Obserwatora bez linii źródła danych (puste kolumny „attribution” i „terms_notice”) — ' +
+                    'Hydrograf przyjmuje taki plik tylko z liniami IMGW-PIB albo ČHMÚ.',
+            };
+        }
+        var origin = Hydrograf.attribution.seriesOrigin(lines);
+        if (!origin) {
+            return {
+                error: 'linie źródła danych pliku (kolumna „attribution”) nie wskazują jednego dostawcy, IMGW-PIB albo ČHMÚ — ' +
+                    'Hydrograf przenosi z eksportu szeregu Obserwatora tylko linie jednego z nich.',
+            };
+        }
+        origin.lines = lines;
+        return {
+            depths: depths,
+            step: DAY_MIN,
+            columns: 'obserwator',
+            origin: origin,
+            first: rows[0].cells[0],
+            last: rows[rows.length - 1].cells[0],
+        };
+    }
+
     function onFileChosen() {
         var file = els.file.files && els.file.files[0];
         els.file.value = '';                // the same file can be chosen again
@@ -494,10 +681,17 @@
                 return;
             }
             setSeries(parsed.step, parsed.depths);
-            setDerived(null);
-            showMessage('info', 'Zaimportowano ' + steps(parsed.depths.length) + ' po ' + fmt(parsed.step) +
-                ' min z pliku „' + file.name + '”' +
-                (parsed.columns === 2 ? ' (kolumny czas i opad).' : ' (kolumna opadu).'));
+            if (parsed.columns === 'obserwator') {
+                setOrigin(parsed.origin);
+                showMessage('info', 'Zaimportowano ' + steps(parsed.depths.length) + ' po ' + fmt(parsed.step) + ' min (' +
+                    (parsed.first === parsed.last ? 'dzień ' + parsed.first : 'dni ' + parsed.first + ' – ' + parsed.last) +
+                    ') z pliku „' + file.name + '” — eksport szeregu Obserwatora, dane ' + parsed.origin.provider + '.');
+            } else {
+                setOrigin(null);
+                showMessage('info', 'Zaimportowano ' + steps(parsed.depths.length) + ' po ' + fmt(parsed.step) +
+                    ' min z pliku „' + file.name + '”' +
+                    (parsed.columns === 2 ? ' (kolumny czas i opad).' : ' (kolumna opadu).'));
+            }
             changed();
         }, function () {
             showMessage('bad', 'Nie udało się odczytać pliku „' + file.name + '”.');
@@ -548,7 +742,7 @@
         sync();
         if (!_pmaxtp || _pmaxtp.watershed !== _watershed) return;
         setSeries(_pmaxtp.step, _pmaxtp.depths);
-        setDerived(_pmaxtp.lines);
+        setOrigin({ derived_from: 'pmaxtp', lines: _pmaxtp.lines });
         showMessage('info', 'Wczytano bieżący hietogram PMAXTP: ' + steps(_pmaxtp.depths.length) +
             ' po ' + fmt(_pmaxtp.step) + ' min.');
         changed();
@@ -557,7 +751,7 @@
     function onClear() {
         sync();
         _cells = [];
-        setDerived(null);
+        setOrigin(null);
         showMessage(null, '');
         fillInputs();
         changed();
@@ -570,7 +764,9 @@
      * Returns { active, valid, series }: active when the own series is
      * selected; valid false while it has errors or no rain (the caller must
      * not send the request); series = { timestep_min, depths_mm }, with
-     * derived_from 'pmaxtp' while it is a copy of a PMAXTP hietogram.
+     * derived_from 'pmaxtp' (no lines) while it is a copy of a PMAXTP
+     * hietogram, or derived_from 'imgw' / 'chmu' and the file's lines
+     * `attribution` and `terms_notice` while it is an Obserwator import.
      */
     function request(data) {
         if (!els.form) return { active: false, valid: true, series: null };
@@ -579,7 +775,14 @@
         var state = refresh();
         if (!state.valid) return { active: true, valid: false, series: null };
         var series = { timestep_min: state.step, depths_mm: state.depths };
-        if (_derived) series.derived_from = 'pmaxtp';
+        if (_origin) {
+            series.derived_from = _origin.derived_from;
+            // A PMAXTP copy's lines come with the API's answer; an import's are the file's
+            if (_origin.derived_from !== 'pmaxtp') {
+                series.attribution = _origin.lines.attribution.slice();
+                series.terms_notice = _origin.lines.terms_notice.slice();
+            }
+        }
         return { active: true, valid: true, series: series };
     }
 

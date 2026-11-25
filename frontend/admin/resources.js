@@ -2,7 +2,8 @@
  * Hydrograf admin panel: the section „Zasoby” (GET /api/admin/resources).
  *
  * The API process (CPU, memory, threads), the database (size, connection pool, rows
- * of the tables), the catchment graph in memory and the size of the data on disk.
+ * of the tables), the catchment graph in memory and the size of the data on disk; a
+ * directory the API is still walking has no size yet (null), which the note says.
  */
 (function () {
     'use strict';
@@ -21,6 +22,7 @@
         ['cache_mb', 'Pamięć podręczna pobrań'],
         ['total_mb', 'Razem'],
     ];
+    var MEASURING = 'Rozmiar części danych na dysku jest jeszcze liczony; „Odśwież” pokaże go za chwilę.';
 
     function panel(title, pairs) {
         var card = admin.el('div', 'admin-panel');
@@ -97,6 +99,8 @@
             if (mine !== ticket) return;
             status.clear();
             draw(data);
+            var disk = data.disk || {};
+            if (DISK.some(function (entry) { return disk[entry[0]] === null; })) status.note(MEASURING);
         } catch (error) {
             if (mine !== ticket) return;
             status.note('');

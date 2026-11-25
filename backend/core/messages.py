@@ -349,6 +349,27 @@ MESSAGES: Final[dict[str, Message]] = {
         "Use one of: {allowed}.",
         "Użyj jednego z: {allowed}.",
     ),
+    "unknown_attribution_line": Message(
+        "custom_precipitation brings the line „{line}”, which is not a line of the "
+        "{provider} data that derived_from names.",
+        "Seria opadu przynosi linię „{line}”, która nie jest linią danych {provider} "
+        "wskazanych w derived_from.",
+        "Send the lines of the file the series was read from unchanged, as "
+        "Obserwator's series export writes them; export a file of an older Obserwator "
+        "again.",
+        "Wyślij linie pliku, z którego pochodzi seria, bez zmian, tak jak zapisuje je "
+        "eksport szeregu Obserwatora; plik starszego Obserwatora wyeksportuj ponownie.",
+    ),
+    "attribution_line_without_origin": Message(
+        "custom_precipitation brings the line „{line}” without derived_from, which "
+        "names the data the series came from.",
+        "Seria opadu przynosi linię „{line}” bez derived_from, które wskazuje dane, z "
+        "których pochodzi seria.",
+        "Set derived_from to imgw, chmu or pmaxtp, or leave the lines out for data of "
+        "your own.",
+        "Ustaw derived_from na imgw, chmu albo pmaxtp albo pomiń linie przy danych "
+        "własnych.",
+    ),
     "storm_not_whole_steps": Message(
         "The duration of {duration_min:g} min is not a whole number of time steps of "
         "{timestep_min:g} min: a design hyetograph is made of whole steps.",

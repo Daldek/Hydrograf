@@ -8,8 +8,10 @@
 
 **Date:** 2026-11-13
 **Status:** accepted; amended 2026-11-13 (one strip of the lines on screen, the welcome
-window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below) and
-2026-11-13 (the terms linked, not restated: Nogat ECO-065; below)
+window and `GET /api/terms`: Nogat ECO-064, plan `2026-11-13-compact-sources`; below),
+2026-11-13 (the terms linked, not restated: Nogat ECO-065; below) and 2026-11-25 (an own
+series of IMGW-PIB's or ČHMÚ's data from Obserwator's series export, by option B3; the
+coordinator's decision by delegation of the author; below)
 
 ## Context
 
@@ -164,3 +166,48 @@ terms>: <address>”. For Hydrograf:
   `terms_notice` to [RK], and the `ATTRIBUTION.txt` and `analysis_results.json` of earlier
   `analyze_watershed` runs, which a rerun rewrites. The API responses and the hand-offs
   take the lines from the module, so they carry the new ones at once.
+
+## Amendment 2026-11-25: an own series from Obserwator's series export (E3-03, E3-04)
+
+The scenario test of 2026-11-15/16 found that „Importuj CSV” refused the CSV of
+`obserwator series export` (`obserwator-series-csv`, „wiersz 2: 8 kolumn”; E3-03), and
+that a series converted for the importer lost IMGW-PIB's lines and the link to its terms on
+every product (`rainfall.source: user`, `attribution` without them; E3-04), while Nogat
+DEV-20.6 asks a consumer to carry the lines it receives with data. The last consequence
+above, „An own series imported from a file carries no lines”, made that loss the rule. The
+coordinator decided on 2026-11-25, by delegation of the author, to extend option B3 rather
+than take B2:
+
+1. „Importuj CSV” also opens an `obserwator-series-csv`: a header that begins with `date`
+   and ends with `attribution`, `terms_notice`, the column `P [mm]` day by day (a step of
+   1440 min). A day without a measurement (`missing`), a sum over such days
+   (`accumulated`) or a gap in the dates is refused; a file of more days than
+   `custom_precipitation_max_steps` (2000) is refused with the limit and the advice to
+   export a shorter range (`--start`, `--end`), never cut.
+2. `custom_precipitation.derived_from` takes `imgw`, IMGW-PIB's archives of
+   danepubliczne.imgw.pl (S, P and RD; DEV-20.1, DEV-20.7), and `chmu`, ČHMÚ's open data
+   (C and CP; DEV-20.3), besides `pmaxtp`. The interface sets it from the provider the
+   file's lines name and keeps it through edits, as for a copy of a PMAXTP hyetogram.
+3. The request carries the file's lines unchanged, `custom_precipitation.attribution` and
+   `terms_notice`. The API checks each against the lines of the data `derived_from` names,
+   Nogat DEV §20's as `core/attribution.py` holds them (`SERIES_ORIGINS`; an old CP is CP),
+   and refuses an unknown line, or a line without `derived_from`, with 400
+   `validation_error`, `details.reason` `unknown_attribution_line`, before it delineates
+   anything. B2's objection stays answered: no text of the client reaches a product.
+4. The response, its hand-off and so the panel and the exports carry the lines of the data
+   `derived_from` names, from the module (B3); they hold every line the API accepted
+   (DEV-20.6), and P or CP even when the file lacked it, since a hydrograph processes the
+   series.
+
+Consequences:
+
+- An own series from any other CSV file, typed in or pasted, still carries no lines: the
+  person who brings provider data that way answers for its terms.
+- The lines are those of the pinned Obserwator (3.2.1) and of Nogat's standard 1.1; a file
+  of an older Obserwator with lines the standard has since retired, or of an operator's
+  provider fed by files (Obserwator ADR-033), whose lines Hydrograf does not know, is
+  refused until it is exported again or its provider is added here.
+- A series of hydro.imgw.pl data (RH) would be an origin of its own; Obserwator's
+  precipitation series are of the archives.
+- Nogat's `ecosystem.yaml` does not list `obserwator-series-csv` among Hydrograf's exchanges
+  with Obserwator: the edge is Nogat's to add (B4 of the scenario test's report).

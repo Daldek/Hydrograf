@@ -354,6 +354,8 @@ Response: 200 OK
   "upstream_segment_indices": [42, 43, 44, ...],              // for the MVT highlighting
   "display_threshold_m2": 10000,                              // the threshold of those indices
   "info_message": null,                                       // a note when threshold_m2 was raised
+  "snap_distance_m": 1918.5,                                  // from the point to watershed.outlet (E7-GAP-04)
+  "notices": [{"level": "warning", "code": "outlet_far_from_point", "message": "Ujście zlewni leży 1,9 km od wskazanego punktu, …"}],   // above 500 m; [] otherwise
   "handoff": {"schema": "nogat-handoff/1", ...},              // the watershed for Hydrolog's GUI (ADR-068)
   "attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT, BDOT10k (…); dane przetworzone", …],   // G, and SG with soil groups (ADR-085)
   "terms_notice": []
@@ -519,7 +521,10 @@ Request:
   "custom_precipitation": {    // optional: your own series instead of PMAXTP and the hietogram
     "timestep_min": 10,        // > 0 and ≤ 1440
     "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0],  // ≥ 0, 1–2000 values, sum > 0
-    "derived_from": null       // "pmaxtp": a copy of a PMAXTP hyetogram (ADR-083)
+    "derived_from": null,      // "pmaxtp": a copy of a PMAXTP hyetogram; "imgw", "chmu": a series of
+                               // IMGW-PIB's archives or ČHMÚ's open data (ADR-083, amended 2026-11-25)
+    "attribution": [],         // the lines of the series' file unchanged (Obserwator's series export),
+    "terms_notice": []         // each a line of the data derived_from names, ≤ 20 of ≤ 1000 characters
   },
   "morphometry": { ... }       // optional: the fast path (advanced mode), fractional cn
 }
@@ -528,8 +533,9 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
   water_balance.cn_used: float (the CN after the AMC conversion)
   metadata.amc; metadata.hietogram_type = null for your own series
-  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, then G and SG of
-  the watershed's data (delineated, or with morphometry_origin); terms_notice: [RK] with PMAXTP;
+  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, IMGW-PIB's [S, P] or
+  ČHMÚ's [C, CP] for a series of their data, then G and SG of the watershed's data (delineated,
+  or with morphometry_origin); terms_notice: [RK] with PMAXTP, [RD] with IMGW-PIB's archives;
   [] and [] for your own rainfall on your own morphometry (ADR-083, ADR-085); the hand-off has
   the same fields, without them when they are empty
   notices: [{"level": "warning", "code": "outside_applicability", "message": "Hydrogram
@@ -546,7 +552,9 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   delineated watershed, its tr55_cn and equal_area_slope; the hand-off's result.computed_with
   carries both
 Response: 400 validation_error (application/problem+json), e.g. for the rainfall series; before
-          anything is computed, storm_not_whole_steps (reason not_multiple) for a duration that
+          anything is computed, unknown_attribution_line (with details.line) for a line of
+          custom_precipitation that is not one of the data derived_from names, or that comes
+          without derived_from; storm_not_whole_steps (reason not_multiple) for a duration that
           is not a whole number of timestep_min, euler_ii_step_below_curve (reason not_covered)
           for an Euler II step under 5 min (Hydrolog ADR-0046, ADR-0042); Hydrolog's refusals of
           an input by the standard's reason (outside_physical_range, invalid_type,
@@ -558,10 +566,13 @@ Response: 400 validation_error (application/problem+json), e.g. for the rainfall
           flow path longer than its overland segment) have sentences of their own; any other
           refusal is invalid_parameters with Hydrolog's message
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
-          delineated catchment and for one given in morphometry alike; lutz_parameters_missing
-          and snyder_parameters_missing (reason missing_morphometry) without the longest flow
-          path, its equal-area slope (Lutz) or Lc
+          delineated catchment (before its boundary is merged) and for one given in
+          morphometry alike; lutz_parameters_missing and snyder_parameters_missing (reason
+          missing_morphometry) without the longest flow path, its equal-area slope (Lutz)
+          or Lc
 ```
+
+Without `morphometry` (the full path) the endpoint delineates the watershed as `POST /api/delineate-watershed` does in the precomputed mode at 10 000 m², with its cascade to a coarser threshold above 300 sub-catchments (E5b-04: merging thousands of 1 ha sub-catchments took minutes), and computes with that watershed's morphometry, CN, PMAXTP cells and lines, as the GUI sends them on the fast path; `watershed` is the delineation without its hypsometric curve, and the area of the computation the graph's, unrounded.
 
 Euler II is built from the PMAXTP depth–duration curve of the probability: each of the 16
 durations weighed as the design depth and multiplied by the user's areal reduction factor
@@ -665,8 +676,8 @@ Prefix: /api/admin
 
 GET  /api/admin/status             — app, version, started_at, uptime_s, data_dir, disk, checks (database, catchment_graph, data_dir) of Nogat DEV-15.13
 GET  /api/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
-GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories
-GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
+GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories (each walked in a thread of its own, the request waiting at most 5 s: null and total_mb null until its first walk ends; E5b-02)
+GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees (size_mb null while a directory of the target is walked for the first time)
 POST /api/admin/cleanup            — {"targets": ["all" | "cache"]}: the processing data (rasters, overlays, tiles, the tables) or the download cache, through execute_clean() of scripts/clean.py
 GET  /api/admin/bootstrap/status   — status of the bootstrap process
 POST /api/admin/bootstrap/start    — start the bootstrap subprocess

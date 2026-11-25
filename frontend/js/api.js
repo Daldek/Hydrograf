@@ -130,8 +130,10 @@
 
     /**
      * Generate hydrograph for given parameters.
-     * With opts.custom_precipitation ({ timestep_min, depths_mm, derived_from? })
-     * the PMAXTP design storm is replaced and duration/probability may be null. With
+     * With opts.custom_precipitation ({ timestep_min, depths_mm, derived_from?,
+     * attribution?, terms_notice? }: derived_from 'pmaxtp', 'imgw' or 'chmu', the
+     * lines those of the series' file, unchanged) the PMAXTP design storm is
+     * replaced and duration/probability may be null. With
      * opts.morphometry, opts.pmaxtp_grid (the delineation's) makes the PMAXTP
      * depth the watershed mean instead of the value at the point.
      */

@@ -32,18 +32,23 @@ from numba.core.compiler_lock import global_compiler_lock
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
+from api.endpoints.watershed import (
+    _build_watershed_response,
+    _loaded_catchment_graph,
+    _select_precomputed,
+)
 from api.errors import problem_responses
 from core import hydrolog_notices
 from core.attribution import (
     CATCHMENT,
-    DRAINAGE,
     NO_PROVIDER,
     PMAXTP,
+    SERIES_ORIGINS,
     ProviderLines,
     instance_lines,
     merge,
+    unknown_series_line,
 )
-from core.catchment_graph import loaded_catchment_graph
 from core.config import get_settings
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
@@ -53,14 +58,11 @@ from core.errors import (
     InternalError,
     InvalidRequestError,
     NoDataError,
-    NotFoundError,
-    StoreUnavailableError,
     UnsupportedError,
 )
 from core.formula_versions import (
     formula_versions,
     hydrograph_specs,
-    watershed_specs,
 )
 from core.handoff import (
     PRODUCER,
@@ -78,7 +80,6 @@ from core.handoff import (
     watershed_parameters,
 )
 from core.hydrolog_refusals import refusal
-from core.land_cover import get_land_cover_for_boundary
 from core.precipitation import (
     DURATION_MIN_TO_STR,
     DURATION_STR_TO_MIN,
@@ -89,35 +90,29 @@ from core.precipitation import (
     UnknownGridPointError,
     areal_depth,
     point_depth,
-    thiessen_cells,
     validate_duration,
     validate_probability,
 )
 from core.watershed_service import (
     boundary_to_polygon,
-    build_morph_dict_from_graph,
-    get_segment_outlet,
-    get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
+    watershed_lines,
 )
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
+    CustomPrecipitation,
     HydrographInfo,
     HydrographMetadata,
     HydrographRequest,
     HydrographResponse,
     MorphometricParameters,
-    OutletInfo,
-    PmaxtpGridCell,
     PmaxtpPoint,
     PrecipitationInfo,
     WaterBalance,
     WatershedResponse,
 )
 from utils.geometry import (
-    polygon_to_geojson_feature,
     transform_pl1992_to_wgs84,
-    transform_polygon_pl1992_to_wgs84,
     transform_wgs84_to_pl1992,
 )
 
@@ -168,137 +163,118 @@ def _require_area_within_limit(area_km2: float) -> None:
         )
 
 
-def _compute_watershed(
-    point_2180: Point,
-    request: HydrographRequest,
-    db: Session,
-) -> tuple[
-    dict[str, Any], float, float, WatershedResponse, list[ThiessenCell], ProviderLines
-]:
-    """Full watershed computation path (steps 3-9).
+def _series_lines(custom: CustomPrecipitation) -> ProviderLines:
+    """Return the lines of the products made with an own rainfall series.
 
-    Returns (morph_dict, cn, area_km2, watershed_response, pmaxtp_cells, lines): the
-    cells weigh the PMAXTP grid over the watershed (ADR-069); the lines are those of
-    the data of the watershed, G of its NMT and BDOT10k and SG when its CN is weighted
-    on SoilGrids' soil groups, as the delineation of the watershed gives them.
+    Parameters
+    ----------
+    custom : CustomPrecipitation
+        The series of the request.
+
+    Returns
+    -------
+    ProviderLines
+        Those of the data ``derived_from`` names (ADR-083, amended 2026-11-25), from
+        ``core.attribution``; none for the user's own data.
+
+    Raises
+    ------
+    InvalidRequestError
+        ``validation_error`` (400, reason ``unknown_attribution_line``) for a line the
+        series brings from its file that is not one of those data's, or that comes
+        without ``derived_from``.
     """
-    cg = loaded_catchment_graph(db)
-    if cg is None:
-        raise StoreUnavailableError(
-            "catchment_graph_unavailable", reason="catchment_graph_unavailable"
+    origin = custom.derived_from
+    line = unknown_series_line(origin, custom.attribution, custom.terms_notice)
+    if line is not None and origin is None:
+        raise InvalidRequestError(
+            "attribution_line_without_origin",
+            reason="unknown_attribution_line",
+            line=line,
         )
-
-    try:
-        clicked_idx = cg.find_catchment_at_point(
-            point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2, db
+    if line is not None and origin is not None:
+        raise InvalidRequestError(
+            "unknown_attribution_line",
+            reason="unknown_attribution_line",
+            line=line,
+            derived_from=origin,
+            provider=SERIES_ORIGINS[origin][0],
         )
-    except ValueError as e:
-        raise NotFoundError(
-            "no_catchment_at_point",
-            reason="no_catchment_at_point",
-            threshold_m2=DEFAULT_THRESHOLD_M2,
-        ) from e
+    return NO_PROVIDER if origin is None else SERIES_ORIGINS[origin][1]
 
-    segment_idx = cg.get_segment_idx(clicked_idx)
-    segment = get_stream_info_by_segment_idx(segment_idx, DEFAULT_THRESHOLD_M2, db)
 
-    upstream_indices = cg.traverse_upstream(clicked_idx)
-    segment_idxs = cg.get_segment_indices(upstream_indices, DEFAULT_THRESHOLD_M2)
+def _compute_watershed(
+    point_2180: Point, db: Session
+) -> tuple[WatershedResponse, MorphometricParameters, float, ProviderLines]:
+    """Delineate the watershed of the point as ``POST /api/delineate-watershed`` does.
 
-    stats = cg.aggregate_stats(upstream_indices, outlet_idx=clicked_idx)
-    area_km2 = stats["area_km2"]
+    The precomputed delineation at the finest threshold: its sub-catchments
+    (``_select_precomputed``), merged from a coarser threshold above 300 of them, which
+    the merge of thousands of 1 ha sub-catchments needed minutes for (E5b-04); a
+    catchment above the SCS-CN limit is refused before anything is merged. The
+    morphometry with the CN of the land cover, the PMAXTP cells of the design depth
+    (ADR-069) and the lines of the data are those of the watershed, as
+    ``scripts/analyze_watershed.py`` takes them.
 
-    _require_area_within_limit(area_km2)
+    Parameters
+    ----------
+    point_2180 : Point
+        The point of the request in EPSG:2180.
+    db : Session
+        Database session.
 
-    boundary_2180 = merge_catchment_boundaries(segment_idxs, DEFAULT_THRESHOLD_M2, db)
+    Returns
+    -------
+    tuple[WatershedResponse, MorphometricParameters, float, ProviderLines]
+        The watershed (``_build_watershed_response``, without the hypsometric curve),
+        its morphometry, its area from the catchment graph unrounded [km2], which the
+        morphometry carries to 0.0001 km2, and the lines of its data
+        (``watershed_lines``).
+
+    Raises
+    ------
+    StoreUnavailableError
+        ``store_unavailable`` (503) when the catchment graph is not loaded.
+    NotFoundError
+        ``not_found`` (404) when no sub-catchment lies at the point.
+    UnsupportedError
+        ``unsupported`` (422) above the SCS-CN limit.
+    CalculationError
+        ``calculation_error`` when the boundary cannot be merged.
+    """
+    cg = _loaded_catchment_graph(db)
+    selection = _select_precomputed(DEFAULT_THRESHOLD_M2, point_2180, cg, db)
+    _require_area_within_limit(selection.area_km2)
+
+    boundary_2180 = merge_catchment_boundaries(
+        selection.merge_idxs, selection.merge_threshold, db
+    )
     if boundary_2180 is None:
         raise CalculationError("boundary_build_failed", reason="boundary_build_failed")
-
-    imperviousness = None
-    lutz_shares: dict[str, float] = {}
-    # The land cover lies on soil groups of soil_hsg (SoilGrids), unless they were
-    # assumed for the whole of it
-    uses = DRAINAGE
-    cn_from_land_cover = False
-    try:
-        lc_data = get_land_cover_for_boundary(boundary_2180, db)
-        if lc_data:
-            cn = lc_data["weighted_cn"]
-            imperviousness = lc_data.get("weighted_imperviousness")
-            lutz_shares = {key: lc_data[key] for key in ("forest_pct", "urban_pct")}
-            uses = CATCHMENT if lc_data["hsg_assumed_pct"] < 100 else DRAINAGE
-            cn_from_land_cover = True
-            logger.info(f"CN={cn} calculated from land cover")
-        else:
-            cn = DEFAULT_CN
-            logger.info(f"CN={cn} (default, no land cover data)")
-    except Exception as e:
-        logger.warning(f"Failed to calculate CN from land cover: {e}, using default")
-        cn = DEFAULT_CN
-        imperviousness = None
-        lutz_shares = {}
-        uses = DRAINAGE
-        cn_from_land_cover = False
-
-    outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
-    if outlet_info is not None:
-        outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
-    elif segment:
-        outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
-    else:
-        outlet_x, outlet_y = point_2180.x, point_2180.y
-
-    morph_dict = build_morph_dict_from_graph(
+    watershed = _build_watershed_response(
         cg,
-        upstream_indices,
+        point_2180,
         boundary_2180,
-        outlet_x,
-        outlet_y,
-        segment_idx,
-        DEFAULT_THRESHOLD_M2,
-        cn=cn,
-        imperviousness=imperviousness,
-        db=db,
-        outlet_idx=clicked_idx,
+        boundary_to_polygon(boundary_2180),
+        selection.upstream_indices,
+        selection.outlet_idx,
+        selection.merge_threshold,
+        selection.area_km2,
+        selection.stats,
+        False,
+        db,
     )
-    morph_dict.update(lutz_shares)
-
-    # Build WatershedResponse for full-path callers
-    outlet_elevation = stats.get("elevation_min_m") or 0.0
-    outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
-    boundary_poly = boundary_to_polygon(boundary_2180)
-    boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
-    boundary_geojson = polygon_to_geojson_feature(
-        boundary_wgs84,
-        properties={"area_km2": round(area_km2, 2)},
+    # _build_watershed_response measures the morphometry of every watershed
+    assert watershed.morphometry is not None
+    logger.info(
+        "Full path: %.2f km2, %d sub-catchments merged at %d m2, CN %s",
+        selection.area_km2,
+        len(selection.merge_idxs),
+        selection.merge_threshold,
+        watershed.morphometry.cn,
     )
-    # Remove private keys before passing to Pydantic schema
-    morph_dict.pop("_main_channel_nodes", None)
-    morph_dict.pop("_flow_paths", None)
-    pmaxtp_cells = thiessen_cells(boundary_poly, db)
-
-    watershed_resp = WatershedResponse(
-        boundary_geojson=boundary_geojson,
-        outlet=OutletInfo(
-            latitude=outlet_lat,
-            longitude=outlet_lon,
-            elevation_m=outlet_elevation,
-        ),
-        area_km2=round(area_km2, 2),
-        hydrograph_available=True,
-        morphometry=MorphometricParameters(**morph_dict),
-        pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
-        formula_versions=formula_versions(
-            watershed_specs(
-                cn_from_land_cover=cn_from_land_cover,
-                equal_area_slope=morph_dict.get("flow_path_equal_area_slope_m_per_m")
-                is not None,
-            )
-        ),
-    )
-
-    lines = instance_lines(uses, get_settings().frontend_data_dir)
-    return morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells, lines
+    lines = watershed_lines(watershed, get_settings().frontend_data_dir)
+    return watershed, watershed.morphometry, selection.area_km2, lines
 
 
 def _design_depth(
@@ -990,60 +966,60 @@ def generate_hydrograph(
             probability: float | None = design_probability
             duration_min = float(DURATION_STR_TO_MIN[duration_str])
             timestep_min = request.timestep_min
+            rain_lines = PMAXTP
         else:
             probability = None
             duration_min = len(custom.depths_mm) * custom.timestep_min
             timestep_min = custom.timestep_min
+            # The lines of the data the series came from, its file's checked first
+            rain_lines = _series_lines(custom)
         amc = AMC_BY_CODE[request.amc]
 
         # ===== STEP 2: Transform coordinates =====
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
 
-        # ===== Fast path: use pre-computed morphometry =====
+        # ===== The watershed: the request's morphometry (fast path) or delineated =====
         watershed_resp = None
         delineated_lines: ProviderLines | None = None
-        pmaxtp_cells: list[ThiessenCell] | None = None
         if request.morphometry is not None:
-            morph_dict = request.morphometry.model_dump(exclude_none=True)
-            cn = morph_dict.get("cn") or DEFAULT_CN
-            area_km2 = morph_dict["area_km2"]
+            morphometry = request.morphometry
+            area_km2 = morphometry.area_km2
             logger.info(
                 f"Fast path: using pre-computed morphometry "
-                f"(area={area_km2:.2f} km2, CN={cn})"
+                f"(area={area_km2:.2f} km2, CN={morphometry.cn})"
             )
             _require_area_within_limit(area_km2)
-            if request.pmaxtp_grid is not None:
-                pmaxtp_cells = [
-                    ThiessenCell(cell.easting_m, cell.northing_m, cell.area_km2)
-                    for cell in request.pmaxtp_grid
-                ]
+            pmaxtp_grid = request.pmaxtp_grid
         else:
-            # ===== Full path: compute watershed from scratch =====
-            (
-                morph_dict,
-                cn,
-                area_km2,
-                watershed_resp,
-                pmaxtp_cells,
-                delineated_lines,
-            ) = _compute_watershed(point_2180, request, db)
+            # Full path: the morphometry, CN and PMAXTP grid of the delineation, as
+            # the interface sends them on the fast path
+            watershed_resp, morphometry, area_km2, delineated_lines = (
+                _compute_watershed(point_2180, db)
+            )
+            pmaxtp_grid = watershed_resp.pmaxtp_grid
+        morph_dict = morphometry.model_dump(exclude_none=True)
+        cn = morph_dict.get("cn") or DEFAULT_CN
+        pmaxtp_cells = (
+            None
+            if pmaxtp_grid is None
+            else [
+                ThiessenCell(cell.easting_m, cell.northing_m, cell.area_km2)
+                for cell in pmaxtp_grid
+            ]
+        )
 
         # ===== Precipitation: own series or PMAXTP design storm =====
         depth: DesignDepth | None = None
-        rain_lines: ProviderLines
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
             handoff_rainfall = rainfall_series(custom.depths_mm, timestep_min)
             rainfall_origin = given_origin()
-            # A copy of a PMAXTP hyetogram still carries PMAXTP's lines (ADR-083)
-            rain_lines = PMAXTP if custom.derived_from == "pmaxtp" else NO_PROVIDER
             logger.debug(
                 f"Custom precipitation: {precip_result.total_mm:.1f} mm "
                 f"in {duration_min:.0f} min"
             )
         else:
-            rain_lines = PMAXTP
             # PMAXTP depth: the watershed mean, or at the point without the grid
             depth = _design_depth(
                 request, point_2180, pmaxtp_cells, duration_str, design_probability, db

@@ -67,10 +67,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    fixes of `feat/network-nodes` that production has; updating it is the author's call. Its
    README `~/data/hydrograf-hydroni/README` still asks for `./dc restart api` after a bootstrap
    (step 2): since `894810c` the API reloads its graph by itself.
-2. **Leftovers of the delineation fix** (`07112ce`, 2026-11-10):
-   - `POST /api/generate-hydrograph` without `morphometry` merges the sub-catchments at
-     10 000 m² with no cascade, up to the 250 km² limit (`api/endpoints/hydrograph.py`); the GUI
-     does not take this path.
+2. **Leftover of the delineation fix** (`07112ce`, 2026-11-10):
    - A large precomputed delineation still takes tens of seconds: the Wełna at 1 km² (500 km²,
      Hydroni) took 51.4 s: the merge 16.9 s (the union 6.0 s and the boundary smoothing of ADR-032
      9.9 s: a ±2 m buffer, three Chaikin iterations up to 128k vertices, `buffer(0)`; a faster
@@ -97,15 +94,23 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    for 0.7.0 or later. Known defects, by the IDs of the scenario test of 2026-11-15/16
    (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4, owners §6; none of C1–C7 of Nogat's run
    of candidate-5 is Hydrograf's) and of the external test report of 2026-11-02 (A2, B2, B3);
-   *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *0.5.1* what was in its scope and is
+   *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *fixed for 0.7.0* what the branch
+   `fix/0.7.0-small` fixed (CHANGELOG `[Unreleased]`), *0.5.1* what was in its scope and is
    still open, *0.7.0* what is planned for 0.7.0:
-   - *Large basins (0.7.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
+   - *Large basins (with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
-     E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
-     G09-3 and E7-GAP-04 (a catchment cut at the area's or the state's edge looks complete; the
-     outlet moves to the segment's end without a notice), E7-09 and HG-E2E-04 (the bootstrap peaks
-     at its memory cap; no documented rule or limit). A draft plan is in Nogat,
-     `docs/plans/2026-11-16-large-basins.md` on its branch `plan/large-basins`, not approved.
+     E7-GAP-02 (= E7-08), G07-2 = G09-2 = G09-3 (a catchment cut at the area's or the state's
+     edge looks complete: H7's notice `catchment_truncated`), E7-09 and HG-E2E-04 (the
+     bootstrap peaks at its memory cap; no documented rule or limit). Nogat's plan
+     `docs/plans/2026-11-16-large-basins.md`, approved by the author on 2026-11-24, takes them to
+     0.9.0 (its step H1 moves them here).
+   - *Delineation (0.7.0, outside the large-basins plan, its topic 4):* E7-GAP-04 (*fixed for
+     0.7.0*: the outlet moved to the segment's end without a notice; `POST
+     /api/delineate-watershed` now gives `snap_distance_m` and, above 500 m, the notice
+     `outlet_far_from_point`, which the panel shows; after a cascade the outlet is the coarser
+     segment's end where the merged watershed closes, no longer the clicked segment's).
+   - *Czechia (a follow-up plan of its own after large basins, D11 of Nogat's plan):* GEO-01 (no
+     Czech NMT in `utils/kartograf_set.py`).
    - *Bootstrap and a second instance:* E4-01 (a bind mount under `/data/nmt` leaves step 3
      unable to write; the dry run does not check it), E4-02 (*fixed*: the dry run now refuses a
      `--units` file without `pozostale_obszary_jcwp`), E4-03 (*fixed*: a one-off script
@@ -117,14 +122,22 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      the precise mode reads the cut `dem_mosaic.tif`), Next 17 (*0.5.1*).
    - *API:* E5b-01 (*fixed*: the catchment graph loaded inside the first request, 504; it now
      loads in a thread of its own and the requests answer 503 at once until it is loaded), E5b-02
-     (0.7.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
-     stream returns 0.0003 km² without a notice), E5b-04 (0.7.0: `generate-hydrograph` with a
-     point alone takes about 3 min, 504), E5b-08 (*fixed* on Hydrograf's side: the hydrograph's
-     Hydrolog computations hold numba's compiler lock, so a compile no longer catches their
-     warnings; Hydrolog 0.8.1 the other: the first network beside a hydrograph gave 500), E5b-10
-     (the network preview does not warn of a window above 60 M cells).
-   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0: `obserwator-series-csv` is refused as
-     an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
+     (*fixed for 0.7.0*: `GET /api/admin/resources` walked every tile inside the request, 504;
+     each data directory is now walked in a thread of its own and a request waits for it at most
+     5 s), E5b-03 (the precise mode near a stream returns 0.0003 km² without a notice), E5b-04
+     (*fixed for 0.7.0*: `generate-hydrograph` with a point alone merged every 1 ha
+     sub-catchment, about 3 min and 504; it now delineates as `POST /api/delineate-watershed`
+     with its cascade, 8 s instead of 205 s for 164.7 km² of the Kaczawa), E5b-08 (*fixed* on
+     Hydrograf's side: the hydrograph's Hydrolog computations hold numba's compiler lock, so a
+     compile no longer catches their warnings; Hydrolog 0.8.1 the other: the first network beside
+     a hydrograph gave 500), E5b-10 (the network preview does not warn of a window above 60 M
+     cells).
+   - *Lines, rainfall and warnings (B4, B5):* E3-03 and E3-04 (*fixed for 0.7.0*, ADR-083 amended
+     2026-11-25 by option B3, the coordinator's decision by delegation of the author: „Importuj
+     CSV” opens `obserwator-series-csv`, `derived_from` takes `imgw` and `chmu`, the API checks
+     the file's lines against Nogat DEV §20's and refuses an unknown one,
+     `unknown_attribution_line`; Nogat's `ecosystem.yaml` still lacks the edge Obserwator →
+     Hydrograf for the file, Nogat's to add), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings
      reached only the log; the hydrograph's response now carries them as `notices` in Polish and
      the panel shows them under „Hydrogram”), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an

@@ -279,7 +279,7 @@
     <div class="step"><span class="number">02</span><strong>Kliknij odcinek</strong><p>Włącz tryb „Wybierz zlewnię” (u góry mapy „Jedna zlewnia”) i kliknij przy linii. Ujście wypadnie na dolnym końcu klikniętego odcinka — zwykle na najbliższym połączeniu cieków poniżej.</p></div>
     <div class="step"><span class="number">03</span><strong>Poczekaj na granicę</strong><p>Zlewnie cząstkowe zapalają się od ujścia w górę i pulsują, aż serwer scali granicę — przy setkach km² nawet ponad minutę. Wynik trafi do panelu „Zlewnia”.</p></div>
   </div>
-  <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu.</p>
+  <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu. Gdy ujście leży dalej niż 500&nbsp;m od kliknięcia, panel podaje tę odległość w ostrzeżeniu nad sekcjami: zlewnia obejmuje wtedy też teren, z którego woda dopływa między punktem a ujściem.</p>
   <p class="hint">Nowe kliknięcie od razu zastępuje poprzedni wynik. Poza obszarem danych panel pokaże „Błąd: Nie znaleziono zlewni cząstkowej w tym miejscu…”.</p>
 
 
@@ -400,7 +400,7 @@
     <div class="stack">
       <div class="card"><span class="label">Tabela</span><p>W „Hietogramie” wybierz „Własna seria”. Czas trwania i krok [min] tworzą tabelę: czas trwania to wielokrotność kroku, krok do 1440&nbsp;min, najwyżej 2000&nbsp;kroków. „Czas [min]” to koniec kroku.</p></div>
       <div class="card"><span class="label">Wartości</span><p>W „Opad [mm]” wpisz wysokość opadu w kroku (≥&nbsp;0, suma&nbsp;&gt;&nbsp;0) — nie natężenie w mm/h. Kolumnę z arkusza wklejasz od wybranej komórki w dół.</p></div>
-      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny.</p></div>
+      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny. Otworzysz też eksport szeregu Obserwatora (<code>obserwator series export … --variables P --format csv</code>) z opadem dobowym IMGW-PIB lub ČHMÚ: kolumna „P [mm]” dzień po dniu (krok 1440&nbsp;min), najwyżej 2000&nbsp;dni — dłuższy plik jest odrzucany, wyeksportuj krótszy zakres (<code>--start</code>, <code>--end</code>). Linie źródła danych z pliku idą z hydrogramem i jego plikami.</p></div>
       <div class="card"><span class="label">Przyciski</span><p>„Wczytaj z bieżącego hietogramu” kopiuje ostatni hietogram PMAXTP, „Wyczyść” opróżnia tabelę. Seria dotyczy jednej zlewni — nowa zlewnia ją czyści.</p></div>
     </div>
   </div>
@@ -900,7 +900,7 @@
   <div class="explain" id="o-custom-rain">
     <h4>Własna seria opadu</h4>
     <p>Własna seria, np. z&nbsp;deszczomierza, daje hydrogram konkretnego zdarzenia – bez przypisanego prawdopodobieństwa – i&nbsp;zachowuje rzeczywisty rozkład natężenia, który obok sumy i&nbsp;czasu trwania decyduje o&nbsp;kulminacji. W&nbsp;Hydrografie seria zastępuje czas trwania, prawdopodobieństwo i&nbsp;rozkład opadu PMAXTP; hydrogram jest liczony z&nbsp;krokiem <math><mrow><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> serii, a&nbsp;straty SCS-CN i&nbsp;przeliczenie AMC działają tak samo jak dla opadu PMAXTP.</p>
-    <p>Tabela ma <math><mrow><mi>n</mi><mo>=</mo><mi>D</mi><mo lspace="0" rspace="0">/</mo><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> wierszy z&nbsp;czasem końca kroku i&nbsp;opadem; jej wypełnianie, import CSV i&nbsp;przyciski opisuje <a href="#wlasna-seria">„Własna seria opadu zamiast PMAXTP”</a>. W&nbsp;pliku CSV z&nbsp;dwiema kolumnami czas [min] to koniec kroku albo 0&nbsp;na początku, a&nbsp;czasy w&nbsp;równych odstępach wyznaczają krok.</p>
+    <p>Tabela ma <math><mrow><mi>n</mi><mo>=</mo><mi>D</mi><mo lspace="0" rspace="0">/</mo><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> wierszy z&nbsp;czasem końca kroku i&nbsp;opadem; jej wypełnianie, import CSV i&nbsp;przyciski opisuje <a href="#wlasna-seria">„Własna seria opadu zamiast PMAXTP”</a>. W&nbsp;pliku CSV z&nbsp;dwiema kolumnami czas [min] to koniec kroku albo 0&nbsp;na początku, a&nbsp;czasy w&nbsp;równych odstępach wyznaczają krok. Eksport szeregu Obserwatora to opad dobowy: kolumna „P [mm]” z&nbsp;krokiem 1440&nbsp;min, dzień po dniu, bez dni bez pomiaru („missing”) i&nbsp;sum z&nbsp;kilku dni („accumulated”), najwyżej 2000&nbsp;dni. Jego linie źródła danych, IMGW-PIB albo ČHMÚ, idą z&nbsp;hydrogramem i&nbsp;jego plikami; API sprawdza je z&nbsp;liniami tego dostawcy.</p>
     <p class="explain-src">Źródła: KZGW 2017</p>
   </div>
   <div class="explain" id="o-pmaxtp_interpolation">
