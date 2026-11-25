@@ -67,10 +67,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    fixes of `feat/network-nodes` that production has; updating it is the author's call. Its
    README `~/data/hydrograf-hydroni/README` still asks for `./dc restart api` after a bootstrap
    (step 2): since `894810c` the API reloads its graph by itself.
-2. **Leftovers of the delineation fix** (`07112ce`, 2026-11-10):
-   - `POST /api/generate-hydrograph` without `morphometry` merges the sub-catchments at
-     10 000 m² with no cascade, up to the 250 km² limit (`api/endpoints/hydrograph.py`); the GUI
-     does not take this path.
+2. **Leftover of the delineation fix** (`07112ce`, 2026-11-10):
    - A large precomputed delineation still takes tens of seconds: the Wełna at 1 km² (500 km²,
      Hydroni) took 51.4 s: the merge 16.9 s (the union 6.0 s and the boundary smoothing of ADR-032
      9.9 s: a ±2 m buffer, three Chaikin iterations up to 128k vertices, `buffer(0)`; a faster
@@ -128,7 +125,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      (*fixed for 0.7.0*: `GET /api/admin/resources` walked every tile inside the request, 504;
      each data directory is now walked in a thread of its own and a request waits for it at most
      5 s), E5b-03 (the precise mode near a stream returns 0.0003 km² without a notice), E5b-04
-     (0.7.0: `generate-hydrograph` with a point alone takes about 3 min, 504), E5b-08 (*fixed* on
+     (*fixed for 0.7.0*: `generate-hydrograph` with a point alone merged every 1 ha
+     sub-catchment, about 3 min and 504; it now delineates as `POST /api/delineate-watershed`
+     with its cascade, 8 s instead of 205 s for 164.7 km² of the Kaczawa), E5b-08 (*fixed* on
      Hydrograf's side: the hydrograph's Hydrolog computations hold numba's compiler lock, so a
      compile no longer catches their warnings; Hydrolog 0.8.1 the other: the first network beside
      a hydrograph gave 500), E5b-10 (the network preview does not warn of a window above 60 M

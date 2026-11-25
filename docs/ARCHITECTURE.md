@@ -560,10 +560,13 @@ Response: 400 validation_error (application/problem+json), e.g. for the rainfall
           flow path longer than its overland segment) have sentences of their own; any other
           refusal is invalid_parameters with Hydrolog's message
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
-          delineated catchment and for one given in morphometry alike; lutz_parameters_missing
-          and snyder_parameters_missing (reason missing_morphometry) without the longest flow
-          path, its equal-area slope (Lutz) or Lc
+          delineated catchment (before its boundary is merged) and for one given in
+          morphometry alike; lutz_parameters_missing and snyder_parameters_missing (reason
+          missing_morphometry) without the longest flow path, its equal-area slope (Lutz)
+          or Lc
 ```
+
+Without `morphometry` (the full path) the endpoint delineates the watershed as `POST /api/delineate-watershed` does in the precomputed mode at 10 000 m², with its cascade to a coarser threshold above 300 sub-catchments (E5b-04: merging thousands of 1 ha sub-catchments took minutes), and computes with that watershed's morphometry, CN, PMAXTP cells and lines, as the GUI sends them on the fast path; `watershed` is the delineation without its hypsometric curve, and the area of the computation the graph's, unrounded.
 
 Euler II is built from the PMAXTP depth–duration curve of the probability: each of the 16
 durations weighed as the design depth and multiplied by the user's areal reduction factor
