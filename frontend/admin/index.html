@@ -11,19 +11,22 @@
     <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
 
     <!-- The admin page is Nogat's <nogat-admin> shell (DEV-15.13, ADR-086): the tokens,
-         the kit's panel, then Leaflet for the area map and the page's own sections -->
+         the kit's panel and base maps, then Leaflet for the area map and the page's own
+         sections; the area map's base map comes from the kit's nogat-basemaps.js, which
+         processing.js imports (ADR-089) -->
     <link rel="stylesheet" href="../css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="../nogat/nogat-admin.css?v=a4bdf8bd02">
+    <link rel="stylesheet" href="../nogat/nogat-basemaps.css?v=65df8e6624">
     <link rel="stylesheet" href="../vendor/leaflet-1.9.4/leaflet.css?v=a783710282"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=">
-    <link rel="stylesheet" href="admin.css?v=c7cc564807">
+    <link rel="stylesheet" href="admin.css?v=90cde06bbf">
 
     <script type="module" src="../nogat/nogat-admin.js?v=19f3abe211"></script>
     <script defer src="../vendor/leaflet-1.9.4/leaflet.js?v=db49d009c8"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
     <script defer src="admin.js?v=2b3407804e"></script>
     <script defer src="resources.js?v=2b0f9713ab"></script>
-    <script defer src="processing.js?v=b0ab685624"></script>
+    <script defer src="processing.js?v=ee40a3056a"></script>
     <script defer src="cleanup.js?v=35f6e70fe6"></script>
     <script defer src="boundaries.js?v=e571d67c58"></script>
 </head>
@@ -98,6 +101,7 @@
             <form method="dialog" class="nogat-admin-dialog-body">
                 <h2 id="bbox-dialog-title">Wybierz obszar na mapie</h2>
                 <div class="admin-map" id="bbox-map"></div>
+                <p class="admin-map-notice" id="bbox-map-notice" role="status" hidden></p>
                 <p>Przeciągnij myszą, aby narysować prostokąt; kolejne przeciągnięcie rysuje go od nowa.</p>
                 <div class="nogat-admin-dialog-actions">
                     <button class="nogat-admin-button" value="cancel">Anuluj</button>

@@ -1945,3 +1945,56 @@ class TermsInfo(BaseModel):
         "(BDOT10k land cover, water bodies and stream lines) and `soils` (the soil "
         "groups); empty lines for a kind the instance has no data of",
     )
+
+
+# ===================== ECOSYSTEM MODELS =====================
+
+
+class BasemapCredit(BaseModel):
+    """The credit line of a base map, as the kit's catalogue writes it."""
+
+    text: str = Field(..., description="The line shown at the foot of the map")
+    links: list[tuple[str, str]] = Field(
+        ...,
+        description="The words of `text` that link, each with its address: "
+        "`[word, address]`; empty for an own base map of the deployment",
+    )
+
+
+class Basemap(BaseModel):
+    """A base map the map offers (Nogat DEV-15.15, ADR-089).
+
+    An entry of the kit's catalogue `nogat-basemaps.json` the deployment allows, or
+    one of its own base maps (`basemap_extra`), which has no `minzoom`, `maxzoom`,
+    `bounds` or `blocks`.
+    """
+
+    id: str = Field(..., description="Id of the base map, unique on the page")
+    label: str = Field(..., description="Name in the base map menu")
+    kind: Literal["vector", "raster"] = Field(
+        ..., description="`vector`: OpenMapTiles vector tiles; `raster`: image tiles"
+    )
+    url: str = Field(
+        ...,
+        description="The tiles: a TileJSON address for `vector`, a tile template "
+        "with `{z}/{x}/{y}` or `{bbox-epsg-3857}` for `raster`; the deployment's "
+        "copy when `basemap_mirrors` names one",
+    )
+    origin: str = Field(
+        ..., description="Origin of `url`, which the deployment's CSP must allow"
+    )
+    minzoom: int | None = Field(None, description="Lowest zoom of the tiles")
+    maxzoom: int | None = Field(None, description="Highest zoom of the tiles")
+    bounds: list[float] | None = Field(
+        None,
+        description="Area of the tiles, `[west, south, east, north]` in degrees",
+    )
+    grey: bool = Field(..., description="Whether the base map is grey")
+    default: bool = Field(
+        ..., description="Whether the page shows it before the user chooses one"
+    )
+    credit: BasemapCredit = Field(..., description="Credit line of its data")
+    blocks: list[str] | None = Field(
+        None,
+        description="The blocks of the regulamin its data needs (`osm`, `gugik`)",
+    )

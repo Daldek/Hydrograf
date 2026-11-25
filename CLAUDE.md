@@ -50,12 +50,12 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
   `slope_percent`, `precipitation_mm`, `length_km` (DEV-8.2).
 - Front end: colours, fonts, radii and shadows come only from the variables of
   `frontend/css/tokens.css` (ADR-065). That file and `frontend/nogat/` (Nogat's GUI kit and
-  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the regulamin template,
-  the admin page's shell; ADR-082) are copies of Nogat's, never edited here: change them in
-  Nogat, then copy them again byte for byte (DEV-15.6). Third-party scripts, styles and
-  fonts are vendored in `frontend/vendor/<package>-<version>/` as published (`-text` in
-  `.gitattributes`), with their licence files and their `integrity`, never loaded from
-  another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py` checks both).
+  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the base maps, the
+  regulamin template, the admin page's shell; ADR-082, ADR-089) are copies of Nogat's, never
+  edited here: change them in Nogat, then copy them again byte for byte (DEV-15.6).
+  Third-party scripts, styles and fonts are vendored in `frontend/vendor/<package>-<version>/`
+  as published (`-text` in `.gitattributes`), with their licence files and their `integrity`,
+  never loaded from another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py`).
 - After changing a JS or CSS file or adding a `<script>` or `<link>` to `index.html`,
   `admin/index.html` or `instrukcja/index.html`, run `python3 scripts/bump_asset_versions.py`
   before the commit (reference a new file without `?v=`; the script adds it): the pages load
@@ -180,17 +180,17 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
 - DEV-12.3: about half of the 780 log calls use f-strings; new log calls use
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
-  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but for
-  `js/nogat.js`, which imports Nogat's kit (ADR-082), and the kit's copies in
-  `frontend/nogat/`, which keep Nogat's 2 spaces; about 560 lines of its own JavaScript
-  exceed 100 columns.
-- DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in translation
-  resources.
+  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but `js/nogat.js`
+  (imports Nogat's kit, ADR-082), `admin/processing.js` (imports `nogat-basemaps.js`
+  dynamically, ADR-089) and the kit's copies in `frontend/nogat/`, which keep Nogat's 2
+  spaces; about 560 lines of its own JavaScript exceed 100 columns.
+- DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in resources.
+- DEV-15.13: the admin `img-src` admits `data:`, Leaflet's removed tiles, until MapLibre.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
-- DEV-18, DEV-19: profile `tool` only; Hydrograf reads its settings from the environment
-  (`.env.example`), and `nogat.toml` only through the file NOGAT_CONFIG names (its
-  `[nogat.operator]`, `[nogat] gui` and the `state_dir` of `[hydrograf]` or `[nogat]`); it
-  fetches data through Kartograf in the pipeline scripts.
+- DEV-18, DEV-19: profile `tool` only; settings from the environment (`.env.example`) and
+  from the `nogat.toml` NOGAT_CONFIG names (`[nogat.operator]`, `[nogat] gui`; `state_dir`,
+  `basemaps`, `basemap_mirrors`, `basemap_extra` of `[hydrograf]` or `[nogat]`); data
+  through Kartograf in the pipeline scripts.
 - AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
   `schema` member and no result envelope; the error document alone is
   `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`

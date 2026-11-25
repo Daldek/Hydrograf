@@ -1,7 +1,7 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.25
+**Version:** 1.26
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -32,7 +32,7 @@ This document defines precisely:
 #### 2.1.1 PHASE 1: Watershed Delineation
 
 **✅ In scope:**
-- An interactive web map with base layers: OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer
+- An interactive web map with the base layers of Nogat's kit (ADR-089): OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), GUGiK orthophoto (Poland only), no base layer; the browser keeps the choice
 - Point selection by clicking on the map in the mode „Wybierz zlewnię” (its option „Jedna zlewnia”; „Sieć zlewni” in 2.1.7)
 - Automatic detection of the nearest stream (snap-to-stream ST_Distance + fallback ST_Contains)
 - Delineation of the watershed boundary with BFS on the in-memory graph (CatchmentGraph)
@@ -540,14 +540,14 @@ This document defines precisely:
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
-**Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22; Leaflet.VectorGrid 1.3.0
+**Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22 (the kit's Leaflet adapter), its names in Noto Sans 2.0 (`vendor/openmaptiles-fonts-2.0/`); Leaflet.VectorGrid 1.3.0
 **Charts:** Chart.js 4.4.7 (colours from the tokens, following the theme)
 **Libraries:** served by Hydrograf from `frontend/vendor/` with their licences and `integrity`; the CSP allows scripts, styles and fonts from the site only, no CDN (ADR-085)
 **UI framework:** none (own shell `chrome.css` + `app.css` on the main page; Nogat's kit `nogat-admin.css` and `admin/admin.css` on the admin page), in the tokens
-**Nogat's GUI kit:** 1.1.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the regulamin template and the admin panel
+**Nogat's GUI kit:** 1.3.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the base maps and their catalogue (ADR-089), the regulamin template 1.1 and the admin panel; its chart module and command form are not used yet
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
 **Modules:** 26 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, sewer, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
-**Map base layers:** OpenFreeMap grey (vector), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
+**Map base layers:** the entries of the kit's catalogue `nogat-basemaps.json` the deployment allows (`basemaps`, `basemap_mirrors`, `basemap_extra` of its nogat.toml; `GET /api/basemaps`; ADR-089): OpenFreeMap grey (vector, the kit's grey style with Polish names), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
 **Pages:** `index.html` (main), `admin/index.html` (admin panel at `/admin/`), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure
@@ -969,13 +969,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.25
+**Document version:** 1.26
 **Date of the last update:** 2026-11-25
 **Current version:** v0.6.1 (`backend/pyproject.toml`): the tags Kartograf `v0.9.0`, Obserwator `v3.2.1` and Hydrolog `v0.9.1` of the release round of 2026-11-24
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.26 (2026-11-25): the base maps of Nogat's kit 1.3.0 (ADR-089, step 4 of Nogat's plan `2026-11-24-shared-base-maps`) in 2.1.1 and 5.1: the catalogue's entries the deployment allows, the kit's grey OpenFreeMap with vendored glyphs, the choice kept in the browser, the regulamin template 1.1
 - 1.25 (2026-11-25): the release state of Hydrograf 0.6.1: the tags Kartograf `v0.9.0` (range `>=0.9.0,<0.10`), Obserwator `v3.2.1` and Hydrolog `v0.9.1` in 3.1.4 and 5.1, the current version v0.6.1
 - 1.24 (2026-11-24): the pins of Nogat's release set candidate-13: Kartograf `05052b3` (0.9.0.dev0, range `>=0.9.0.dev0,<0.10`), Obserwator `1ffe40d` (3.2.1) and Hydrolog `1b25a91` (0.9.1) in 3.1.4 and 5.1; `develop` 0.6.1.dev0; the header 1.24 like this history (it said 1.21)
 - 1.23 (2026-11-22): the release state of Hydrograf 0.6.0: the tags Hydrolog `v0.9.0`, Obserwator `v3.1.0` and Kartograf `v0.8.2` with their ranges in 3.1.4 and 5.1, the current version v0.6.0; Lutz's and Snyder's L the longest flow path, Euler II from the PMAXTP depth–duration curve and the whole time steps in 2.1.3; the file name of the statistics in 2.1.4

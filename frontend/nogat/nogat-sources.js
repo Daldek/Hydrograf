@@ -1,12 +1,17 @@
 // Nogat GUI kit: the providers' lines on screen (DEV-20.5, DEV-20.7, ECO-064, ECO-068).
 // <nogat-sources attribution='[…]' terms-notice='[…]' terms="regulamin.html"> once per
 // view: a compact strip with the lines the providers require on the product (S, P, PS,
-// PP) and the short forms CK, GK, SK and ZK of C, G, SG and Z, each once in the order of
-// DEV-20.4, and the button „Źródła i warunki”, which opens a dialog with every line and
-// the terms. `attribution` and `terms-notice` hold JSON arrays, the API's `attribution`
-// and `terms_notice`; the properties `attribution` and `termsNotice` take the arrays
-// themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked from
-// the dialog in a new tab, so the GUI's own tab and its session stay.
+// PP) and the short forms CK, WK, GK, SK and ZK of C, W, G, SG and Z, each once in the
+// order of DEV-20.4, and the button „Źródła i warunki”, which opens a dialog with every
+// line and the terms. `attribution` and `terms-notice` hold JSON arrays, the API's
+// `attribution` and `terms_notice`; the properties `attribution` and `termsNotice` take the
+// arrays themselves. `terms` is the address of the GUI's regulamin.html (DEV-15.7), linked
+// from the dialog in a new tab, so the GUI's own tab and its session stay.
+// `screen-lines` (a JSON array; the property `screenLines` takes the array) declares more
+// lines for the strip (DEV-20.5, ECO-087), such as the line of a provider the element does
+// not know: `{text, short, links}` each, shown after the element's own lines in the order
+// declared when `attribution` carries `text` byte for byte, as `short` where given, its
+// `links` ([word, address] pairs) linking words of it, else with its addresses linked.
 // On a phone (up to 860 px, ECO-080) the strip is one line, its lines cut with an
 // ellipsis, and the button „więcej” unfolds it in place while they do not fit; the
 // property `expanded` (attribute `expanded`) is that state, `clipped` marks a cut line.
@@ -24,6 +29,9 @@ export const LINES = {
   C: "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
   CK: "Źródło: ČHMÚ, CC BY 4.0",
   CP: "Dane ČHMÚ zostały przetworzone",
+  W: "Źródło danych: Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy (PIG-PIB), Monitoring Wód Podziemnych państwowej służby geologicznej (wytworzono `<period>`, pozyskano `<date>`), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+  WK: "Źródło: PIG-PIB, CC BY 4.0",
+  WP: "Dane PIG-PIB zostały przetworzone",
   G: "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, `<products>` (wytworzono `<period>`, pozyskano `<date>`); dane przetworzone",
   GK: "Źródło: GUGiK (`<products>`)",
   SG: "Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); dane przetworzone",
@@ -33,7 +41,7 @@ export const LINES = {
 };
 
 /** The full lines shown on screen, in the order of DEV-20.4, and the line each is shown as. */
-const SCREEN = { S: "S", P: "P", PS: "PS", PP: "PP", C: "CK", G: "GK", SG: "SK", Z: "ZK" };
+const SCREEN = { S: "S", P: "P", PS: "PS", PP: "PP", C: "CK", W: "WK", G: "GK", SG: "SK", Z: "ZK" };
 
 const LICENCE = "https://creativecommons.org/licenses/by/4.0/";
 
@@ -41,6 +49,10 @@ const LICENCE = "https://creativecommons.org/licenses/by/4.0/";
 const SHORT_LINKS = {
   CK: [
     ["ČHMÚ", "https://opendata.chmi.cz"],
+    ["CC BY 4.0", LICENCE],
+  ],
+  WK: [
+    ["PIG-PIB", "https://www.pgi.gov.pl/psh"],
     ["CC BY 4.0", LICENCE],
   ],
   SK: [["CC BY 4.0", LICENCE]],
@@ -87,6 +99,22 @@ const URL_IN_TEXT = /https?:\/\/[^\s()]+[^\s().,;:]/g;
 let counter = 0;
 
 /**
+ * An array, or the array the JSON text of one gives; anything else gives null.
+ *
+ * @param {unknown} value an array or the JSON text of one
+ * @returns {unknown[]|null} the array
+ */
+function array(value) {
+  if (typeof value !== "string") return Array.isArray(value) ? value : null;
+  try {
+    const list = JSON.parse(value);
+    return Array.isArray(list) ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Strings of a JSON array, each once in their order; old CP lines count as the
  * canonical CP (DEV-20.4). Anything other than an array gives none.
  *
@@ -94,25 +122,40 @@ let counter = 0;
  * @returns {string[]} the lines
  */
 export function lines(value) {
-  let list = value;
-  if (typeof value === "string") {
-    try {
-      list = JSON.parse(value);
-    } catch {
-      return [];
-    }
-  }
-  if (!Array.isArray(list)) return [];
   return [...new Set(
-    list
+    (array(value) ?? [])
       .filter((line) => typeof line === "string" && line.trim() !== "")
       .map((line) => (/^Dane ČHMÚ zostały przetworzone \(.*\)$/.test(line) ? LINES.CP : line)),
   )];
 }
 
 /**
+ * The lines a GUI declares for its strip (`screen-lines`), each text once in their order:
+ * `{text, short, links}` with a non-empty `text`, `short` a non-empty text or null, and
+ * `links` the pairs of a non-empty word and its http(s) address resolved against the page.
+ * An item without a text, and anything other than an array, gives none.
+ *
+ * @param {unknown} value an array or the JSON text of one
+ * @returns {{text: string, short: string|null, links: string[][]}[]} the declared lines
+ */
+function declared(value) {
+  const found = new Map();
+  for (const item of array(value) ?? []) {
+    const text = item?.text;
+    if (typeof text !== "string" || text.trim() === "" || found.has(text)) continue;
+    const form = typeof item.short === "string" && item.short.trim() !== "" ? item.short : null;
+    const links = (Array.isArray(item.links) ? item.links : [])
+      .filter((pair) => Array.isArray(pair) && typeof pair[0] === "string" && pair[0] !== "")
+      .map(([word, address]) => [word, web(address)])
+      .filter(([, href]) => href !== null);
+    found.set(text, { text, short: form, links });
+  }
+  return [...found.values()];
+}
+
+/**
  * The lines of the strip found among the full lines, in the order of DEV-20.4: the mark of
- * each full line shown and the text it is shown as, C, G, SG and Z in their short forms.
+ * each full line shown and the text it is shown as, C, W, G, SG and Z in their short forms.
  * The lines of one mark give one short form whose values join theirs with „, ”, each once,
  * so every G of the view gives one GK naming all their products.
  *
@@ -134,13 +177,30 @@ function onScreen(attribution) {
 
 /**
  * The marks of the full lines shown on screen, in the order of DEV-20.4; a line other than
- * S, P, PS, PP, C, G, SG and Z (M, CP, another provider's) stays in the dialog.
+ * S, P, PS, PP, C, W, G, SG and Z (M, CP, WP, another provider's) stays in the dialog
+ * unless the GUI declares it for the strip (`screen-lines`), which this function does not
+ * read.
  *
  * @param {string[]} attribution the full lines a product carries
- * @returns {string[]} the marks, C, G, SG and Z standing for their short forms
+ * @returns {string[]} the marks, C, W, G, SG and Z standing for their short forms
  */
 export function screenMarks(attribution) {
   return onScreen(attribution).map(({ mark }) => mark);
+}
+
+/**
+ * The declared lines the strip shows: those whose text the full lines carry byte for byte
+ * and that the element does not show itself, in the order declared (DEV-20.5).
+ *
+ * @param {string[]} attribution the full lines a product carries
+ * @param {{text: string}[]} declarations the lines the GUI declares for its strip
+ * @returns {{text: string, short: string|null, links: string[][]}[]} the lines shown
+ */
+function declaredOnScreen(attribution, declarations) {
+  const own = Object.values(PATTERNS);
+  return declarations.filter(
+    ({ text }) => attribution.includes(text) && !own.some((pattern) => pattern.test(text)),
+  );
 }
 
 /**
@@ -181,17 +241,29 @@ function linked(text) {
   return nodes;
 }
 
-/** The nodes of a short form, its words linked to their addresses. */
+/**
+ * The nodes of a short form, its words linked to their addresses, each at its next
+ * occurrence; a word the rest of the text lacks stays unlinked.
+ */
 function short(text, words) {
   const nodes = [];
   let rest = text;
   for (const [word, href] of words) {
     const at = rest.indexOf(word);
+    if (at < 0) continue;
     nodes.push(document.createTextNode(rest.slice(0, at)), link(word, href));
     rest = rest.slice(at + word.length);
   }
   if (rest) nodes.push(document.createTextNode(rest));
   return nodes;
+}
+
+/** A line of the strip: its `words` linked where given, else its http(s) addresses. */
+function stripLine(text, words) {
+  const line = document.createElement("span");
+  line.className = "nogat-sources-line";
+  line.append(...(words?.length ? short(text, words) : linked(text)));
+  return line;
 }
 
 function section(heading, items, headingId) {
@@ -246,12 +318,13 @@ export function fillSources(container, { attribution, termsNotice, terms } = {})
 
 /** The custom element `<nogat-sources>`. */
 export class NogatSources extends HTMLElement {
-  static observedAttributes = ["attribution", "terms-notice", "terms"];
+  static observedAttributes = ["attribution", "terms-notice", "terms", "screen-lines"];
 
   constructor() {
     super();
     this._attribution = null;
     this._termsNotice = null;
+    this._screenLines = null;
     this._id = `nogat-sources-${++counter}`;
   }
 
@@ -274,6 +347,17 @@ export class NogatSources extends HTMLElement {
   /** @param {string[]|null} value the terms lines, as the API's `terms_notice` */
   set termsNotice(value) {
     this._termsNotice = value;
+    if (this.isConnected) this.render();
+  }
+
+  /** @returns {{text: string, short: string|null, links: string[][]}[]} the declared lines */
+  get screenLines() {
+    return declared(this._screenLines ?? this.getAttribute("screen-lines"));
+  }
+
+  /** @param {object[]|null} value the lines declared for the strip, as `screen-lines` */
+  set screenLines(value) {
+    this._screenLines = value;
     if (this.isConnected) this.render();
   }
 
@@ -349,10 +433,10 @@ export class NogatSources extends HTMLElement {
     shown.className = "nogat-sources-lines";
     shown.id = `${this._id}-lines`;
     for (const { shown: mark, text } of onScreen(full)) {
-      const line = document.createElement("span");
-      line.className = "nogat-sources-line";
-      line.append(...(SHORT_LINKS[mark] ? short(text, SHORT_LINKS[mark]) : linked(text)));
-      shown.append(line, " ");
+      shown.append(stripLine(text, SHORT_LINKS[mark]), " ");
+    }
+    for (const line of declaredOnScreen(full, this.screenLines)) {
+      shown.append(stripLine(line.short ?? line.text, line.links), " ");
     }
     const toggle = document.createElement("button");
     toggle.type = "button";

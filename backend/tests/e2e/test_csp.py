@@ -18,16 +18,15 @@ MapLibre's ``blob:`` worker under ``worker-src blob:``, after step 2 its file of
 ``vendor/`` under ``worker-src 'self'`` (M2 changes the page and the policy together).
 
 The admin page, signed in with its dialog's map open, asks only what its own policy
-allows (GUGiK's tiles under ``img-src``). That it reports no violation is an xfail
-(ADMIN_DEFECT): the dialog's Leaflet map gives each tile it removes Leaflet's empty
-``data:`` GIF, which the admin ``img-src`` of nginx.conf:94 refuses; the xfail is
-strict, so the test fails once the defect is gone (with Leaflet in step 2, say).
+allows (GUGiK's tiles, the first raster entry of the kit's catalogue, under
+``img-src``) and reports no violation: its ``img-src`` admits ``data:``, the empty GIF
+Leaflet gives each tile it removes, which nginx.conf refused before the dialog's map
+took the kit's base map (ADR-089).
 """
 
 import re
 from urllib.parse import urlsplit
 
-import pytest
 from playwright.sync_api import Page, Response, expect
 
 from tests.e2e.browser import Tab, open_map
@@ -69,13 +68,6 @@ OTHER_BASEMAPS = (
     "bez podkładu",
 )
 DEFAULT_BASEMAP = "OpenFreeMap szary"
-# The known defect of the admin page: the CSP violation and the console error of each
-# tile its dialog's Leaflet map removes
-ADMIN_DATA_GIF = r"data:image/gif;base64,|'directive': 'img-src', 'blocked': 'data',"
-ADMIN_DEFECT = (
-    "defect: Leaflet's emptyImageUrl data: GIF of removed tiles vs the admin img-src "
-    "of nginx.conf:94"
-)
 
 
 def _record(page: Page) -> tuple[list[tuple[str, str]], list[str]]:
@@ -165,7 +157,6 @@ def _outside_policy(
 def _open_admin_map(tab: Tab) -> Response:
     """Open the admin page, sign in, open the dialog's map; the document's answer."""
     page = tab.page
-    tab.tolerate(ADMIN_DATA_GIF, ADMIN_DEFECT)
     response = page.goto(tab.site.base + "/admin/#processing")
     assert response is not None
     page.get_by_label("Klucz administratora", exact=True).fill(ADMIN_KEY)
@@ -217,7 +208,6 @@ def test_admin_page_under_nginx_policy_asks_only_allowed_origins(tab: Tab) -> No
     assert "https://mapy.geoportal.gov.pl" in asked, sorted(asked)
 
 
-@pytest.mark.xfail(strict=True, reason=ADMIN_DEFECT)
 def test_admin_page_under_nginx_policy_reports_no_violation(tab: Tab) -> None:
     _open_admin_map(tab)
     assert tab.csp_violations() == []

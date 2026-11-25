@@ -28,6 +28,10 @@ from utils.kartograf_store import DEFAULT_HSG_DEPTH_RULE
 
 logger = logging.getLogger(__name__)
 
+# The kit of the front end: frontend/nogat/ beside backend/ in a checkout, and the same
+# directory mounted at /frontend/nogat beside /app in the API container
+KIT_DIR = Path(__file__).resolve().parents[2] / "frontend" / "nogat"
+
 # A registry name of the ecosystem in lower case, a key of the table `gui` (DEV-15.4)
 _GUI_NAME = re.compile(r"[a-z][a-z0-9-]*")
 
@@ -92,7 +96,9 @@ def nogat_table(path: str, section: str = "nogat") -> dict[str, Any]:
 
     Hydrograf reads two tables of ``[nogat]``: ``operator``, who runs a deployment
     open to others (the regulamin, DEV-15.7, ADR-084), and ``gui`` when HYDROGRAF_GUI
-    is not set; and ``state_dir`` of ``[hydrograf]`` and ``[nogat]`` (``state_dir()``).
+    is not set; ``state_dir`` of ``[hydrograf]`` and ``[nogat]`` (``state_dir()``);
+    and their ``basemaps``, ``basemap_mirrors`` and ``basemap_extra``
+    (``core.basemaps``, DEV-15.15).
     An empty path, an empty file (the Docker default mounts ``/dev/null``), a missing
     section or a file that cannot be read or parsed give an empty table; the last two,
     and a section that is not a table, are logged. The file is read once per process
@@ -215,7 +221,8 @@ class Settings(BaseSettings):
     hydrograf_gui: str = ""
 
     # The nogat.toml of the deployment (DEV-18.1): its `[nogat]` tables `operator`, for
-    # the regulamin (DEV-15.7, ADR-084), and `gui`; empty, none is read
+    # the regulamin (DEV-15.7, ADR-084), and `gui`, and the base maps of `[hydrograf]`
+    # and `[nogat]` (core.basemaps); empty, none is read
     nogat_config: str = ""
 
     # Requests per client address and window (DEV-15.9, ADR-084): pages and API routes;
@@ -231,6 +238,13 @@ class Settings(BaseSettings):
     # server's logs are <state_dir>/hydrograf/logs (DEV-12.6)
     hydrograf_state_dir: str = ""
     nogat_state_dir: str = ""
+
+    # The base maps the map offers (Nogat DEV-15.15, ADR-089), resolved by
+    # core.basemaps: ids of the kit's catalogue joined by `,`; the first of
+    # HYDROGRAF_BASEMAPS, NOGAT_BASEMAPS, `basemaps` of `[hydrograf]` or `[nogat]` in
+    # nogat.toml and every entry; set but empty, none; unset, not given
+    hydrograf_basemaps: str | None = None
+    nogat_basemaps: str | None = None
 
     @field_validator("hydrograf_gui")
     @classmethod

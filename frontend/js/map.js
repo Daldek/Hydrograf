@@ -170,7 +170,7 @@
 
     /**
      * Initialize the Leaflet map.
-     * Base layer is NOT added here — layers.js handles it via setBaseLayer().
+     * The base map is not added here: layers.js draws the one its switcher shows.
      */
     function init(onClickCallback) {
         map = L.map('map', {

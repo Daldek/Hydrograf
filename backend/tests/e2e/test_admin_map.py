@@ -3,9 +3,9 @@
 Nogat's plan 2026-11-24-hydrograf-maplibre, step 1, „Tests”: „the admin dialog, under
 the CSP of docker/nginx.conf:94: a drag draws the box and fills the four fields”.
 
-The admin page's document carries nginx's admin policy; the tab fails at its end on
-any violation but one known defect (DATA_GIF_DEFECT, tracked by test_csp.py's xfail).
-Signed in with the admin key, the section „Przetwarzanie NMT” opens the dialog
+The admin page's document carries nginx's admin policy (its location ``^~
+/_site/admin/``); the tab fails at its end on any violation. Signed in with the admin
+key, the section „Przetwarzanie NMT” opens the dialog
 „Wybierz obszar na mapie”, whose map is fitted to the box of the four fields (their
 defaults): whatever library draws it and at whatever scale, the map's centre is that
 box's centre in web mercator. A mouse drag from the upper left to the lower right
@@ -35,13 +35,6 @@ PIXEL_TOLERANCE = 2.0
 # the zoom buttons (top left) and the credits (bottom right).
 LEFT, RIGHT = 0.30, 0.85
 TOP_PX, BOTTOM_PX = 20, 30
-# The known defect the tab tolerates: the CSP violation and the console error of each
-# removed tile of the dialog's Leaflet map (test_csp.py's xfail tracks it)
-DATA_GIF = r"data:image/gif;base64,|'directive': 'img-src', 'blocked': 'data',"
-DATA_GIF_DEFECT = (
-    "defect: Leaflet's emptyImageUrl data: GIF of removed tiles vs the admin img-src "
-    "of nginx.conf:94"
-)
 
 
 def _mercator_y(lat: float) -> float:
@@ -87,7 +80,6 @@ def _drawn(before: list[Rgb], after: list[Rgb], color: Rgb) -> bool:
 
 def test_admin_dialog_drag_draws_box_and_fills_fields(tab: Tab) -> None:
     page = tab.page
-    tab.tolerate(DATA_GIF, DATA_GIF_DEFECT)
     response = page.goto(tab.site.base + "/admin/#processing")
     assert response is not None
     policy = response.header_value("Content-Security-Policy")

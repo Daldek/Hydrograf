@@ -155,13 +155,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .layer-extra { margin: 2px 0 var(--space-2) 32px; padding: var(--space-2) var(--space-2) var(--space-1); border-left: 2px solid var(--line); }
 .layer-extra .field { margin-bottom: var(--space-2); }
 .layer-extra select { height: var(--control-sm); font-size: var(--text-sm); }
-.radio-list { display: grid; gap: 1px; }
-.radio-list label {
-    display: flex; align-items: center; gap: var(--space-2);
-    min-height: 30px; padding: 0 var(--space-2); border-radius: var(--radius-md); cursor: pointer;
-}
-.radio-list label:hover { background: var(--surface-2); }
-.radio-list label:has(input:checked) { background: var(--accent-soft); }
+/* The kit's switcher of the base maps (nogat-basemaps.css), its radios under the rows' checkboxes */
+.group nogat-basemaps { padding: 0 var(--space-2); }
 
 /* ---------- Centre ---------- */
 .view-center { grid-row: 1; grid-column: 2; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -197,7 +192,6 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .leaflet-container { cursor: grab; }
 .leaflet-container.cursor-crosshair { cursor: crosshair; }
 .map-wrap .leaflet-container a { color: var(--accent); }
-.basemap-grey { filter: grayscale(1); }
 
 .map-wrap .leaflet-right .leaflet-control { margin-right: var(--space-3); }
 .map-wrap .leaflet-left .leaflet-control { margin-left: var(--space-3); }
@@ -224,7 +218,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .map-wrap .leaflet-control-attribution {
     margin: 0;
     padding: 1px 6px;
-    font-size: 10px; color: var(--text-3);
+    font-size: var(--text-sm); color: var(--text-3);
     background: color-mix(in srgb, var(--surface) 80%, transparent);
     border-top-left-radius: var(--radius-xs);
 }
@@ -298,6 +292,11 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 }
 .map-tools[hidden] { display: none; }
 .map-tools .draw-count { color: var(--text-2); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* A base map that does not answer (layers.js), top left over the map, under the tools */
+.map-notice {
+    position: absolute; top: var(--space-3); left: var(--space-3); z-index: 3;
+    max-width: min(360px, calc(100% - 2 * var(--space-3))); margin: 0; box-shadow: var(--shadow);
+}
 .profile-drawer .panel-head { min-height: 40px; }
 .profile-drawer .panel-head h2 { font-size: var(--text-base); }
 .profile-drawer .chart { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); }

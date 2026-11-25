@@ -114,6 +114,15 @@ class InvalidRequestError(HydrografError):
     default_code: ClassVar[ErrorCodeName] = "validation_error"
 
 
+class InvalidSettingError(HydrografError):
+    """A setting of the deployment is wrong; the server does not start.
+
+    Default code ``validation_error``.
+    """
+
+    default_code: ClassVar[ErrorCodeName] = "validation_error"
+
+
 class NotFoundError(HydrografError):
     """The referenced resource does not exist (``not_found``)."""
 

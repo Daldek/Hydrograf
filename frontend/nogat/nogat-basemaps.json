@@ -1,0 +1,63 @@
+{
+  "description": "Nogat's base maps (DEV-15.15, ECO-089): the entries a GUI with a map offers, in this order, through nogat-basemaps.js; a GUI's server reads this file for its setting basemaps, its CSP and its regulamin's blocks, and hands its page the entries the deployment allows. Copy byte for byte (DEV-15.6).",
+  "entries": [
+    {
+      "id": "openfreemap",
+      "label": "OpenFreeMap szary",
+      "kind": "vector",
+      "url": "https://tiles.openfreemap.org/planet",
+      "origin": "https://tiles.openfreemap.org",
+      "minzoom": 0,
+      "maxzoom": 14,
+      "bounds": [-180, -85.051129, 180, 85.051129],
+      "grey": true,
+      "default": true,
+      "credit": {
+        "text": "OpenFreeMap © OpenMapTiles, dane © autorzy OpenStreetMap",
+        "links": [
+          ["OpenFreeMap", "https://openfreemap.org"],
+          ["OpenMapTiles", "https://openmaptiles.org/"],
+          ["OpenStreetMap", "https://www.openstreetmap.org/copyright"]
+        ]
+      },
+      "blocks": ["osm"]
+    },
+    {
+      "id": "gugik-osm",
+      "label": "OSM GUGiK szary (tylko Polska)",
+      "kind": "raster",
+      "url": "https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png",
+      "origin": "https://mapy.geoportal.gov.pl",
+      "minzoom": 0,
+      "maxzoom": 19,
+      "bounds": [13.8, 48.8, 24.4, 55.0],
+      "grey": true,
+      "default": false,
+      "credit": {
+        "text": "© autorzy OpenStreetMap, GUGiK",
+        "links": [
+          ["OpenStreetMap", "https://www.openstreetmap.org/copyright"],
+          ["GUGiK", "https://www.geoportal.gov.pl"]
+        ]
+      },
+      "blocks": ["osm", "gugik"]
+    },
+    {
+      "id": "gugik-ortho",
+      "label": "Ortofotomapa GUGiK",
+      "kind": "raster",
+      "url": "https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTOFOTOMAPA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}",
+      "origin": "https://mapy.geoportal.gov.pl",
+      "minzoom": 0,
+      "maxzoom": 19,
+      "bounds": [13.8, 48.8, 24.4, 55.0],
+      "grey": false,
+      "default": false,
+      "credit": {
+        "text": "Ortofotomapa © GUGiK",
+        "links": [["GUGiK", "https://www.geoportal.gov.pl"]]
+      },
+      "blocks": ["gugik"]
+    }
+  ]
+}

@@ -10,8 +10,9 @@ with a value missing, or with the template missing, there is neither page nor li
 local run is no service offered to others.
 
 Filling follows Nogat's ``design/README.md`` (its reference is ``fill`` of
-``scripts/terms.py``): first the blocks, then the fields. The blocks kept are the data
-sources Hydrograf shows (README, "Data and licensing"). Every value is HTML-escaped.
+``scripts/terms.py``): first the blocks, then the fields. The blocks kept are
+Hydrograf's own data sources (README, "Data and licensing") and those the base maps
+the deployment offers name (``core.basemaps``, ADR-089). Every value is HTML-escaped.
 """
 
 import datetime
@@ -24,16 +25,14 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from core.config import Settings, deployment_gui, get_settings, nogat_table
+from core.basemaps import basemap_blocks, deployment_basemaps
+from core.config import KIT_DIR, Settings, deployment_gui, get_settings, nogat_table
 
 logger = logging.getLogger(__name__)
 
 # Where the page is served, beside the start page; the front end links this address
 URL = "/regulamin.html"
 
-# The kit of the front end: frontend/nogat/ beside backend/ in a checkout, and the same
-# directory mounted at /frontend/nogat beside /app in the API container
-KIT_DIR = Path(__file__).resolve().parents[2] / "frontend" / "nogat"
 TEMPLATE = "nogat-terms.html"
 
 # The project's own values (DEV-15.7): its registry name, the licence of
@@ -47,11 +46,11 @@ PROJECT_VALUES: Mapping[str, str] = {
     "kit_href": "nogat/",
 }
 
-# The blocks of Hydrograf's data sources: PMAXTP (hydrographs), GUGiK (NMT, BDOT10k,
-# the orthophoto and the grey OSM basemap), ISRIC (SoilGrids), Wody Polskie (the MZP
-# overlay) and OpenStreetMap (OpenFreeMap and the geoportal basemap); not Copernicus,
-# whose CORINE the pipeline does not use (scripts/README.md, ADR-061)
-BLOCKS = ("pmaxtp", "gugik", "isric", "wody-polskie", "osm")
+# The blocks of Hydrograf's own data: PMAXTP (hydrographs), GUGiK (NMT, BDOT10k),
+# ISRIC (SoilGrids) and Wody Polskie (the MZP overlay); not Copernicus, whose CORINE
+# the pipeline does not use (scripts/README.md, ADR-061). The base maps add theirs
+# (kept_blocks)
+DATA_BLOCKS = ("pmaxtp", "gugik", "isric", "wody-polskie")
 
 # A key of [nogat.operator] -> the field of the template it fills
 OPERATOR_FIELDS: Mapping[str, str] = {
@@ -153,6 +152,21 @@ def operator_values(table: Mapping[str, Any]) -> dict[str, str]:
     return values
 
 
+def kept_blocks(settings: Settings, kit_dir: Path = KIT_DIR) -> tuple[str, ...]:
+    """Return the blocks of the regulamin the deployment keeps.
+
+    ``DATA_BLOCKS``, then the other blocks the base maps the page offers name (Nogat
+    DEV-15.15, ADR-089), sorted: ``osm`` with OpenFreeMap or the geoportal's OSM.
+
+    Raises
+    ------
+    InvalidSettingError
+        When a setting of the base maps is wrong.
+    """
+    extra = basemap_blocks(deployment_basemaps(settings, kit_dir)) - set(DATA_BLOCKS)
+    return DATA_BLOCKS + tuple(sorted(extra))
+
+
 def build_terms(settings: Settings, kit_dir: Path = KIT_DIR) -> Terms | None:
     """Fill the regulamin of the deployment described by ``settings``.
 
@@ -162,6 +176,11 @@ def build_terms(settings: Settings, kit_dir: Path = KIT_DIR) -> Terms | None:
         None without ``[nogat.operator]`` (a local run), and when the regulamin cannot
         be filled: a value missing or invalid, no address of Hydrograf in the table
         ``gui``, no template. The cause is logged; values never are.
+
+    Raises
+    ------
+    InvalidSettingError
+        When a setting of the base maps is wrong.
     """
     table = nogat_table(settings.nogat_config).get("operator")
     if table is None:
@@ -177,7 +196,7 @@ def build_terms(settings: Settings, kit_dir: Path = KIT_DIR) -> Terms | None:
             "service_url": deployment_gui(settings).get("hydrograf", ""),
         }
         template = (kit_dir / TEMPLATE).read_text(encoding="utf-8")
-        page = fill(template, values, BLOCKS)
+        page = fill(template, values, kept_blocks(settings, kit_dir))
     except (OSError, TypeError, ValueError) as error:
         logger.warning("The regulamin cannot be filled, none is served: %s", error)
         return None

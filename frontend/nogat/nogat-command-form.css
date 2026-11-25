@@ -1,0 +1,335 @@
+/*
+ * Nogat GUI kit: the command builder (DEV-15.17, ECO-093), the look of <nogat-command-form>.
+ * Every rule is scoped by the element or by a class of its own prefix, and every token has its
+ * light fallback, so a GUI without tokens.css shows it in the light values (DEV-15.3). Fields
+ * are Archiwista's inputs and selects of design/README.md (Components); the buttons are the
+ * GUI's .btn.sm, never smaller than 24 × 24 px (WCAG 2.2 SC 2.5.8). Copy byte for byte
+ * (DEV-15.6).
+ */
+
+nogat-command-form {
+  display: block;
+  min-width: 0;
+  color: var(--text, #2b2b2b);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-base, 13px);
+  line-height: var(--line-height, 1.4);
+}
+
+.nogat-command-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  min-width: 0;
+}
+
+.nogat-command-form [hidden] {
+  display: none;
+}
+
+.nogat-command-form code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.95em;
+}
+
+/* A field: its label, the control, the meaning of a choice, the hint and the message. */
+.nogat-command-form .nogat-command-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nogat-command-form .nogat-command-form-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-1, 4px);
+  padding: 0;
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-command-form .nogat-command-form-name {
+  color: var(--text, #2b2b2b);
+  font-weight: var(--weight-medium, 500);
+}
+
+.nogat-command-form .nogat-command-form-unit,
+.nogat-command-form .nogat-command-form-flag,
+.nogat-command-form .nogat-command-form-key {
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-xs, 11px);
+}
+
+.nogat-command-form .nogat-command-form-flag.nogat-command-form-required {
+  color: var(--text-2, #4e4e4e);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-command-form input[type="text"],
+.nogat-command-form select,
+.nogat-command-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control, 32px);
+  margin: 0;
+  padding: 0 var(--space-2, 8px);
+  border: 1px solid var(--line-2, #d4cfcf);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface, #ffffff);
+  color: var(--text, #2b2b2b);
+  font: inherit;
+}
+
+.nogat-command-form textarea {
+  padding: var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm, 12px);
+  resize: vertical;
+}
+
+.nogat-command-form input::placeholder,
+.nogat-command-form textarea::placeholder {
+  color: var(--text-3, #6b6565);
+}
+
+.nogat-command-form input:disabled,
+.nogat-command-form select:disabled,
+.nogat-command-form textarea:disabled {
+  background: var(--surface-2, #f4f1f1);
+  color: var(--text-3, #6b6565);
+  cursor: not-allowed;
+}
+
+.nogat-command-form :focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .nogat-command-form input[type="text"],
+  .nogat-command-form select {
+    min-height: var(--control-touch, 44px);
+    font-size: var(--text-site, 16px);
+  }
+
+  .nogat-command-form textarea {
+    font-size: var(--text-site, 16px);
+  }
+}
+
+.nogat-command-form .nogat-command-form-invalid input[type="text"],
+.nogat-command-form .nogat-command-form-invalid select,
+.nogat-command-form .nogat-command-form-invalid textarea {
+  border-color: var(--bad, #dc2626);
+}
+
+.nogat-command-form .nogat-command-form-disabled .nogat-command-form-label {
+  color: var(--text-3, #6b6565);
+}
+
+/* A checkbox inside its label; radios and checkboxes of a choice in a row. */
+.nogat-command-form .nogat-command-form-check {
+  align-items: center;
+  color: var(--text, #2b2b2b);
+  font-size: var(--text-base, 13px);
+  cursor: pointer;
+}
+
+.nogat-command-form .nogat-command-form-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px) var(--space-3, 12px);
+}
+
+.nogat-command-form .nogat-command-form-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  min-height: 24px;
+  color: var(--text, #2b2b2b);
+  cursor: pointer;
+}
+
+.nogat-command-form input[type="radio"],
+.nogat-command-form input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent, #284b63);
+}
+
+.nogat-command-form .nogat-command-form-hint,
+.nogat-command-form .nogat-command-form-meaning {
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-xs, 11px);
+}
+
+.nogat-command-form .nogat-command-form-meaning {
+  color: var(--text-2, #4e4e4e);
+}
+
+.nogat-command-form .nogat-command-form-message {
+  color: var(--bad-ink, #991b1b);
+  font-size: var(--text-xs, 11px);
+}
+
+.nogat-command-form .nogat-command-form-reason {
+  color: var(--text-3, #6b6565);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+/* A choice of `one_of`, a section of the catalog and „Opcje dodatkowe”. */
+.nogat-command-form .nogat-command-form-choice,
+.nogat-command-form .nogat-command-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-3, 12px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-md, 8px);
+}
+
+.nogat-command-form .nogat-command-form-choice > legend,
+.nogat-command-form .nogat-command-form-section > legend {
+  padding: 0 var(--space-1, 4px);
+}
+
+.nogat-command-form .nogat-command-form-section > legend {
+  color: var(--text, #2b2b2b);
+  font-size: var(--text-sm, 12px);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-command-form .nogat-command-form-section {
+  gap: var(--space-3, 12px);
+}
+
+.nogat-command-form .nogat-command-form-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-top: var(--space-1, 4px);
+}
+
+.nogat-command-form .nogat-command-form-more > summary {
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-sm, 12px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+}
+
+.nogat-command-form .nogat-command-form-more > :not(summary) {
+  margin-top: var(--space-3, 12px);
+}
+
+.nogat-command-form .nogat-command-form-count {
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-xs, 11px);
+}
+
+.nogat-command-form .nogat-command-form-rules {
+  margin: 0;
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-xs, 11px);
+}
+
+/* The messages of no field shown, above the form. */
+.nogat-command-form .nogat-command-form-errors {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--bad, #dc2626);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bad-bg, #fee2e2);
+  color: var(--bad-ink, #991b1b);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-command-form .nogat-command-form-errors ul {
+  margin: var(--space-1, 4px) 0 0;
+  padding-left: var(--space-4, 16px);
+}
+
+/* „Wklej polecenie” and the line with „Kopiuj”. */
+.nogat-command-form .nogat-command-form-paste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.nogat-command-form .nogat-command-form-paste-row {
+  display: flex;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+}
+
+.nogat-command-form .nogat-command-form-paste-row input {
+  flex: 1 1 auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-command-form .nogat-command-form-read,
+.nogat-command-form .nogat-command-form-copy {
+  flex: none;
+  align-self: center;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.nogat-command-form .nogat-command-form-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1, 4px) var(--space-2, 8px);
+  align-items: start;
+}
+
+.nogat-command-form .nogat-command-form-line > .nogat-command-form-label,
+.nogat-command-form .nogat-command-form-line > .nogat-command-form-status {
+  grid-column: 1 / -1;
+}
+
+.nogat-command-form .nogat-command-form-line-text {
+  display: block;
+  min-height: var(--control, 32px);
+  box-sizing: border-box;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-md, 8px);
+  background: var(--code-bg, #0d1117);
+  color: var(--code-text, #e6edf3);
+  font-size: var(--text-sm, 12px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nogat-command-form .nogat-command-form-line[data-state="pending"] .nogat-command-form-line-text {
+  opacity: 0.6;
+}
+
+.nogat-command-form .nogat-command-form-line[data-state="incomplete"] .nogat-command-form-line-text,
+.nogat-command-form .nogat-command-form-line[data-state="failed"] .nogat-command-form-line-text {
+  background: var(--surface-2, #f4f1f1);
+  color: var(--text-2, #4e4e4e);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.nogat-command-form .nogat-command-form-line-text > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.nogat-command-form .nogat-command-form-line[data-state="failed"] .nogat-command-form-line-text {
+  color: var(--bad-ink, #991b1b);
+}
+
+.nogat-command-form .nogat-command-form-status {
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-xs, 11px);
+}

@@ -1,5 +1,10 @@
 # ADR-085: GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, and the logs of ECO-066
 
+> **Amended by ADR-089 (2026-11-25):** the orthophoto is the entry `gugik-ortho` of Nogat's
+> catalogue of base maps, and `core/terms.py` keeps `DATA_BLOCKS` (`pmaxtp`, `gugik`,
+> `isric`, `wody-polskie`) and the blocks the allowed base maps name (`osm`), not a fixed
+> `BLOCKS`.
+
 **Date:** 2026-11-13
 **Status:** accepted (step 3 of Nogat's plan `docs/plans/2026-11-13-terms-fix.md`, approved
 by the author on 2026-11-13; Nogat ECO-066, ECO-068, kit 0.6.2)

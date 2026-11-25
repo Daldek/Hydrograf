@@ -192,6 +192,16 @@
     }
 
     /**
+     * The base maps this deployment offers (Nogat DEV-15.15): the entries of the kit's
+     * catalogue it allows, then its own, in the catalogue's shape; [] for none.
+     */
+    async function getBasemaps() {
+        const response = await apiFetch('/api/basemaps');
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
      * Delineate watershed at a given point.
      *
      * With threshold → precomputed mode (snap to stream network).
@@ -352,6 +362,7 @@
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
         getLayers: getLayers,
+        getBasemaps: getBasemaps,
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,
         delineateNetwork: delineateNetwork,

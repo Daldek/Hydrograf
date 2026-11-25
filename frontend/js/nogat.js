@@ -13,13 +13,18 @@
  * - window.Hydrograf.nogat.handoff is the kit's hand-off module (DEV-15.5) for
  *   js/handoff.js, and window.Hydrograf.nogat.address(name) the address of a GUI of that
  *   table as the menu links it (http or https, resolved against the page), null when the
- *   table does not name it or has not come yet.
+ *   table does not name it or has not come yet;
+ * - the kit's <nogat-basemaps> (DEV-15.15) is defined, and window.Hydrograf.nogat.basemaps
+ *   holds the kit's words (`texts`), its Leaflet adapter (`leaflet`, leafletBasemap) and
+ *   the repaint of a vector base map after a change of theme (`repaint`) for js/layers.js,
+ *   which gives the element the entries of GET /api/basemaps (ADR-089).
  * A <script type="module"> runs in document order with the deferred scripts, so the
  * kit is on window.Hydrograf before the scripts after it run.
  */
 import { entries } from '../nogat/nogat-app-menu.js?v=951a2798ee';
+import { BASEMAP_TEXTS, leafletBasemap, repaintMaplibreBasemap } from '../nogat/nogat-basemaps.js?v=20f6db6ae1';
 import * as handoff from '../nogat/nogat-handoff.js?v=ee555c209f';
-import { fillSources } from '../nogat/nogat-sources.js?v=de5a9d8f4a';
+import { fillSources } from '../nogat/nogat-sources.js?v=47514bf6ce';
 
 window.Hydrograf = window.Hydrograf || {};
 
@@ -39,4 +44,9 @@ window.Hydrograf.nogat = {
     handoff: handoff,
     fillSources: fillSources,
     address: (name) => addresses.get(name) || null,
+    basemaps: {
+        texts: BASEMAP_TEXTS,
+        leaflet: leafletBasemap,
+        repaint: repaintMaplibreBasemap,
+    },
 };

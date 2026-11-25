@@ -6,9 +6,10 @@ visit has it. Its ``Tab`` records the Content-Security-Policy violations
 (``securitypolicyviolation``, from a script the page's policy does not cover), the
 page errors, the console errors and every request. Every request to another origin
 is answered by ``page.route`` from the files of ``recorded/`` (``OUTSIDE``: what
-OpenFreeMap, GUGiK and the flood hazard WMS of Wody Polskie answered on 2026-11-25,
-each kind of request by one recorded answer, with the providers' CORS header);
-anything else outside is refused and noted in ``Tab.refused``.
+OpenFreeMap (the TileJSON and a vector tile of the kit's base map; its names come from
+the site's own glyphs), GUGiK and the flood hazard WMS of Wody Polskie answered on
+2026-11-25, each kind of request by one recorded answer, with the providers' CORS
+header); anything else outside is refused and noted in ``Tab.refused``.
 
 The map is read through ``Hydrograf.map.describe()`` (``describe``): the overlays
 from the bottom up with their opacity, the network's points and the view in degrees
@@ -54,11 +55,6 @@ EXPECT_TIMEOUT_MS = 30_000
 # The answers of the outside services: (URL pattern, file of recorded/, type)
 OUTSIDE = (
     (
-        r"https://tiles\.openfreemap\.org/styles/positron",
-        "openfreemap-positron.json",
-        "application/json",
-    ),
-    (
         r"https://tiles\.openfreemap\.org/planet",
         "openfreemap-planet.json",
         "application/json",
@@ -67,21 +63,6 @@ OUTSIDE = (
         r"https://tiles\.openfreemap\.org/planet/[^/]+/\d+/\d+/\d+\.pbf",
         "openfreemap-14-9124-5386.pbf",
         "application/vnd.mapbox-vector-tile",
-    ),
-    (
-        r"https://tiles\.openfreemap\.org/sprites/[^/]+/ofm(@2x)?\.json",
-        "openfreemap-ofm.json",
-        "application/json",
-    ),
-    (
-        r"https://tiles\.openfreemap\.org/sprites/[^/]+/ofm(@2x)?\.png",
-        "openfreemap-ofm.png",
-        "image/png",
-    ),
-    (
-        r"https://tiles\.openfreemap\.org/fonts/[^/]+/\d+-\d+\.pbf",
-        "openfreemap-noto-sans-regular-0-255.pbf",
-        "application/x-protobuf",
     ),
     (
         (

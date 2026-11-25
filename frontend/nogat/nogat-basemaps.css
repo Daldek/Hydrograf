@@ -1,0 +1,194 @@
+/*
+ * Nogat GUI kit: the base maps (DEV-15.15). The switcher <nogat-basemaps>; the credit in the
+ * map's own attribution control, MapLibre's and Leaflet's, at the strip's 12 px in the muted
+ * text colour, folded behind „i” at the first drag up to 860 px; the grey of a raster entry on
+ * Leaflet; and the colours of the kit's grey style in both themes, which nogat-basemaps.js
+ * reads. Tokens of design/tokens.css with fallbacks, so a GUI that has not adopted the tokens
+ * yet shows it too. Copy byte for byte (DEV-15.6).
+ */
+
+/* The grey style: greys a shade off the background, so the data keep the strong colours
+   (Obserwator's map); light, then dark as tokens.css switches the theme. */
+:root {
+  --nogat-basemap-bg: #eef0f3;
+  --nogat-basemap-landuse: #e4e7eb;
+  --nogat-basemap-water: #d3d9e1;
+  --nogat-basemap-road: #d5dae1;
+  --nogat-basemap-state: #c3c9d2;
+  --nogat-basemap-country: #98a2b3;
+  --nogat-basemap-water-text: #5f6f82;
+  --nogat-basemap-halo: rgba(255, 255, 255, 0.85);
+  --nogat-basemap-place-1: #667085;
+  --nogat-basemap-place-2: #5d6878;
+  --nogat-basemap-place-3: #344054;
+  --nogat-basemap-place-4: #667085;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --nogat-basemap-bg: #1b2028;
+    --nogat-basemap-landuse: #232a33;
+    --nogat-basemap-water: #0f141a;
+    --nogat-basemap-road: #2c333d;
+    --nogat-basemap-state: #3a424d;
+    --nogat-basemap-country: #5d6875;
+    --nogat-basemap-water-text: #7d8a99;
+    --nogat-basemap-halo: rgba(13, 17, 23, 0.85);
+    --nogat-basemap-place-1: #8b949e;
+    --nogat-basemap-place-2: #9da7b3;
+    --nogat-basemap-place-3: #c9d1d9;
+    --nogat-basemap-place-4: #8b949e;
+  }
+}
+
+:root[data-theme="dark"] {
+  --nogat-basemap-bg: #1b2028;
+  --nogat-basemap-landuse: #232a33;
+  --nogat-basemap-water: #0f141a;
+  --nogat-basemap-road: #2c333d;
+  --nogat-basemap-state: #3a424d;
+  --nogat-basemap-country: #5d6875;
+  --nogat-basemap-water-text: #7d8a99;
+  --nogat-basemap-halo: rgba(13, 17, 23, 0.85);
+  --nogat-basemap-place-1: #8b949e;
+  --nogat-basemap-place-2: #9da7b3;
+  --nogat-basemap-place-3: #c9d1d9;
+  --nogat-basemap-place-4: #8b949e;
+}
+
+/* The switcher: one radio per base map, „bez podkładu” last. */
+nogat-basemaps {
+  display: block;
+  color: var(--text, #2b2b2b);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-base, 13px);
+  line-height: var(--line-height, 1.4);
+}
+
+nogat-basemaps[hidden] {
+  display: none;
+}
+
+.nogat-basemaps-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.nogat-basemaps-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2, 8px);
+  min-height: var(--control-sm, 26px);
+  cursor: pointer;
+}
+
+.nogat-basemaps-entry input {
+  margin: 0;
+  accent-color: var(--accent, #284b63);
+  cursor: pointer;
+}
+
+.nogat-basemaps-entry input:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+.nogat-basemaps-failed {
+  color: var(--warn-ink, #92400e);
+  font-size: var(--text-sm, 12px);
+}
+
+@media (pointer: coarse) {
+  .nogat-basemaps-entry {
+    min-height: var(--control-touch, 44px);
+  }
+}
+
+/* A grey raster entry on Leaflet; MapLibre greys it with raster-saturation. */
+.nogat-basemap-grey {
+  filter: grayscale(1);
+}
+
+/* The credit in the map's corner, MapLibre's control and Leaflet's alike. */
+.nogat-basemap-map .maplibregl-ctrl.maplibregl-ctrl-attrib,
+.nogat-basemap-map .leaflet-control-container .leaflet-control-attribution {
+  background-color: var(--surface, #ffffff);
+  color: var(--text-3, #6b6565);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: var(--text-sm, 12px);
+}
+
+.nogat-basemap-map .maplibregl-ctrl-attrib a,
+.nogat-basemap-map .leaflet-control-container .leaflet-control-attribution a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-2, #d4cfcf);
+  text-underline-offset: 2px;
+}
+
+.nogat-basemap-map .maplibregl-ctrl-attrib a:hover,
+.nogat-basemap-map .leaflet-control-container .leaflet-control-attribution a:hover {
+  color: var(--text, #2b2b2b);
+}
+
+/* „i”: MapLibre's compact button and the Leaflet adapter's, a letter in the theme's colours. */
+.nogat-basemap-map .maplibregl-ctrl.maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button,
+.nogat-basemap-map .nogat-basemap-credit-toggle {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-2, #d4cfcf);
+  border-radius: 12px;
+  background: var(--surface, #ffffff);
+  color: var(--text-2, #4e4e4e);
+  font: italic 700 13px/22px Georgia, "Times New Roman", serif;
+  text-align: center;
+  cursor: pointer;
+}
+
+.nogat-basemap-map .maplibregl-ctrl.maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button::before {
+  content: "i";
+}
+
+.nogat-basemap-map .maplibregl-ctrl.maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button:focus-visible,
+.nogat-basemap-map .nogat-basemap-credit-toggle:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* Leaflet: the button shows only on a phone, where the credit folds at the first drag. */
+.nogat-basemap-map .nogat-basemap-credit-toggle {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .nogat-basemap-map .leaflet-control-container .nogat-basemap-credit {
+    position: relative;
+    box-sizing: content-box;
+    min-height: 20px;
+    margin: 0 10px 10px 0;
+    padding: 2px 28px 2px 8px;
+    border-radius: 12px;
+  }
+
+  .nogat-basemap-map .nogat-basemap-credit-toggle {
+    display: block;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+  }
+
+  .nogat-basemap-map .leaflet-control-container .nogat-basemap-credit:not(.nogat-basemap-credit-open) {
+    width: 0;
+    padding: 2px 24px 2px 0;
+    font-size: 0;
+  }
+
+  .nogat-basemap-credit:not(.nogat-basemap-credit-open) > :not(.nogat-basemap-credit-toggle) {
+    display: none;
+  }
+}

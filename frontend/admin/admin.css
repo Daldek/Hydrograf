@@ -183,7 +183,8 @@
     overflow-wrap: anywhere;
 }
 
-/* The area map: a wider dialog of the kit, the GUGiK basemap in grey */
+/* The area map: a wider dialog of the kit; its base map and credit are the kit's
+   (nogat-basemaps.css), the first raster entry the deployment allows */
 .nogat-admin-dialog.admin-map-dialog {
     width: min(760px, calc(100vw - 16px));
 }
@@ -195,8 +196,13 @@
     background: var(--surface-2);
 }
 
-.admin-map .basemap-grey {
-    filter: grayscale(1);
+/* A base map that does not answer, said under the map, which stays usable without it */
+.admin-map-notice {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--warn-bg);
+    color: var(--warn-ink);
 }
 
 /* „Czyszczenie”: one row per target */

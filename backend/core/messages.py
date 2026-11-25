@@ -208,6 +208,61 @@ MESSAGES: Final[dict[str, Message]] = {
         "This deployment serves no terms of use.",
         "To wdrożenie nie udostępnia regulaminu.",
     ),
+    # --- Settings of the deployment ---
+    "basemap_catalogue_unreadable": Message(
+        "The kit's catalogue of base maps cannot be read: {path}.",
+        "Nie można odczytać katalogu podkładów zestawu: {path}.",
+        "Copy nogat-basemaps.json from Nogat's kit into frontend/nogat/ again, byte "
+        "for byte.",
+        "Skopiuj ponownie nogat-basemaps.json z zestawu Nogat do frontend/nogat/, "
+        "bajt w bajt.",
+    ),
+    "basemap_unknown": Message(
+        "{option} of {source} names a base map the kit's catalogue does not have: "
+        "{value}.",
+        "{option} w {source} wskazuje podkład, którego nie ma w katalogu zestawu: "
+        "{value}.",
+        "Use the ids of the catalogue: {known}.",
+        "Użyj identyfikatorów z katalogu: {known}.",
+    ),
+    "basemaps_invalid": Message(
+        "basemaps of {source} is not a list of base map ids: {value}.",
+        "basemaps w {source} nie jest listą identyfikatorów podkładów: {value}.",
+        'Give a list of texts, e.g. basemaps = ["openfreemap", "gugik-ortho"]; '
+        "[] offers none.",
+        'Podaj listę tekstów, np. basemaps = ["openfreemap", "gugik-ortho"]; '
+        "[] nie udostępnia żadnego podkładu.",
+    ),
+    "basemap_mirrors_invalid": Message(
+        "basemap_mirrors of {source} has a wrong value: {value}.",
+        "basemap_mirrors w {source} ma błędną wartość: {value}.",
+        "Give a table of catalogue ids to the http or https addresses of the "
+        "deployment's copies, e.g. basemap_mirrors = {{ openfreemap = "
+        '"https://tiles.example.org/planet" }}.',
+        "Podaj tabelę identyfikatorów z katalogu i adresów http lub https kopii "
+        "wdrożenia, np. basemap_mirrors = {{ openfreemap = "
+        '"https://tiles.example.org/planet" }}.',
+    ),
+    "basemap_extra_invalid": Message(
+        "basemap_extra of {source} has a wrong {field}: {value}.",
+        "basemap_extra w {source} ma błędną wartość {field}: {value}.",
+        "Give a list of tables with id, name, kind (xyz, wms or vector), url (http "
+        "or https), attribution and, optionally, grayscale (true or false); each id "
+        "unique, not none and not an id of the kit's catalogue.",
+        "Podaj listę tabel z id, name, kind (xyz, wms albo vector), url (http lub "
+        "https), attribution i opcjonalnie grayscale (true albo false); każde id "
+        "niepowtarzalne, inne niż none i niż identyfikatory katalogu zestawu.",
+    ),
+    "basemap_extra_missing": Message(
+        "An own base map of basemap_extra in {source} has no {field}: {value}.",
+        "Własny podkład z basemap_extra w {source} nie ma pola {field}: {value}.",
+        "Give a list of tables with id, name, kind (xyz, wms or vector), url (http "
+        "or https), attribution and, optionally, grayscale (true or false); each id "
+        "unique, not none and not an id of the kit's catalogue.",
+        "Podaj listę tabel z id, name, kind (xyz, wms albo vector), url (http lub "
+        "https), attribution i opcjonalnie grayscale (true albo false); każde id "
+        "niepowtarzalne, inne niż none i niż identyfikatory katalogu zestawu.",
+    ),
     # --- Watershed and hydrograph ---
     "catchment_graph_unavailable": Message(
         "The catchment graph is not loaded.",
