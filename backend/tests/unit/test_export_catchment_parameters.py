@@ -133,8 +133,6 @@ def panel_of(cg, outlet_idx, boundary, db):
         boundary_to_polygon(boundary),
         upstream,
         outlet_idx,
-        cg.get_segment_idx(outlet_idx),
-        THRESHOLD_M2,
         THRESHOLD_M2,
         stats["area_km2"],
         stats,

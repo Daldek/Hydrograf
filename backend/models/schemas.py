@@ -468,6 +468,21 @@ class StreamInfo(BaseModel):
     )
 
 
+class DelineateNotice(BaseModel):
+    """A notice about a delineated watershed, in the form of Nogat AGI-4.2."""
+
+    level: Literal["info", "warning"] = Field(
+        ..., description="warning: the result needs the person's attention"
+    )
+    code: Literal["outlet_far_from_point"] = Field(
+        ...,
+        description="outlet_far_from_point: the outlet lies more than 500 m from the "
+        "point of the request (`snap_distance_m`), at the end of the stream segment "
+        "that the water of the point flows down (E7-GAP-04)",
+    )
+    message: str = Field(..., description="Polish text of the notice")
+
+
 class DelineateResponse(BaseModel):
     """Full response for watershed delineation endpoint."""
 
@@ -496,6 +511,20 @@ class DelineateResponse(BaseModel):
     info_message: str | None = Field(
         None,
         description="User-facing info about parameter changes",
+    )
+    snap_distance_m: float = Field(
+        ...,
+        ge=0,
+        description="Distance from the point of the request to `watershed.outlet` "
+        "[m] (E7-GAP-04): in the precomputed mode the end of the stream segment where "
+        "the merged sub-catchments close (after a cascade, a segment of the coarser "
+        "threshold); in the precise mode, whose boundary starts at the clicked cell, "
+        "the end of the point's segment at 10 000 m2 moved onto the boundary",
+    )
+    notices: list[DelineateNotice] = Field(
+        default_factory=list,
+        description="Notices about the result: outlet_far_from_point when "
+        "`snap_distance_m` is above 500 m; empty without them",
     )
     handoff: dict[str, Any] | None = Field(
         None,

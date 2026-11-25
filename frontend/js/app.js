@@ -357,6 +357,7 @@
         Hydrograf.map.clearProfileLine();
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
+        showDelineationNotices([]);
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
         state.currentStream = null;
@@ -542,6 +543,7 @@
         // Clear auto-select banner before new request
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
+        showDelineationNotices([]);
 
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
@@ -575,6 +577,7 @@
                 }
                 if (autoInfo) autoInfo.classList.remove('d-none');
             }
+            showDelineationNotices(data.notices || []);
 
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
@@ -655,6 +658,35 @@
             ? 'Hietogram i hydrogram są liczone tylko dla zlewni do 250 km², granicy stosowalności ' +
               'metody SCS-CN; ta zlewnia ma ' + formatValue(watershed.area_km2, 'km²', 2) + '.'
             : '';
+    }
+
+    var NOTICE_ICONS = {
+        warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/>' +
+            '<path d="M8 6.5v3M8 11.5v.01"/></svg>',
+        info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/>' +
+            '<path d="M8 7.5v4M8 5v.01"/></svg>',
+    };
+
+    /**
+     * The delineation's notices above the sections: the `notices` of the response,
+     * worded in Polish by the API (e.g. an outlet more than 500 m from the clicked
+     * point, E7-GAP-04); [] takes them away.
+     */
+    function showDelineationNotices(notices) {
+        var box = document.getElementById('delineation-notices');
+        if (!box) return;
+        box.textContent = '';
+        notices.forEach(function (notice) {
+            var warning = notice.level === 'warning';
+            var p = document.createElement('p');
+            p.className = warning ? 'notice warn' : 'notice';
+            p.innerHTML = warning ? NOTICE_ICONS.warning : NOTICE_ICONS.info;
+            var text = document.createElement('span');
+            text.textContent = notice.message;
+            p.appendChild(text);
+            box.appendChild(p);
+        });
+        box.classList.toggle('d-none', !notices.length);
     }
 
     /**

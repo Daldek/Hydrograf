@@ -354,6 +354,8 @@ Response: 200 OK
   "upstream_segment_indices": [42, 43, 44, ...],              // for the MVT highlighting
   "display_threshold_m2": 10000,                              // the threshold of those indices
   "info_message": null,                                       // a note when threshold_m2 was raised
+  "snap_distance_m": 1918.5,                                  // from the point to watershed.outlet (E7-GAP-04)
+  "notices": [{"level": "warning", "code": "outlet_far_from_point", "message": "Ujście zlewni leży 1,9 km od wskazanego punktu, …"}],   // above 500 m; [] otherwise
   "handoff": {"schema": "nogat-handoff/1", ...},              // the watershed for Hydrolog's GUI (ADR-068)
   "attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT, BDOT10k (…); dane przetworzone", …],   // G, and SG with soil groups (ADR-085)
   "terms_notice": []

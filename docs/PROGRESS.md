@@ -100,13 +100,20 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *fixed for 0.7.0* what the branch
    `fix/0.7.0-small` fixed (CHANGELOG `[Unreleased]`), *0.5.1* what was in its scope and is
    still open, *0.7.0* what is planned for 0.7.0:
-   - *Large basins (0.7.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
+   - *Large basins (with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
-     E7-GAP-02 (= E7-08), GEO-01 (no Czech NMT in `utils/kartograf_set.py`), G07-2 = G09-2 =
-     G09-3 and E7-GAP-04 (a catchment cut at the area's or the state's edge looks complete; the
-     outlet moves to the segment's end without a notice), E7-09 and HG-E2E-04 (the bootstrap peaks
-     at its memory cap; no documented rule or limit). A draft plan is in Nogat,
-     `docs/plans/2026-11-16-large-basins.md` on its branch `plan/large-basins`, not approved.
+     E7-GAP-02 (= E7-08), G07-2 = G09-2 = G09-3 (a catchment cut at the area's or the state's
+     edge looks complete: H7's notice `catchment_truncated`), E7-09 and HG-E2E-04 (the
+     bootstrap peaks at its memory cap; no documented rule or limit). Nogat's plan
+     `docs/plans/2026-11-16-large-basins.md`, approved by the author on 2026-11-24, takes them to
+     0.9.0 (its step H1 moves them here).
+   - *Delineation (0.7.0, outside the large-basins plan, its topic 4):* E7-GAP-04 (*fixed for
+     0.7.0*: the outlet moved to the segment's end without a notice; `POST
+     /api/delineate-watershed` now gives `snap_distance_m` and, above 500 m, the notice
+     `outlet_far_from_point`, which the panel shows; after a cascade the outlet is the coarser
+     segment's end where the merged watershed closes, no longer the clicked segment's).
+   - *Czechia (a follow-up plan of its own after large basins, D11 of Nogat's plan):* GEO-01 (no
+     Czech NMT in `utils/kartograf_set.py`).
    - *Bootstrap and a second instance:* E4-01 (a bind mount under `/data/nmt` leaves step 3
      unable to write; the dry run does not check it), E4-02 (*fixed*: the dry run now refuses a
      `--units` file without `pozostale_obszary_jcwp`), E4-03 (*fixed*: a one-off script
@@ -126,8 +133,12 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      compile no longer catches their warnings; Hydrolog 0.8.1 the other: the first network beside
      a hydrograph gave 500), E5b-10 (the network preview does not warn of a window above 60 M
      cells).
-   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0: `obserwator-series-csv` is refused as
-     an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
+   - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0, waits for the author with E3-04:
+     `obserwator-series-csv` is refused as an own series; the file carries IMGW-PIB's or ČHMÚ's
+     lines, which a consumer carries on by Nogat DEV-20.6, while ADR-083 says an imported file
+     carries no lines and `derived_from` knows PMAXTP alone, so accepting it needs the amendment
+     of ADR-083 that E3-04 waits for, B2 or B3 of its options), E3-04 (*0.5.1*:
+     `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings
      reached only the log; the hydrograph's response now carries them as `notices` in Polish and
      the panel shows them under „Hydrogram”), E5b-09 (*fixed*: `/api/terms` listed PMAXTP for an

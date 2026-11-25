@@ -332,8 +332,6 @@ def panel_of(graph, db, tree, element):
         boundary_to_polygon(boundary),
         units,
         outlet_unit,
-        graph.get_segment_idx(outlet_unit),
-        UNITS,
         UNITS,
         stats["area_km2"],
         stats,
