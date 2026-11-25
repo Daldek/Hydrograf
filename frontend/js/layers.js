@@ -710,8 +710,7 @@
                         noBounds,
                         function (opacity) {
                             var layer = window.Hydrograf.sewer.getLayer();
-                            var container = layer && layer.getContainer();
-                            if (container) container.style.opacity = opacity;
+                            if (layer) layer.setOpacity(opacity);
                         },
                         50
                     );

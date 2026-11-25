@@ -109,6 +109,7 @@ config.yaml
 notes/
 *.png
 !frontend/vendor/**/*.png
+!backend/tests/e2e/recorded/*.png
 current_task.md
 
 # Worktrees

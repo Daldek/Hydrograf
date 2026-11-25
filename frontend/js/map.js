@@ -453,13 +453,7 @@
     }
 
     function setStreamsOpacity(opacity) {
-        if (streamsLayer) {
-            // Use CSS container opacity to avoid flicker from redraw()
-            var container = streamsLayer.getContainer();
-            if (container) {
-                container.style.opacity = opacity;
-            }
-        }
+        if (streamsLayer) streamsLayer.setOpacity(opacity);
     }
 
     // ===== Selection boundary =====
@@ -1269,12 +1263,7 @@
     function getLandCoverLayer() { return landCoverLayer; }
 
     function setLandCoverOpacity(opacity) {
-        if (landCoverLayer) {
-            var container = landCoverLayer.getContainer();
-            if (container) {
-                container.style.opacity = opacity;
-            }
-        }
+        if (landCoverLayer) landCoverLayer.setOpacity(opacity);
     }
 
     var landCoverLegend = null;

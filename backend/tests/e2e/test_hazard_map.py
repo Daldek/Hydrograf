@@ -234,7 +234,9 @@ def test_hazard_map_on_farther_than_1_50000_asks_nothing_and_hints(tab: Tab) -> 
     reason=(
         "defect: with the hazard map on, a zoom-out click past 1:50 000 asks the "
         "service for the new view (Leaflet's WMS layer loads the target level on "
-        "zoomanim before layers.js sync() removes it on zoomend)"
+        "zoomanim before layers.js sync() removes it on zoomend); left to the move "
+        "to MapLibre (Nogat's plan 2026-11-24-hydrograf-maplibre, step 2), not fixed "
+        "in Leaflet"
     ),
 )
 def test_hazard_map_zoomed_out_past_1_50000_asks_nothing(tab: Tab) -> None:

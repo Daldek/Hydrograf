@@ -317,6 +317,9 @@
             alt: p.id,
             riseOnHover: true,
         }), 'network-point');
+        // A click on a point is the point's: Leaflet hands the map a click no layer
+        // listens to, and the map would place a second point there
+        p.marker.on('click', L.DomEvent.stopPropagation);
         // An answer to the places before the drag would move the marker under the pointer
         p.marker.on('dragstart', cancelPreview);
         p.marker.on('dragend', function () {

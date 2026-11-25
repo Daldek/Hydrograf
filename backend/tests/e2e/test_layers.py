@@ -13,8 +13,7 @@ degrees and as a scale), never through the library that draws the map:
   row and gives the overlay an opacity of 0.4; turned off, the overlay leaves the
   map. A row with a legend shows it in the map's area while on and removes it when
   off. The opacity holds as the map moves: one step closer (new tiles), the overlay
-  is still drawn at 0.4. For the land cover, the streams and the sewer it is not
-  (LOST_OPACITY_DEFECT, strict xfails that turn into failures once fixed);
+  is still drawn at 0.4;
 * „the sewer's tiles and the depressions' image turn on and off and take their
   opacity, as the other overlay rows”: their rows of ROWS, with the sewer's tile
   requests (``/api/tiles/sewer/``) and the depressions' image
@@ -62,14 +61,6 @@ FIT_SHARE = 0.4
 MZP_MAX_SCALE = 50_000
 LAKE_ROW = "Zbiorniki wodne (BDOT10k)"
 STILL_TIMEOUT_S = 30.0
-# The rows whose slider's opacity the next tiles undo: it is written into the CSS of
-# their VectorGrid container, which Leaflet's tile fade-in resets to the layer's own
-LOST_OPACITY = {"landcover", "streams", "sewer"}
-LOST_OPACITY_DEFECT = (
-    "defect: the land cover's, streams' and sewer's sliders set their VectorGrid "
-    "container's CSS opacity, which each tile's fade-in (Leaflet's "
-    "GridLayer._updateOpacity) resets to 1"
-)
 
 
 @dataclass(frozen=True)
@@ -294,21 +285,7 @@ def test_overlay_row_turns_layer_on_and_off(tab: Tab, row: Row) -> None:
         expect(legend).to_be_hidden()
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        pytest.param(
-            row,
-            id=row.overlay,
-            marks=(
-                pytest.mark.xfail(strict=True, reason=LOST_OPACITY_DEFECT)
-                if row.overlay in LOST_OPACITY
-                else ()
-            ),
-        )
-        for row in ROWS
-    ],
-)
+@pytest.mark.parametrize("row", [pytest.param(row, id=row.overlay) for row in ROWS])
 def test_overlay_row_opacity_holds_as_map_moves(tab: Tab, row: Row) -> None:
     page = tab.page
     view = open_map(tab)
