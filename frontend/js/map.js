@@ -263,7 +263,7 @@
                 demMeta = meta;
                 var tileUrl = '/data/dem_tiles/{z}/{x}/{y}.png';
                 if (meta.generated_at) tileUrl += '?v=' + meta.generated_at;
-                demLayer = L.tileLayer(tileUrl, {
+                demLayer = nameOverlay(L.tileLayer(tileUrl, {
                     minZoom: meta.min_zoom || 8,
                     maxZoom: 22,
                     maxNativeZoom: meta.max_zoom || 18,
@@ -272,7 +272,7 @@
                     pane: 'demPane',
                     attribution: 'NMT &copy; GUGiK',
                     errorTileUrl: '',
-                });
+                }), 'dem');
                 if (map) map.fitBounds(demBounds, { padding: [20, 20] });
             })
             .catch(function () {
@@ -287,11 +287,11 @@
                         demMeta = meta;
                         var demUrl = '/data/dem.png';
                         if (meta.generated_at) demUrl += '?v=' + meta.generated_at;
-                        demLayer = L.imageOverlay(demUrl, demBounds, {
+                        demLayer = nameOverlay(L.imageOverlay(demUrl, demBounds, {
                             opacity: 0.7,
                             pane: 'demPane',
                             attribution: 'NMT &copy; GUGiK',
-                        });
+                        }), 'dem');
                         if (map) map.fitBounds(demBounds, { padding: [20, 20] });
                     })
                     .catch(function (err) {
@@ -373,7 +373,7 @@
             extent.minZoom = zooms[String(currentThreshold)] || meta.min_zoom;
         }
 
-        streamsLayer = L.vectorGrid.protobuf(
+        streamsLayer = nameOverlay(L.vectorGrid.protobuf(
             getTileUrl('streams', currentThreshold),
             L.extend({
                 pane: 'streamsPane',
@@ -391,7 +391,7 @@
                 maxNativeZoom: 18,
                 attribution: 'Linie spływu (flow acc)',
             }, extent)
-        );
+        ), 'streams');
 
         // Re-fire click to map so click mode routing works on stream features
         streamsLayer.on('click', function (e) {
@@ -471,9 +471,9 @@
      */
     function showSelectionBoundary(geojsonFeature) {
         clearSelectionBoundary();
-        selectionBoundaryLayer = L.geoJSON(geojsonFeature, {
+        selectionBoundaryLayer = nameOverlay(L.geoJSON(geojsonFeature, {
             style: watershedStyle(),
-        }).addTo(map);
+        }), 'watershed').addTo(map);
         map.fitBounds(selectionBoundaryLayer.getBounds(), { padding: [20, 20] });
         updateWatershedLegend();
     }
@@ -523,7 +523,12 @@
         var instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         var next = 0;
         var start = null;
-        var current = { levels: levels, shown: L.layerGroup().addTo(map), onMoveEnd: null, frame: null };
+        var current = {
+            levels: levels,
+            shown: nameOverlay(L.layerGroup(), 'preview').addTo(map),
+            onMoveEnd: null,
+            frame: null,
+        };
         preview = current;
 
         function step(now) {
@@ -695,7 +700,7 @@
 
     function showOutlet(lat, lng, elevation) {
         if (outletMarker) map.removeLayer(outletMarker);
-        outletMarker = L.circleMarker([lat, lng], outletStyle()).addTo(map);
+        outletMarker = nameOverlay(L.circleMarker([lat, lng], outletStyle()), 'outlet').addTo(map);
         updateWatershedLegend();
         outletMarker.bindTooltip(
             'Ujście: ' + elevation.toFixed(1) + ' m n.p.m.',
@@ -737,10 +742,10 @@
     function showMainChannel(geojson) {
         clearMainChannel();
         if (!geojson) return;
-        mainChannelLayer = L.geoJSON(geojson, {
+        mainChannelLayer = nameOverlay(L.geoJSON(geojson, {
             style: mainChannelStyle,
             interactive: false,
-        }).addTo(map);
+        }), 'main-channel').addTo(map);
         updateWatershedLegend();
     }
 
@@ -771,10 +776,10 @@
     function showLongestFlowPath(geojson) {
         clearLongestFlowPath();
         if (!geojson) return;
-        longestFlowPathLayer = L.geoJSON(geojson, {
+        longestFlowPathLayer = nameOverlay(L.geoJSON(geojson, {
             style: longestFlowPathStyle(),
             interactive: false,
-        }).addTo(map);
+        }), 'longest-flow-path').addTo(map);
         if (divideFlowPathLayer) divideFlowPathLayer.bringToFront();
         updateWatershedLegend();
     }
@@ -790,10 +795,10 @@
     function showDivideFlowPath(geojson) {
         clearDivideFlowPath();
         if (!geojson) return;
-        divideFlowPathLayer = L.geoJSON(geojson, {
+        divideFlowPathLayer = nameOverlay(L.geoJSON(geojson, {
             style: divideFlowPathStyle(),
             interactive: false,
-        }).addTo(map);
+        }), 'divide-flow-path').addTo(map);
         updateWatershedLegend();
     }
 
@@ -984,13 +989,13 @@
         }
         drawVertices.push(latlng);
 
-        var marker = L.circleMarker(latlng, pointStyle(5)).addTo(map);
+        var marker = nameOverlay(L.circleMarker(latlng, pointStyle(5)), 'draw').addTo(map);
         drawMarkers.push(marker);
 
         // Update polyline
         if (drawPolyline) map.removeLayer(drawPolyline);
         if (drawVertices.length > 1) {
-            drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
+            drawPolyline = nameOverlay(L.polyline(drawVertices, drawLineStyle()), 'draw').addTo(map);
         }
         updateDrawCount();
     }
@@ -1002,7 +1007,7 @@
         if (lastMarker) map.removeLayer(lastMarker);
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
         if (drawVertices.length > 1) {
-            drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
+            drawPolyline = nameOverlay(L.polyline(drawVertices, drawLineStyle()), 'draw').addTo(map);
         }
         updateDrawCount();
     }
@@ -1026,7 +1031,7 @@
         // Keep the polyline as profile line
         if (drawPolyline) {
             if (profileLine) map.removeLayer(profileLine);
-            profileLine = drawPolyline;
+            profileLine = nameOverlay(drawPolyline, 'profile-line');
             profileLine.setStyle(profileLineStyle());
             drawPolyline = null;
         }
@@ -1063,7 +1068,7 @@
         if (profileHoverMarker) {
             profileHoverMarker.setLatLng([lat, lng]);
         } else {
-            profileHoverMarker = L.circleMarker([lat, lng], pointStyle(6)).addTo(map);
+            profileHoverMarker = nameOverlay(L.circleMarker([lat, lng], pointStyle(6)), 'profile-marker').addTo(map);
         }
     }
 
@@ -1084,14 +1089,14 @@
             })
             .then(function (geojson) {
                 var info = colors().info;
-                bdotLakesLayer = L.geoJSON(geojson, {
+                bdotLakesLayer = nameOverlay(L.geoJSON(geojson, {
                     style: {
                         color: info,
                         weight: 1,
                         fillColor: info,
                         fillOpacity: 0.4,
                     },
-                });
+                }), 'bdot-lakes');
                 return bdotLakesLayer;
             })
             .catch(function (err) { console.warn('BDOT lakes not available:', err.message); return null; });
@@ -1101,6 +1106,7 @@
 
     function setBdotLakesOpacity(opacity) {
         if (bdotLakesLayer) {
+            pathOpacity['bdot-lakes'] = opacity;
             if (opacity === 0) {
                 bdotLakesLayer.setStyle({
                     weight: 0,
@@ -1131,7 +1137,7 @@
                 return res.json();
             })
             .then(function (geojson) {
-                bdotStreamsLayer = L.geoJSON(geojson, {
+                bdotStreamsLayer = nameOverlay(L.geoJSON(geojson, {
                     style: function (feature) {
                         var src = feature.properties.source_layer || '';
                         var color = bdotStreamColor(feature);
@@ -1142,7 +1148,7 @@
                         }
                         return { color: color, weight: 1, opacity: 0.6, dashArray: '4,4' };
                     },
-                });
+                }), 'bdot-streams');
                 return bdotStreamsLayer;
             })
             .catch(function (err) { console.warn('BDOT streams not available:', err.message); return null; });
@@ -1152,6 +1158,7 @@
 
     function setBdotStreamsOpacity(opacity) {
         if (bdotStreamsLayer) {
+            pathOpacity['bdot-streams'] = opacity;
             bdotStreamsLayer.setStyle({ opacity: opacity });
         }
     }
@@ -1176,7 +1183,7 @@
                 return res.json();
             })
             .then(function (geojson) {
-                hsgLayer = L.geoJSON(geojson, {
+                hsgLayer = nameOverlay(L.geoJSON(geojson, {
                     style: function (feature) {
                         var color = hsgFeatureColor(feature);
                         return {
@@ -1186,7 +1193,7 @@
                             fillOpacity: 0.35,
                         };
                     },
-                });
+                }), 'hsg');
                 return hsgLayer;
             })
             .catch(function (err) { console.warn('HSG layer not available:', err.message); return null; });
@@ -1196,6 +1203,7 @@
 
     function setHsgOpacity(opacity) {
         if (hsgLayer) {
+            pathOpacity.hsg = opacity;
             if (opacity === 0) {
                 hsgLayer.setStyle({ weight: 0, fillOpacity: 0, opacity: 0 });
             } else {
@@ -1231,7 +1239,7 @@
             map.removeLayer(landCoverLayer);
         }
 
-        landCoverLayer = L.vectorGrid.protobuf(
+        landCoverLayer = nameOverlay(L.vectorGrid.protobuf(
             '/api/tiles/landcover/{z}/{x}/{y}.pbf',
             {
                 pane: 'landcoverPane',
@@ -1253,7 +1261,7 @@
                 maxNativeZoom: 18,
                 attribution: 'Pokrycie terenu (BDOT10k)',
             }
-        );
+        ), 'landcover');
 
         return landCoverLayer;
     }
@@ -1303,6 +1311,126 @@
         if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
     }
 
+    // ===== What the map draws (the browser tests of tests/e2e) =====
+    //
+    // describe() reads what the map draws the same way whatever library draws it
+    // (Nogat's plan 2026-11-24-hydrograf-maplibre, step 1): the overlays from the
+    // bottom up with their opacity, the network's point markers and the view in
+    // degrees and as a scale. A module names the layer of an overlay with
+    // nameOverlay(); a layer without a name is not described.
+
+    // The scale as a WMS server computes it: metres of EPSG:3857 per CSS pixel over
+    // OGC's standard rendering pixel of 0.28 mm
+    var EQUATOR_M = 40075016.68557849;
+    var STANDARD_PIXEL_M = 0.00028;
+
+    // The opacity the layers panel gave an overlay drawn as paths, whose sliders set
+    // the paths' own opacities; 1 until a slider moves
+    var pathOpacity = {};
+
+    /**
+     * Name the layer of an overlay for describe(): e.g. 'dem', 'hazard' or
+     * 'result:<id>'; a marker named so is a point of the network.
+     * @returns {L.Layer} The layer.
+     */
+    function nameOverlay(layer, id) {
+        layer.options.hydrografOverlay = id;
+        return layer;
+    }
+
+    /** The elements that draw a layer: its container, image, path or icon, or its children's. */
+    function drawnElements(layer) {
+        if (typeof layer.getLayers === 'function') {
+            return layer.getLayers().reduce(function (all, child) {
+                return all.concat(drawnElements(child));
+            }, []);
+        }
+        var element = typeof layer.getContainer === 'function' ? layer.getContainer()
+            : typeof layer.getElement === 'function' ? layer.getElement() : null;
+        return element ? [element] : [];
+    }
+
+    function paneZIndex(element) {
+        var pane = element.closest('.leaflet-pane:not(.leaflet-map-pane)');
+        return pane ? parseInt(getComputedStyle(pane).zIndex, 10) || 0 : 0;
+    }
+
+    /** Whether element a is drawn below element b: a lower pane, or earlier in the same one. */
+    function drawnBelow(a, b) {
+        var za = paneZIndex(a);
+        var zb = paneZIndex(b);
+        if (za !== zb) return za < zb;
+        return a !== b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+
+    /** An overlay's opacity as a whole: a tile layer's or image's, else what the panel gave its paths. */
+    function overlayOpacity(id, layer) {
+        if (layer instanceof L.GridLayer) {
+            var container = layer.getContainer();
+            return container && container.style.opacity !== ''
+                ? parseFloat(container.style.opacity) : layer.options.opacity;
+        }
+        if (layer instanceof L.ImageOverlay) return layer.options.opacity;
+        return id in pathOpacity ? pathOpacity[id] : 1;
+    }
+
+    function lngLat(latlng) { return [latlng.lng, latlng.lat]; }
+
+    /**
+     * What the map draws.
+     * @returns {?Object} null before the map exists; else `center` [lng, lat] and
+     *     `bounds` [west, south, east, north] in degrees, `scale` (the denominator),
+     *     `overlays` from the bottom up, each {id, opacity} and the `lngLat` of an
+     *     overlay of one point, and `points`, the network's markers {id, title, lngLat}.
+     */
+    function describe() {
+        if (!map) return null;
+        var found = {};
+        var points = [];
+        map.eachLayer(function (layer) {
+            var id = layer.options && layer.options.hydrografOverlay;
+            if (!id) return;
+            if (layer instanceof L.Marker) {
+                var icon = layer.getElement();
+                points.push({ id: layer.options.alt, title: icon ? icon.title : '', lngLat: lngLat(layer.getLatLng()) });
+                return;
+            }
+            var elements = drawnElements(layer);
+            if (!elements.length) return;
+            var entry = found[id];
+            if (!entry) {
+                entry = found[id] = { id: id, opacity: overlayOpacity(id, layer), layers: [], elements: [] };
+            }
+            entry.layers.push(layer);
+            entry.elements = entry.elements.concat(elements);
+        });
+        var overlays = Object.keys(found).map(function (id) {
+            var entry = found[id];
+            entry.bottom = entry.elements.reduce(function (low, element) {
+                return drawnBelow(element, low) ? element : low;
+            });
+            return entry;
+        });
+        overlays.sort(function (a, b) {
+            if (a.bottom === b.bottom) return 0;
+            return drawnBelow(a.bottom, b.bottom) ? -1 : 1;
+        });
+        var center = map.getCenter();
+        var bounds = map.getBounds();
+        return {
+            center: lngLat(center),
+            bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+            scale: EQUATOR_M / map.options.crs.scale(map.getZoom()) / STANDARD_PIXEL_M,
+            overlays: overlays.map(function (entry) {
+                var overlay = { id: entry.id, opacity: entry.opacity };
+                var only = entry.layers.length === 1 ? entry.layers[0] : null;
+                if (only instanceof L.CircleMarker) overlay.lngLat = lngLat(only.getLatLng());
+                return overlay;
+            }),
+            points: points,
+        };
+    }
+
     // ===== Theme change: restyle every live overlay =====
 
     onThemeChange(function () {
@@ -1341,6 +1469,9 @@
     window.Hydrograf.map = {
         init: init,
         _getMap: function () { return map; },
+        // What the map draws, for the browser tests; the name of an overlay's layer
+        describe: describe,
+        nameOverlay: nameOverlay,
         // Theme: token colours for overlays and charts drawn by other modules
         token: token,
         rgb: rgb,

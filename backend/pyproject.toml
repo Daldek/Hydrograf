@@ -86,6 +86,8 @@ dev = [
     "mypy>=1.13",
     "pytest-benchmark>=4.0",
     "jsonschema>=4.23",
+    # The browser tests of tests/e2e (Chromium: `uv run playwright install chromium`)
+    "playwright>=1.50,<2",
 ]
 
 [project.urls]
@@ -179,13 +181,15 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 # DEV-10.1: the default run leaves out `live` and, because there is no database on a
 # development machine, `db`; `benchmark` is the project's own marker for the timing
-# tests of tests/performance.
-addopts = "--strict-markers --tb=short -m 'not live and not db and not benchmark'"
+# tests of tests/performance, `e2e` for the browser tests of tests/e2e, which need the
+# database and Chromium (the `e2e` job of CI).
+addopts = "--strict-markers --tb=short -m 'not live and not db and not benchmark and not e2e'"
 markers = [
     "live: real network services",
     "db: needs a PostGIS database",
     "slow: more than ~10 s or Docker",
     "benchmark: timing measurements of tests/performance",
+    "e2e: the map and the panels in Chromium (Playwright) over PostGIS; skipped without either, but under CI",
 ]
 
 [tool.coverage.run]

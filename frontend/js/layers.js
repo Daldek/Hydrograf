@@ -558,7 +558,7 @@
                 if (!layer) {
                     // 512 px images: a third of the requests to a slow
                     // service, at the resolution (and scale) of the zoom.
-                    layer = L.tileLayer.wms(mzpUrl(scenario), {
+                    layer = Hydrograf.map.nameOverlay(L.tileLayer.wms(mzpUrl(scenario), {
                         layers: scenario.layer,
                         format: 'image/png',
                         transparent: true,
@@ -568,7 +568,7 @@
                         maxZoom: 22,
                         pane: 'hazardPane',
                         attribution: MZP_ATTRIBUTION,
-                    });
+                    }), 'hazard');
                     entry.applyOpacity();
                 }
                 map.on('zoomend', sync);

@@ -1,12 +1,15 @@
 # CI (DEV-7.7), from Nogat standards/ci/ci.yml in the variant of an `app` with a
 # database. The `gate` job runs scripts/gate.sh on Linux, on Python 3.12 (required) and
 # the newest stable Python (reported, not blocking: wheels of geospatial dependencies
-# often lag); it leaves out the `db` tests. The `db` job runs them against PostGIS (a
-# service container, so Linux only). Hydrograf is deployed with Docker on Linux, so the
-# Windows and macOS matrix of DEV-7.7 is not run (an `app` MAY run it). The `audit` job
-# checks the locked PyPI dependencies (DEV-13.6; informative, not a required check). The
-# `frontend-assets` job checks that the pages reference their own JS and CSS with the
-# current `?v=<content hash>` (scripts/bump_asset_versions.py --check).
+# often lag); it leaves out the `db` and `e2e` tests. The `db` job runs the `db` tests
+# against PostGIS (a service container, so Linux only). The `e2e` job runs the browser
+# tests of tests/e2e in Chromium over PostGIS, with GDAL's gdal2tiles.py and
+# tippecanoe for the map's tiles; under CI a missing Chromium or database fails them.
+# Hydrograf is deployed with Docker on Linux, so the Windows and macOS matrix of
+# DEV-7.7 is not run (an `app` MAY run it). The `audit` job checks the locked PyPI
+# dependencies (DEV-13.6; informative, not a required check). The `frontend-assets` job
+# checks that the pages reference their own JS and CSS with the current
+# `?v=<content hash>` (scripts/bump_asset_versions.py --check).
 # Commit messages are checked once, on pull requests into develop and from hotfix/*
 # into main (DEV-4.5).
 # Actions are pinned by commit SHA; Dependabot updates them (.github/dependabot.yml).
@@ -120,6 +123,44 @@ jobs:
       - name: Database tests
         # The timing tests of tests/performance (marker `benchmark`) are not a check.
         run: uv run --no-sync pytest tests -m "db and not benchmark" -q
+
+  e2e:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: hydro_test
+          POSTGRES_USER: hydro_user
+          POSTGRES_PASSWORD: hydro_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hydro_user -d hydro_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://hydro_user:hydro_password@localhost:5432/hydro_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: The map's tile tools (gdal2tiles.py, tippecanoe)
+        run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          gdal-bin python3-gdal tippecanoe
+      - name: Chromium for the browser tests
+        run: |
+          uv sync --locked --all-extras
+          uv run --no-sync playwright install --with-deps chromium
+      - name: Browser tests
+        # The fixture migrates a private database of its own (tests/scratch_db.py).
+        run: uv run --no-sync pytest tests/e2e -m e2e -q
 
   audit:
     name: dependency audit

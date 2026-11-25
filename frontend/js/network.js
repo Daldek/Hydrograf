@@ -309,14 +309,14 @@
     function addMarker(p) {
         var icon = markerIcon(p);
         p.iconKey = icon.options.className + ' ' + p.id;
-        p.marker = L.marker([p.lat, p.lng], {
+        p.marker = Hydrograf.map.nameOverlay(L.marker([p.lat, p.lng], {
             icon: icon,
             draggable: !state.loading,
             autoPan: true,
             title: markerTitle(p),
             alt: p.id,
             riseOnHover: true,
-        });
+        }), 'network-point');
         // An answer to the places before the drag would move the marker under the pointer
         p.marker.on('dragstart', cancelPreview);
         p.marker.on('dragend', function () {
@@ -686,7 +686,7 @@
         drawn = {
             data: data,
             full: full,
-            group: L.featureGroup(),
+            group: Hydrograf.map.nameOverlay(L.featureGroup(), 'network'),
             labels: L.layerGroup(),
             boundary: full ? L.geoJSON(data.boundary_geojson, { style: boundaryStyle, interactive: false }) : null,
             elements: {},

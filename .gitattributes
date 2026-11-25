@@ -3,3 +3,5 @@
 # Vendored libraries are byte-exact: their `integrity` hashes cover the upstream bytes
 # (leaflet.css has CRLF line endings).
 frontend/vendor/** -text
+# The answers of the outside services recorded for the browser tests, as they came
+backend/tests/e2e/recorded/** -text

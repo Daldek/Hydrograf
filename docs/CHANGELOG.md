@@ -5,6 +5,12 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Browser tests of the map** (Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1; new `backend/tests/e2e/`, `.github/workflows/ci.yml`, `backend/pyproject.toml`, `backend/uv.lock`, `scripts/gate.sh`): Playwright's Chromium opens the map of the synthetic catchment of `tests/fixtures/pipeline_run.py`, run through the pipeline into a private PostGIS database and a temporary data root, with the API under uvicorn and the pages served as `docker/nginx.conf` routes them, under the two Content-Security-Policy values read from that file; the base maps and the flood hazard WMS are answered from recorded files (`tests/e2e/recorded/`). The tests check what a person sees and the requests the page sends: the layer rows, their opacity and legends, the extent button, the streams' thresholds and tooltip, the first scale of each tiled layer, the flood hazard map's scale, requests and probabilities, the order of the layers, the delineation with its preview and legend, the terrain profile on a desktop and a phone, the network's points and labels, identify on a phone, a theme switch, the context of „Zgłoś uwagę”, the coordinates, the admin's area box and the CSP. They are marked `e2e`, left out of the default run and the gate, and run in the new CI job `e2e` (PostGIS, `gdal2tiles.py`, tippecanoe, Chromium); without PostGIS or Chromium they are skipped, under `CI` they fail. `playwright` joins the dev group.
+- **`Hydrograf.map.describe()`** (`js/map.js`; `js/layers.js`, `js/results.js`, `js/depressions.js`, `js/sewer.js`, `js/network.js` and `js/identify.js` name their layers with `Hydrograf.map.nameOverlay()`; `index.html` with their new `?v=`): what the map draws, read the same way whatever library draws it (the overlays from the bottom up with their opacity, the network's points, the view in degrees and as a scale), for the browser tests, so that they hold when the map moves to MapLibre (the plan's step 2). Nothing a person sees changes.
+
 ## [0.6.1] - 2026-11-25
 
 ### Changed
@@ -1251,6 +1257,7 @@ Changes since 0.5.0, to be released as 0.5.1: defect fixes only.
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
+[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/Daldek/Hydrograf/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Daldek/Hydrograf/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Daldek/Hydrograf/compare/v0.5.1...v0.5.2

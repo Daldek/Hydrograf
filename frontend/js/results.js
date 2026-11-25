@@ -99,7 +99,7 @@
             // Arrays of non-empty strings; anything else is ignored, as the API does
             lines: Hydrograf.attribution.lines(raw),
             waterLevel: !!(raw.water_level && typeof raw.water_level.path === 'string'),
-            layer: L.tileLayer(tiles, {
+            layer: Hydrograf.map.nameOverlay(L.tileLayer(tiles, {
                 bounds: bounds,
                 minZoom: 8,
                 maxZoom: 22,
@@ -108,7 +108,7 @@
                 opacity: opacity,
                 pane: 'resultsPane',
                 errorTileUrl: '',
-            }),
+            }), 'result:' + id),
         };
         result.infoKey = registerInfo(result, raw);
         return result;
