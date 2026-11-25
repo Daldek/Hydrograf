@@ -100,12 +100,12 @@ package = false
 
 [tool.uv.sources]
 # The commits of Nogat's release set candidate-13 (the release round of 2026-11-24), not
-# tagged yet (REL-5.3): Kartograf 05052b3 of `develop` (0.9.0.dev0), Obserwator ffcaa23
-# of `hotfix/3.2.1` (3.2.1) and Hydrolog 146a96b of `hotfix/0.9.1` (0.9.1). The release
+# tagged yet (REL-5.3): Kartograf 05052b3 of `develop` (0.9.0.dev0), Obserwator 1ffe40d
+# of `hotfix/3.2.1` (3.2.1) and Hydrolog 1b25a91 of `hotfix/0.9.1` (0.9.1). The release
 # commit replaces them with the tags v0.9.0, v3.2.1 and v0.9.1. The commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ffcaa23a066aaf424eb0a64fb6c4c63c52e19aab" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ffe40d03eb57f8b155542782d3c11a9b27163cb" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "05052b3a924bfabd5d0fbb21bf30c9e78a8d640a" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "146a96b758c2863aa30b610763a7de6872306683" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1b25a9184c2bfea07eebc4e8088d0b8aaf54a351" }
 
 [tool.ruff]
 target-version = "py312"
