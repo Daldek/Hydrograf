@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-25 (Hydrograf 0.6.1 pins the tag `v0.9.1`, Hydrolog 0.9.1, range `>=0.9.0,<0.10`, of the release round of 2026-11-24: the pin in the text, the table of changes and the repository section; the commit of the round is history). 2026-11-24 (`develop`, 0.6.1.dev0, pinned the commit `1b25a91` of Hydrolog's `hotfix/0.9.1`, Hydrolog 0.9.1, Nogat's release set candidate-13, range `>=0.9.0,<0.10` unchanged: against `v0.9.0` it changes only `__version__` and the Obserwator of its extras, 3.2.1, so nothing Hydrograf calls changes, and its envelope copy is the same). 2026-11-22 (Hydrograf 0.6.0 pins the tag `v0.9.0`, Hydrolog 0.9.0, range `>=0.9.0,<0.10`, of the release set of the release round of 2026-11-21: the pin in the text, the table of changes, the repository section and the example's `hydrolog_version`; the commits of the round are history). 2026-11-22 (the pin `64f6e21`, Hydrolog 0.9.0.dev6, the head of Hydrolog's `develop` in Nogat's release set candidate-11, was `56771c6` earlier that day and `dbbbdb5` before it: of the modules Hydrograf calls only the tables of `route network --output-dir` change, now `hydrolog_node-hydrograph_<id>.csv` (Nogat DEV-19.21), with the description of a node's `id` in `hydrolog-network/1`; Hydrolog's extras pin Obserwator `4bf0ce3`, its copy of Nogat's error registry is that of standard 1.1 (`STANDARD_VERSION` of `_errors.py`), and the envelope copy is the same). 2026-11-21 (the pin `dbbbdb5`, Hydrolog 0.9.0.dev5, the development pin of the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2; Hydrograf 0.5.0 to 0.5.2 pinned Hydrolog's tags, 0.5.2 `v0.8.1` of Nogat's release set candidate-10: the equal-area slope `flow_path_equal_area_slope_m_per_m` handed over and read by Lutz as Jg with L the longest flow path, Snyder's L the longest flow path, Euler II from the PMAXTP depth-duration curve without `peak_position`, the whole-step checks of a design storm, Hydrolog's refusals and notices, `formula_versions` and `hydrolog_version`, the constants of 0.9.0, the envelope copy of Nogat `2bbb507`). 2026-11-15 (the pin `3ce7ee8` of Nogat's release set candidate-5, was `e5df06d`: of the modules Hydrograf calls only a docstring of `routing/network.py` changes, and the envelope copy is the same). 2026-11-15 (the pin `e5df06d` of Hydrolog's `develop`, 0.8.0.dev0 as the author set it on 2026-11-14, after `9e2cb61` of Nogat's release set candidate-4: of the modules Hydrograf calls only two docstrings change). 2026-11-14 (the pin `9e2cb61` of Nogat's release set candidate-4, was `930915d`: the modules Hydrograf calls are unchanged; it reads the same envelope copy as Hydrograf and routes a flat reach as linear reservoirs). 2026-11-14 (audit against the code of 2026-11-14: the exchange format is Hydrograf's `MorphometricParameters` handed in the keys of Hydrolog's `WatershedParameters`; the provider lines of every hand-off (PMAXTP, G, SG) and the envelope copy of Nogat `b29eada`; the interpolation of the PMAXTP provenance; tc through `WatershedParameters.calculate_tc`, no `ConcentrationTime`; the Hydrolog imports of every module; the 27 probabilities; the inputs of the urban regression; `trace_main_channel`). 2026-11-11: the network hand-off with every control point a node, `J…` at a confluence and `P…` elsewhere, numbered from the closing section upward, the outlet `O` and the names and `node_provenance` of plan `2026-11-11-network-nodes`; Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production then still ran
+**Ostatnia aktualizacja:** 2026-11-25 (Hydrograf 0.7.0 pins the tag `v0.10.0`, Hydrolog 0.10.0, Nogat's release set candidate-16, range `>=0.10.0,<0.11` (was `>=0.9.0,<0.10`; REL-5.2, REL-5.6): against `v0.9.1` `runoff`, `precipitation`, `morphometry`, `time` and `exceptions` are unchanged, `catalog.NOTICES` gains the notice `interval_not_computed` and `nogat_formulas` the coverage checks of Nogat CMP-6.11 with `FormulaSpec` unchanged, and its envelope copy is the same: the pin in the text, the table of changes and the repository section; the commit of the round is history). 2026-11-25 (Hydrograf 0.6.1 pinned the tag `v0.9.1`, Hydrolog 0.9.1, range `>=0.9.0,<0.10`, of the release round of 2026-11-24: the pin in the text, the table of changes and the repository section; the commit of the round is history). 2026-11-24 (`develop`, 0.6.1.dev0, pinned the commit `1b25a91` of Hydrolog's `hotfix/0.9.1`, Hydrolog 0.9.1, Nogat's release set candidate-13, range `>=0.9.0,<0.10` unchanged: against `v0.9.0` it changes only `__version__` and the Obserwator of its extras, 3.2.1, so nothing Hydrograf calls changes, and its envelope copy is the same). 2026-11-22 (Hydrograf 0.6.0 pins the tag `v0.9.0`, Hydrolog 0.9.0, range `>=0.9.0,<0.10`, of the release set of the release round of 2026-11-21: the pin in the text, the table of changes, the repository section and the example's `hydrolog_version`; the commits of the round are history). 2026-11-22 (the pin `64f6e21`, Hydrolog 0.9.0.dev6, the head of Hydrolog's `develop` in Nogat's release set candidate-11, was `56771c6` earlier that day and `dbbbdb5` before it: of the modules Hydrograf calls only the tables of `route network --output-dir` change, now `hydrolog_node-hydrograph_<id>.csv` (Nogat DEV-19.21), with the description of a node's `id` in `hydrolog-network/1`; Hydrolog's extras pin Obserwator `4bf0ce3`, its copy of Nogat's error registry is that of standard 1.1 (`STANDARD_VERSION` of `_errors.py`), and the envelope copy is the same). 2026-11-21 (the pin `dbbbdb5`, Hydrolog 0.9.0.dev5, the development pin of the release round of 2026-11-21, Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2; Hydrograf 0.5.0 to 0.5.2 pinned Hydrolog's tags, 0.5.2 `v0.8.1` of Nogat's release set candidate-10: the equal-area slope `flow_path_equal_area_slope_m_per_m` handed over and read by Lutz as Jg with L the longest flow path, Snyder's L the longest flow path, Euler II from the PMAXTP depth-duration curve without `peak_position`, the whole-step checks of a design storm, Hydrolog's refusals and notices, `formula_versions` and `hydrolog_version`, the constants of 0.9.0, the envelope copy of Nogat `2bbb507`). 2026-11-15 (the pin `3ce7ee8` of Nogat's release set candidate-5, was `e5df06d`: of the modules Hydrograf calls only a docstring of `routing/network.py` changes, and the envelope copy is the same). 2026-11-15 (the pin `e5df06d` of Hydrolog's `develop`, 0.8.0.dev0 as the author set it on 2026-11-14, after `9e2cb61` of Nogat's release set candidate-4: of the modules Hydrograf calls only two docstrings change). 2026-11-14 (the pin `9e2cb61` of Nogat's release set candidate-4, was `930915d`: the modules Hydrograf calls are unchanged; it reads the same envelope copy as Hydrograf and routes a flat reach as linear reservoirs). 2026-11-14 (audit against the code of 2026-11-14: the exchange format is Hydrograf's `MorphometricParameters` handed in the keys of Hydrolog's `WatershedParameters`; the provider lines of every hand-off (PMAXTP, G, SG) and the envelope copy of Nogat `b29eada`; the interpolation of the PMAXTP provenance; tc through `WatershedParameters.calculate_tc`, no `ConcentrationTime`; the Hydrolog imports of every module; the 27 probabilities; the inputs of the urban regression; `trace_main_channel`). 2026-11-11: the network hand-off with every control point a node, `J…` at a confluence and `P…` elsewhere, numbered from the closing section upward, the outlet `O` and the names and `node_provenance` of plan `2026-11-11-network-nodes`; Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production then still ran
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -59,7 +59,7 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 ### The morphometry and Hydrolog's `WatershedParameters`
 
 Hydrograf gives the morphometry of a watershed as `MorphometricParameters`
-(`backend/models/schemas.py`; `morphometry` of `POST /api/delineate-watershed`; required
+(`backend/models/schemas.py`; `morphometry` of `GET /api/v1/watershed/delineate`; required
 `area_km2`, `perimeter_km`, `length_km`, `elevation_min_m`, `elevation_max_m`). Hydrolog's
 `WatershedParameters` (0.9.0) requires only `area_km2`; each method checks the fields it
 needs (the Tc table below; Lutz's estimation `flow_path_length_km`, `Lc_km`,
@@ -105,8 +105,8 @@ GUI Hydrologa („Wczytaj z Hydrografa” w „Hydrogramie zlewni”) czyta kope
 `hydrolog-network/1`: jedna zlewnia cząstkowa `Z1` (pola `WatershedParameters`,
 `length_to_centroid_km` jako `Lc_km`) i wylot `OUT`. Buduje je `backend/core/handoff.py`:
 
-- `POST /api/delineate-watershed` → `handoff`: sama zlewnia, bez opadu i wyniku;
-- `POST /api/generate-hydrograph` → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
+- `GET /api/v1/watershed/delineate` → `handoff`: sama zlewnia, bez opadu i wyniku;
+- the job `hydrograph generate` (`POST /api/v1/jobs`) → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
   `tc_min`, n i K Nasha albo L, Lc, Ct, Cp Snydera, L being `flow_path_length_km`; AMC),
   `rainfall` (opad projektowy PMAXTP z kształtem hietogramu: `alpha` and `beta` of Beta,
   the depth-duration curve `depth_duration_mm` of Euler II, no `peak_position`; albo własny
@@ -143,9 +143,9 @@ and carries them into its own products (since `9537463`, in the pinned 0.9.0).
 
 ---
 
-## The hand-off of a network (`POST /api/delineate-network`, ADR-080)
+## The hand-off of a network (the job `network delineate`, ADR-080)
 
-`POST /api/delineate-network` returns in `handoff` one `nogat-handoff/1` around one
+The job `network delineate` (`POST /api/v1/jobs`) returns in `handoff` one `nogat-handoff/1` around one
 `hydrolog-network/1` holding the whole network, for Hydrolog's „Sieć i trasowanie”
 (`build_network_handoff` in `backend/core/handoff.py`; plans
 `docs/plans/2026-11-10-network-delineation.md`, D14 and D15, and
@@ -216,8 +216,8 @@ Muskingum-Cunge reach its section (Manning's n, width) before the network is rou
 lays the network out from its structure. The hand-offs of `delineate-watershed` and
 `generate-hydrograph` do not change: one subcatchment `Z1` into the outlet `OUT`.
 
-The pin: Hydrolog `v0.9.1` (0.9.1, Hydrograf 0.6.1;
-Hydrograf 0.6.0 pinned `v0.9.0`, 0.5.2 `v0.8.1`) has the
+The pin: Hydrolog `v0.10.0` (0.10.0, Nogat's release set candidate-16, Hydrograf 0.7.0;
+Hydrograf 0.6.1 pinned `v0.9.1`, 0.6.0 `v0.9.0`, 0.5.2 `v0.8.1`) has the
 `description` (and `position`) of every node in `hydrolog-network/1`, which a network's
 hand-off needs (Hydrolog `46c743f` or later),
 and reads the envelope copy of Nogat `2bbb507`, the same file as
@@ -284,7 +284,7 @@ Dodane klasy:
 - `WaterBalance` - bilans wodny (CN, retention, effective rainfall)
 - `HydrographMetadata` - metadane obliczeń (tc, metoda, model UH)
 
-### 6. Endpoint: `POST /api/generate-hydrograph`
+### 6. Endpoint: the job `hydrograph generate` (`POST /api/v1/jobs`)
 
 **Status:** ✅ Zaimplementowane
 
@@ -324,7 +324,7 @@ A refusal of Hydrolog (`InvalidParameterError`) becomes a problem document throu
 **Parametry wejściowe:**
 - `latitude`, `longitude` - współrzędne WGS84
 - `duration` - czas trwania opadu: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
-- `probability` - the exceedance probability [%], one of the 27 PMAXTP values (0.01 to 99.9; `GET /api/scenarios`)
+- `probability` - the exceedance probability [%], one of the 27 PMAXTP values (0.01 to 99.9; `GET /api/v1/hydrograph/scenarios`)
 - `timestep_min` - krok czasowy (default: 5 min, 1–60): the duration of a PMAXTP storm must be a whole number of steps, and Euler II's step at least 5 min (the GUI sends none: 5 min divides every PMAXTP duration)
 - `tc_method` - metoda tc: kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
@@ -339,7 +339,7 @@ A refusal of Hydrolog (`InvalidParameterError`) becomes a problem document throu
 **Ograniczenia:**
 - Maksymalna powierzchnia zlewni: 250 km² (limit metody SCS-CN)
 
-### 7. Endpoint: `GET /api/scenarios`
+### 7. Endpoint: `GET /api/v1/hydrograph/scenarios`
 
 **Status:** ✅ Zaimplementowane
 
@@ -349,7 +349,7 @@ Zwraca dostępne kombinacje parametrów hydrogramu (`durations`, `probabilities`
 
 **Status:** ✅ Zaimplementowane
 
-Endpoint `/api/delineate-watershed` zwraca teraz `morphometry` w odpowiedzi.
+Endpoint `/api/v1/watershed/delineate` zwraca teraz `morphometry` w odpowiedzi.
 
 ### 9. Skrypt: `scripts/analyze_watershed.py`
 
@@ -388,7 +388,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (tag `v0.9.1`, 0.9.1, range `>=0.9.0,<0.10`, Hydrograf 0.6.1; during its round the commit `1b25a91` of `hotfix/0.9.1`; the tag `v0.9.0` in Hydrograf 0.6.0; during its round the commits `dbbbdb5` and `64f6e21` of `develop`; was the tag `v0.8.1` in Hydrograf 0.5.2, v0.6.3 before ADR-060) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (tag `v0.10.0`, 0.10.0, range `>=0.10.0,<0.11`, Hydrograf 0.7.0; during its round the commit `d65472b` of `chore/release-0.10.0`, Nogat's release set candidate-16; the tag `v0.9.1` in Hydrograf 0.6.1; during its round the commit `1b25a91` of `hotfix/0.9.1`; the tag `v0.9.0` in Hydrograf 0.6.0; during its round the commits `dbbbdb5` and `64f6e21` of `develop`; was the tag `v0.8.1` in Hydrograf 0.5.2, v0.6.3 before ADR-060) | ✅ |
 | `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -400,7 +400,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/api/endpoints/watershed.py` | Unified endpoint — tryb precomputed (snap-to-stream + BFS) i precise (pyflwdir on-the-fly), morphometry w response (ADR-050) | ✅ |
 | `backend/api/endpoints/hydrograph.py` | Endpoint hydrogramu (CatchmentGraph BFS) | ✅ |
 | `backend/api/main.py` | + router hydrograph | ✅ |
-| `backend/api/endpoints/network.py`, `backend/core/handoff.py` | `POST /api/delineate-network` and `build_network_handoff`: the hand-off of a network (ADR-080) | ✅ |
+| `backend/api/endpoints/network.py`, `backend/core/handoff.py` | the command `network delineate` and `build_network_handoff`: the hand-off of a network (ADR-080) | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
 | `backend/tests/unit/test_morphometry.py` | Testy wskaźników kształtu | ✅ |
 | `backend/tests/integration/test_hydrograph.py` | Testy integracyjne endpointu | ✅ |
@@ -523,17 +523,23 @@ Missing → 422 `snyder_parameters_missing` (reason `missing_morphometry`).
 ### Generowanie hydrogramu
 
 ```bash
-curl -X POST http://localhost:8000/api/generate-hydrograph \
+curl -X POST http://localhost:8000/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "latitude": 52.23,
-    "longitude": 21.01,
-    "duration": "1h",
-    "probability": 10,
-    "tc_method": "kirpich",
-    "hietogram_type": "beta"
+    "command": "hydrograph generate",
+    "options": {
+      "latitude": 52.23,
+      "longitude": 21.01,
+      "duration": "1h",
+      "probability": 10,
+      "tc_method": "kirpich",
+      "hietogram_type": "beta"
+    }
   }'
 ```
+
+The job answers `202`; `GET /api/v1/jobs/<id>/result` gives, once it has ended, the envelope
+`{status, result, notices}` whose `result` is the document below, with `schema` first.
 
 ### Przykładowa odpowiedź
 
@@ -621,7 +627,7 @@ the PMAXTP grid and the hyetograph of a design storm, the SCS-CN retention and r
 AMC conversion for AMC I and III, the time of concentration and the SCS unit hydrograph,
 Snyder's lag and curve or Nash's IUH with Lutz's or the urban estimation, and the
 convolution; on the full path joined by those of the delineated watershed. A watershed
-(`POST /api/delineate-watershed`, `watershed.formula_versions`) carries `tr55_cn` for a CN of
+(`GET /api/v1/watershed/delineate`, `watershed.formula_versions`) carries `tr55_cn` for a CN of
 its land cover and `equal_area_slope` for a measured Jg (`watershed_specs`). The hand-off's
 `result.computed_with` carries the same `version` and `formula_versions`.
 
@@ -642,11 +648,11 @@ keeps Hydrolog's message as `invalid_parameters`.
 ## Repozytorium Hydrologa
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
-- **Tag:** `v0.9.1` (on GitHub; during the round Hydrograf pinned the commit `1b25a91` of `hotfix/0.9.1`)
-- **Wersja:** 0.9.1 (tag `v0.9.1`, range `>=0.9.0,<0.10`), pinned by Hydrograf 0.6.1 from the release round of 2026-11-24 (during the round the commit `1b25a9184c2bfea07eebc4e8088d0b8aaf54a351` of `hotfix/0.9.1`, Nogat's release set candidate-13): against `v0.9.0` only `__version__` and the Obserwator 3.2.1 of its extras change. 0.9.0 (tag `v0.9.0`) was pinned by Hydrograf 0.6.0 from the release set of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`): Lutz's Jg as the equal-area slope, ADR-0053; Snyder's L the longest flow path, ADR-0043; Euler II from a depth-duration curve, ADR-0042; hyetographs of whole steps, ADR-0046; formula specs with `formula_version`; the exact Kirpich and NRCS constants; the SCS unit hydrograph to 51.8 km². During the round Hydrograf pinned commits of Hydrolog's `develop`, last `64f6e219b0199e1ad237c6247e54ac87651c39a7` (0.9.0.dev6, the head in Nogat's release set candidate-11, 2026-11-22; against `56771c6`, pinned earlier that day, it changed only Nogat's error registry of standard 1.1, `_errors.py`'s `STANDARD_VERSION` and the Obserwator pin of its extras; against `dbbbdb5`, the head for step 2 of that plan, the modules Hydrograf calls changed only in the tables of `route network --output-dir`, now `hydrolog_node-hydrograph_<id>.csv`). Hydrograf 0.5.0 pinned `v0.8.0`, 0.5.1 and 0.5.2 `v0.8.1`, the latter of Nogat's release set candidate-10. Before the tags: `3ce7ee8` of Nogat's release set candidate-5, 2026-11-15; against `e5df06d` the modules Hydrograf calls change only in a docstring of `routing/network.py`; `e5df06d` was the version set by the author on 2026-11-14, was 1.0.0.dev0; before: `develop` of Nogat's release set candidate-4: station statistics, the admin panel of its GUI, dead code removed, the logging gaps of Nogat DEV-12.5, DEV-12.7 and DEV-20.10 closed; was `930915d` of candidate-3, with the stages W1 and W2 of Hydrolog's network wizard, before it `759d7ef` of candidate-2 and `4fad769`, which added the TR-55 rows that `core/cn_tables.py` uses: water at 98, paved roads with open ditches, residential 1/4 acre, woods–grass; ADR-075 amendment 2026-11-09). Against `930915d` the modules Hydrograf calls are unchanged (`time/`, `runoff/` but `nash_iuh.py`, `morphometry/watershed_params.py`, `_ranges.py`, `precipitation/`); `nash_iuh.py` loses `LutzCalculationResult.tp_iuh_min` and `morphometry/terrain.py` `TerrainAnalysis.mean_elevation_from_dem`, neither used here, and `routing/document.py` takes `attribution` and `terms_notice` at the top of a network document. Against `759d7ef` the modules Hydrograf calls change only by additions: `WatershedParameters` gains `nash_parameters` (`NASH_INPUTS` in `_ranges.py`) and the `uh_params` of `HydrographGenerator` an optional `estimated` (default False); `time/concentration.py` and `runoff/cn_lookup.py` are unchanged. Against `4fad769` only the descriptions of `residential_low` and `residential_medium` in `runoff/cn_lookup.py` change; against `1ffcd6b` only `runoff/cn_lookup.py` changes the results of the modules Hydrograf calls
+- **Tag:** `v0.10.0` (on GitHub; during the round Hydrograf pinned the commit `d65472b` of `chore/release-0.10.0`; Hydrograf 0.6.1 pinned the tag `v0.9.1`, during its round the commit `1b25a91` of `hotfix/0.9.1`)
+- **Wersja:** 0.10.0 (tag `v0.10.0`, range `>=0.10.0,<0.11`), pinned by Hydrograf 0.7.0 from the release round of 2026-11-25 (during the round the commit `d65472b5cdb54e0e9810728a5ef4f3350e67fd35` of `chore/release-0.10.0`, Nogat's release set candidate-16): against `v0.9.1` `runoff`, `precipitation`, `morphometry`, `time` and `exceptions` are unchanged; `catalog.NOTICES` gains the notice `interval_not_computed` (flow statistics) and `nogat_formulas` the coverage checks of Nogat CMP-6.11 with `FormulaSpec` unchanged. 0.9.1 (tag `v0.9.1`, range `>=0.9.0,<0.10`) was pinned by Hydrograf 0.6.1 from the release round of 2026-11-24 (during the round the commit `1b25a9184c2bfea07eebc4e8088d0b8aaf54a351` of `hotfix/0.9.1`, Nogat's release set candidate-13): against `v0.9.0` only `__version__` and the Obserwator 3.2.1 of its extras change. 0.9.0 (tag `v0.9.0`) was pinned by Hydrograf 0.6.0 from the release set of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`): Lutz's Jg as the equal-area slope, ADR-0053; Snyder's L the longest flow path, ADR-0043; Euler II from a depth-duration curve, ADR-0042; hyetographs of whole steps, ADR-0046; formula specs with `formula_version`; the exact Kirpich and NRCS constants; the SCS unit hydrograph to 51.8 km². During the round Hydrograf pinned commits of Hydrolog's `develop`, last `64f6e219b0199e1ad237c6247e54ac87651c39a7` (0.9.0.dev6, the head in Nogat's release set candidate-11, 2026-11-22; against `56771c6`, pinned earlier that day, it changed only Nogat's error registry of standard 1.1, `_errors.py`'s `STANDARD_VERSION` and the Obserwator pin of its extras; against `dbbbdb5`, the head for step 2 of that plan, the modules Hydrograf calls changed only in the tables of `route network --output-dir`, now `hydrolog_node-hydrograph_<id>.csv`). Hydrograf 0.5.0 pinned `v0.8.0`, 0.5.1 and 0.5.2 `v0.8.1`, the latter of Nogat's release set candidate-10. Before the tags: `3ce7ee8` of Nogat's release set candidate-5, 2026-11-15; against `e5df06d` the modules Hydrograf calls change only in a docstring of `routing/network.py`; `e5df06d` was the version set by the author on 2026-11-14, was 1.0.0.dev0; before: `develop` of Nogat's release set candidate-4: station statistics, the admin panel of its GUI, dead code removed, the logging gaps of Nogat DEV-12.5, DEV-12.7 and DEV-20.10 closed; was `930915d` of candidate-3, with the stages W1 and W2 of Hydrolog's network wizard, before it `759d7ef` of candidate-2 and `4fad769`, which added the TR-55 rows that `core/cn_tables.py` uses: water at 98, paved roads with open ditches, residential 1/4 acre, woods–grass; ADR-075 amendment 2026-11-09). Against `930915d` the modules Hydrograf calls are unchanged (`time/`, `runoff/` but `nash_iuh.py`, `morphometry/watershed_params.py`, `_ranges.py`, `precipitation/`); `nash_iuh.py` loses `LutzCalculationResult.tp_iuh_min` and `morphometry/terrain.py` `TerrainAnalysis.mean_elevation_from_dem`, neither used here, and `routing/document.py` takes `attribution` and `terms_notice` at the top of a network document. Against `759d7ef` the modules Hydrograf calls change only by additions: `WatershedParameters` gains `nash_parameters` (`NASH_INPUTS` in `_ranges.py`) and the `uh_params` of `HydrographGenerator` an optional `estimated` (default False); `time/concentration.py` and `runoff/cn_lookup.py` are unchanged. Against `4fad769` only the descriptions of `residential_low` and `residential_medium` in `runoff/cn_lookup.py` change; against `1ffcd6b` only `runoff/cn_lookup.py` changes the results of the modules Hydrograf calls
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.9.1" }`), instalowana przez `uv sync --locked`; the tag is on GitHub, so every machine resolves it, within the range `hydrolog>=0.9.0,<0.10` (REL-5.3, REL-5.6)
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.10.0" }`), instalowana przez `uv sync --locked`; the tag is on GitHub, so every machine resolves it, within the range `hydrolog>=0.10.0,<0.11` (REL-5.2, REL-5.3, REL-5.6)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-11-24
+**Ostatnia aktualizacja:** 2026-11-25

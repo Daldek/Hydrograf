@@ -449,15 +449,15 @@ Launch:                                                            🚀
 #### **Phase 1: Backend MVP (3 weeks)**
 **Milestones:**
 - ☑ FastAPI + PostgreSQL setup
-- ☑ Endpoint: POST `/api/delineate-watershed`
+- ☑ Endpoint: POST `/api/delineate-watershed` (today `GET /api/v1/watershed/delineate`, ADR-091)
 - ☑ Endpoint: POST `/api/select-stream` — stream segment selection + upstream traversal (MERGED into POST `/api/delineate-watershed` with `threshold_m2` in ADR-050)
-- ☑ Endpoint: POST `/api/terrain-profile` — terrain profile along a polyline
-- ☑ Endpoint: GET `/api/depressions` — terrain depressions with filters
+- ☑ Endpoint: POST `/api/terrain-profile` — terrain profile along a polyline (today `POST /api/v1/terrain/profile`, ADR-091)
+- ☑ Endpoint: GET `/api/depressions` — terrain depressions with filters (today `GET /api/v1/depressions/list`, ADR-091)
 - ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — MVT tiles of streams
 - ☑ Endpoint: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf` — MVT tiles of sub-catchments
 - ☑ Endpoint: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf` — MVT tiles of BDOT10k land cover
-- ☑ Endpoint: GET `/api/tiles/thresholds` — available flow accumulation thresholds
-- ☑ Endpoint: GET `/api/scenarios` — list of the available rainfall scenarios
+- ☑ Endpoint: GET `/api/tiles/thresholds` — available flow accumulation thresholds (today `GET /api/v1/layers/thresholds`, ADR-091)
+- ☑ Endpoint: GET `/api/scenarios` — list of the available rainfall scenarios (today `GET /api/v1/hydrograph/scenarios`, ADR-091)
 - ☑ Endpoint: GET `/health` — health check
 - ☑ Watershed delineation algorithm over the graph (in-memory CatchmentGraph + BFS)
 - ☑ Calculation of the physiographic parameters
@@ -469,7 +469,7 @@ Launch:                                                            🚀
 - ☑ SCS Curve Number model
 - ☑ SCS unit hydrograph
 - ☑ Numerical convolution
-- ☑ Endpoint: POST `/api/generate-hydrograph`
+- ☑ Endpoint: POST `/api/generate-hydrograph` (today the job `hydrograph generate` of `POST /api/v1/jobs`, ADR-091)
 - ☑ Validation on 3 sample watersheds
 
 #### **Phase 3: Frontend (2 weeks)**
@@ -477,7 +477,7 @@ Launch:                                                            🚀
 - ☑ Leaflet map with point selection (polygon drawing mode, object selection mode)
 - ☑ Rainfall scenario form
 - ☑ API calls with error handling
-- ☑ Chart.js charts (hydrograph, histogram)
+- ☑ Chart.js charts (hydrograph, histogram) (REPLACED by the charts of Nogat's kit, with their zoom and PNG, ADR-090)
 - ☑ CSV/GeoJSON export (today, with the file names of Nogat DEV-19.21: the hyetograph as CSV and JSON, `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>]` or `hydrograf_hyetograph_custom`, its PMAXTP points as GeoJSON, `hydrograf_pmaxtp-points_<…>.geojson`, and the hand-off file to Hydrolog, `hydrograf_handoff_<subject>.json`)
 - ☑ Glassmorphism UI with a draggable side panel (REPLACED by the Nogat visual identity and the Archiwista shell, ADR-065)
 - ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic) (REPLACED: today OpenFreeMap grey, OSM GUGiK grey, „Ortofotomapa GUGiK” and none; ADR-065, ADR-085)
@@ -488,7 +488,7 @@ Launch:                                                            🚀
 #### **Phase 3b: Admin panel (ADR-034)**
 **Milestones** (the panel of this phase was REPLACED on 2026-11-14 by one panel on Nogat's GUI kit at `/admin/`, 1.0.0 then and 1.1.0 today, ADR-086: „Zgłoszenia”, „Statystyki”, „Stan”, „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja”; `/admin` answers 308):
 - ☑ Frontend `/admin` — glassmorphism, 4 sections (Dashboard, Bootstrap, Resources, Cleanup)
-- ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream); `GET /api/admin/dashboard` is gone, replaced by `GET /api/admin/status`, with `GET /api/admin/stats` and the reports `GET /api/admin/feedback` beside it
+- ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream); `GET /api/admin/dashboard` is gone, replaced by `GET /api/v1/admin/status`, with `GET /api/v1/admin/stats` and the reports `GET /api/v1/admin/feedback` beside it
 - ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY; today also ADMIN_API_KEY_FILE, and without either every admin route answers 401 `admin_key_not_configured`)
 - ☑ Running bootstrap.py from the panel + real-time SSE logs
 - ☑ Resource monitoring: CPU/RAM (psutil), DB pool, CatchmentGraph cache
@@ -552,11 +552,12 @@ Launch:                                                            🚀
 
 ---
 
-**Document version:** 1.4
-**Date of the last update:** 2026-11-22
+**Document version:** 1.5
+**Date of the last update:** 2026-11-25
 **Status:** Approved — the project is in active development (CP4 finished, CP5 MVP in preparation)
 
 **Change history:**
+- 1.5 (2026-11-25): the charts of Nogat's kit instead of Chart.js in Phase 3 (ADR-090)
 - 1.4 (2026-11-22): the release state of Hydrograf 0.6.0: the export file names of Nogat DEV-19.21 in Phase 3 and Nogat's GUI kit 1.1.0 of the admin panel in Phase 3b
 - 1.3 (2026-11-14): audit against the code of 2026-11-14: a public service (1.1, NFR-04) and no personal data stored; the data sources (BDOT10k without CORINE, SoilGrids, streams from the DEM; PMAXTP with 16 durations and 27 probabilities, also in US-03); the default base layer; notes on the milestones replaced since: `/api/select-stream`, the export, the shell, the base layers, the modules and the admin panel of ADR-086
 - 1.2 (2026-10-25): translated to English (DEV-2.1); the content is unchanged

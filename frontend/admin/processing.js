@@ -283,11 +283,17 @@
 
     // ---------------------------------------------------------------- the map
 
-    /** The rectangle drawn on a Leaflet map of GUGiK's grey OpenStreetMap, in a dialog. */
+    /**
+     * The rectangle drawn on a Leaflet map in a dialog, over the first raster base map of
+     * the kit's catalogue that the deployment allows (GET /api/v1/basemaps: GUGiK's grey
+     * OpenStreetMap by default, none without one), drawn by the kit's leafletBasemap with
+     * its credit (Nogat DEV-15.13, DEV-15.15; ADR-089).
+     */
     var picker = (function () {
         var dialog = document.getElementById('bbox-dialog');
         var opener = document.getElementById('bbox-map-open');
         var confirmButton = document.getElementById('bbox-confirm');
+        var notice = document.getElementById('bbox-map-notice');
         var map = null;
         var rectangle = null;
         var anchor = null;
@@ -302,17 +308,40 @@
             rectangle = L.rectangle(bounds, { color: colour, weight: 2, fillOpacity: 0.15 }).addTo(map);
         }
 
+        /**
+         * Draw the base map through the kit's adapter; one whose provider does not answer
+         * leaves the map and is said under it, the rectangle still drawn without it.
+         */
+        async function showBasemap() {
+            var entries;
+            try {
+                var response = await fetch('/api/v1/basemaps');
+                entries = response.ok ? await response.json() : [];
+            } catch (error) {
+                entries = [];
+            }
+            var entry = entries.find(function (candidate) {
+                return candidate.kind === 'raster' && Array.isArray(candidate.blocks);
+            });
+            if (!entry) return;
+            var kit = await import('../nogat/nogat-basemaps.js?v=20f6db6ae1');
+            function onFailure() {
+                notice.textContent = kit.BASEMAP_TEXTS.failed + ': ' + entry.label +
+                    '. Prostokąt można narysować także bez podkładu.';
+                notice.hidden = false;
+            }
+            try {
+                (await kit.leafletBasemap(L, entry, { onFailure: onFailure })).addTo(map);
+            } catch (error) {
+                // onFailure has said it
+            }
+        }
+
         function create() {
             map = L.map(document.getElementById('bbox-map'), { center: [52.0, 19.0], zoom: 6 });
-            L.tileLayer(
-                'https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png',
-                {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ' +
-                        '<a href="https://www.geoportal.gov.pl">GUGiK</a>',
-                    className: 'basemap-grey',
-                    maxZoom: 19,
-                },
-            ).addTo(map);
+            showBasemap().catch(function (error) {
+                console.warn('The area map has no base map:', error.message);
+            });
             map.on('mousedown', function (event) {
                 if (event.originalEvent.button !== 0) return;
                 anchor = event.latlng;

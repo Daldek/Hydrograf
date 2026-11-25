@@ -7,7 +7,7 @@ salt and the hashes stay in this process's memory to count the day's distinct vi
 and are never written. Each UTC day is one JSON object per line of
 ``<data_dir>/hydrograf/stats.jsonl``, in date order, with the keys of ``TOTALS`` after
 ``date``; ``api.traffic`` rewrites the day's line every 10 minutes, at 00:00 UTC and at
-shutdown, and ``GET /api/admin/stats`` reads the days of a period. What each total
+shutdown, and ``GET /api/v1/admin/stats`` reads the days of a period. What each total
 counts is in the README ("Statistics"); the requests of the admin panel count in none
 (Nogat DEV-15.13).
 """

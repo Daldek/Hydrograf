@@ -3,7 +3,8 @@ Tests for hydrograph request options: AMC, fractional CN, own rainfall
 series, and the public layer availability endpoint.
 
 The fast path (pre-computed morphometry in the request) is used so no
-watershed delineation is needed; PMAXTP lookup is patched.
+watershed delineation is needed; PMAXTP lookup is patched. ``hydrograph generate``
+runs as a job (ADR-091), so its invalid options are named under ``/body/options``.
 """
 
 import json
@@ -24,6 +25,7 @@ from models.schemas import (
     CustomPrecipitation,
     HydrographRequest,
 )
+from tests.job_runner import run_job
 
 _HG = "api.endpoints.hydrograph"
 
@@ -151,10 +153,17 @@ def test_custom_hietogram_uses_interval_end_times():
 
 
 def _post(client, body) -> dict[str, Any]:
-    response = client.post("/api/generate-hydrograph", json=body)
+    response = run_job(client, "hydrograph generate", body)
     assert response.status_code == 200, response.text
-    data: dict[str, Any] = response.json()
+    data: dict[str, Any] = response.json()["result"]
     return data
+
+
+def _area_limit_km2(client) -> float:
+    response = client.get("/api/v1/hydrograph/scenarios")
+    assert response.status_code == 200, response.text
+    limit: float = response.json()["result"]["area_limit_km2"]
+    return limit
 
 
 class TestAmc:
@@ -204,11 +213,9 @@ class TestAreaLimit:
         return _request(morphometry=morphometry)
 
     def test_area_above_the_published_limit_is_unsupported(self, client, pmaxtp_45mm):
-        limit = client.get("/api/scenarios").json()["area_limit_km2"]
+        limit = _area_limit_km2(client)
 
-        response = client.post(
-            "/api/generate-hydrograph", json=self._area(limit + 0.01)
-        )
+        response = run_job(client, "hydrograph generate", self._area(limit + 0.01))
 
         assert response.status_code == 422
         problem = response.json()
@@ -217,7 +224,7 @@ class TestAreaLimit:
         assert problem["details"]["limit_km2"] == limit
 
     def test_area_at_the_limit_is_computed(self, client, pmaxtp_45mm):
-        limit = client.get("/api/scenarios").json()["area_limit_km2"]
+        limit = _area_limit_km2(client)
 
         data = _post(client, self._area(limit))
 
@@ -269,16 +276,19 @@ class TestCustomPrecipitation:
         assert precip["total_mm"] == 45.0
 
     def test_invalid_series_returns_400_with_polish_message(self, client, pmaxtp_45mm):
-        response = client.post(
-            "/api/generate-hydrograph",
-            json=_request(
+        response = run_job(
+            client,
+            "hydrograph generate",
+            _request(
                 custom_precipitation={"timestep_min": 10, "depths_mm": [1.0, -2.0]}
             ),
         )
         assert response.status_code == 400
         problem = response.json()
         assert problem["code"] == "validation_error"
-        assert problem["details"]["fields"] == ["/body/custom_precipitation/depths_mm"]
+        assert problem["details"]["fields"] == [
+            "/body/options/custom_precipitation/depths_mm"
+        ]
         assert "nieujemną" in problem["errors"][0]["message"]
 
 
@@ -319,8 +329,10 @@ class TestPmaxtpGrid:
     def test_a_point_off_the_grid_is_a_validation_error(self):
         rows = [SimpleNamespace(x=280000.0, y=350000.0, precipitation_mm=40.0)]
         try:
-            response = self._client_with_rows(rows).post(
-                "/api/generate-hydrograph", json=_request(pmaxtp_grid=self.GRID)
+            response = run_job(
+                self._client_with_rows(rows),
+                "hydrograph generate",
+                _request(pmaxtp_grid=self.GRID),
             )
         finally:
             app.dependency_overrides.clear()
@@ -335,9 +347,13 @@ class TestPmaxtpGrid:
     def test_a_non_finite_cell_value_is_a_validation_error(self, field, value):
         grid = [dict(self.GRID[0], **{field: value}), self.GRID[1]]
         try:
+            job = {
+                "command": "hydrograph generate",
+                "options": _request(pmaxtp_grid=grid),
+            }
             response = self._client_with_rows([]).post(
-                "/api/generate-hydrograph",
-                content=json.dumps(_request(pmaxtp_grid=grid)),  # Infinity, NaN
+                "/api/v1/jobs",
+                content=json.dumps(job),  # Infinity, NaN
                 headers={"Content-Type": "application/json"},
             )
         finally:
@@ -346,7 +362,7 @@ class TestPmaxtpGrid:
         assert response.status_code == 400
         problem = response.json()
         assert problem["code"] == "validation_error"
-        assert problem["details"]["fields"] == [f"/body/pmaxtp_grid/0/{field}"]
+        assert problem["details"]["fields"] == [f"/body/options/pmaxtp_grid/0/{field}"]
 
     def test_without_the_grid_the_depth_is_taken_at_the_point(
         self, client, pmaxtp_45mm
@@ -410,30 +426,32 @@ class TestArealReductionFactor:
     def test_a_factor_outside_0_1_is_refused_in_polish(
         self, client, pmaxtp_45mm, factor, message
     ):
-        response = client.post(
-            "/api/generate-hydrograph",
-            json=_request(areal_reduction_factor=factor),
+        response = run_job(
+            client,
+            "hydrograph generate",
+            _request(areal_reduction_factor=factor),
             headers={"Accept-Language": "pl"},
         )
 
         assert response.status_code == 400
         problem = response.json()
         assert problem["code"] == "validation_error"
-        assert problem["details"]["fields"] == ["/body/areal_reduction_factor"]
+        assert problem["details"]["fields"] == ["/body/options/areal_reduction_factor"]
         assert problem["errors"][0]["message"] == message
         pmaxtp_45mm.assert_not_called()
 
 
 class TestNashEstimation:
     def test_estimation_from_tc_is_refused_with_the_allowed_methods(self, client):
-        response = client.post(
-            "/api/generate-hydrograph",
-            json=_request(uh_model="nash", nash_estimation="from_tc"),
+        response = run_job(
+            client,
+            "hydrograph generate",
+            _request(uh_model="nash", nash_estimation="from_tc"),
         )
         assert response.status_code == 400
         problem = response.json()
         assert problem["code"] == "validation_error"
-        assert problem["details"]["fields"] == ["/body/nash_estimation"]
+        assert problem["details"]["fields"] == ["/body/options/nash_estimation"]
         assert problem["errors"][0]["message"] == (
             "Input should be 'from_lutz' or 'from_urban_regression'"
         )
@@ -456,14 +474,20 @@ class TestLayerAvailability:
     def test_reports_sewer_presence(self, exists):
         db = MagicMock()
         db.execute.return_value.scalar.return_value = exists
-        response = self._client_with_db(db).get("/api/layers")
+        response = self._client_with_db(db).get("/api/v1/layers/availability")
         assert response.status_code == 200
-        assert response.json() == {"sewer": exists}
+        assert response.json()["result"] == {
+            "schema": "hydrograf-layers/1",
+            "sewer": exists,
+        }
 
     def test_query_failure_reports_no_sewer(self):
         db = MagicMock()
         db.execute.side_effect = RuntimeError("relation does not exist")
-        response = self._client_with_db(db).get("/api/layers")
+        response = self._client_with_db(db).get("/api/v1/layers/availability")
         assert response.status_code == 200
-        assert response.json() == {"sewer": False}
+        assert response.json()["result"] == {
+            "schema": "hydrograf-layers/1",
+            "sewer": False,
+        }
         db.rollback.assert_called_once()

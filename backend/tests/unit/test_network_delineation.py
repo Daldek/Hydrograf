@@ -317,7 +317,7 @@ def mouths(run, graph, db, settings):
 
 
 def panel_of(graph, db, tree, element):
-    """The response of POST /api/delineate-watershed for the units of an element."""
+    """The result of `watershed delineate` for the units of an element."""
     item = element.subcatchment
     units = tree.units[tree.unit_elements == item.number]
     outlet_unit = item.outlet.unit
@@ -332,8 +332,6 @@ def panel_of(graph, db, tree, element):
         boundary_to_polygon(boundary),
         units,
         outlet_unit,
-        graph.get_segment_idx(outlet_unit),
-        UNITS,
         UNITS,
         stats["area_km2"],
         stats,

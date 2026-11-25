@@ -1,12 +1,14 @@
-"""POST /api/delineate-network on the rasters of a synthetic process_dem run (ADR-080).
+"""The jobs of `network delineate` on the rasters of a synthetic run (ADR-080, ADR-091).
 
 process_dem runs over a main river with three tributaries (tests.fixtures.pipeline_run,
 river_network_dem); DEM_DIR points at its saved rasters, the catchment graph of its
 units of 1 ha is built from the rows it would insert, and a fake database answers the
-queries of the measures. The hand-off of the response validates against the copied
-envelope and the pinned Hydrolog's network schema, and Hydrolog reads its payload: its
-`read_network` once the person adds what the hand-off leaves to Sieć (the rainfall and
-the section of each reach), `route schematic --structure-only` as it is handed off.
+queries of the measures. A network runs only as a job (ADR-091): each request starts
+one through ``POST /api/v1/jobs`` and reads its result (``tests.job_runner``). The
+hand-off of the result validates against the copied envelope and the pinned Hydrolog's
+network schema, and Hydrolog reads its payload: its `read_network` once the person adds
+what the hand-off leaves to Sieć (the rainfall and the section of each reach),
+`route schematic --structure-only` as it is handed off.
 """
 
 import json
@@ -45,6 +47,7 @@ from tests.fixtures.pipeline_run import (
     run_pipeline,
     soil_layout,
 )
+from tests.job_runner import run_job
 from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -62,7 +65,7 @@ NETWORK = Draft202012Validator(
         .read_text(encoding="utf-8")
     )
 )
-URL = "/api/delineate-network"
+COMMAND = "network delineate"
 OUTLET = (219, 85)  # the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river, (row,
 # column): a click there moves to the confluence, a node of the network (N3)
@@ -172,9 +175,9 @@ def structure(body):
 
 @pytest.fixture
 def mouths(client, run):
-    response = client.post(URL, json=at_the_mouths(run))
+    response = run_job(client, COMMAND, at_the_mouths(run))
     assert response.status_code == 200, response.text
-    body: dict[str, Any] = response.json()
+    body: dict[str, Any] = response.json()["result"]
     return body
 
 
@@ -364,10 +367,10 @@ class TestTheHandoff:
         self, client, run, cell, nodes
     ):
         # The plan's cases 1 and 2: a node of one inflow or of two
-        response = client.post(URL, json=network_of(run, ("A", cell, "Rzeka")))
+        response = run_job(client, COMMAND, network_of(run, ("A", cell, "Rzeka")))
 
         assert response.status_code == 200, response.text
-        handoff = response.json()["handoff"]
+        handoff = response.json()["result"]["handoff"]
         payload = handoff["payload"]
         assert [e.message for e in ENVELOPE.iter_errors(handoff)] == []
         assert [e.message for e in NETWORK.iter_errors(payload)] == []
@@ -455,10 +458,11 @@ class TestTheNames:
 
     @pytest.mark.parametrize(("body", "names"), NAMES.values(), ids=NAMES.keys())
     def test_each_element_and_node_says_what_it_is(self, client, run, body, names):
-        response = client.post(URL, json=body(run))
+        response = run_job(client, COMMAND, body(run))
 
         assert response.status_code == 200, response.text
-        nodes = {n["id"]: n for n in response.json()["handoff"]["payload"]["nodes"]}
+        payload = response.json()["result"]["handoff"]["payload"]
+        nodes = {n["id"]: n for n in payload["nodes"]}
         found = {}
         for node_id, node in nodes.items():
             if node["type"] == "subcatchment":
@@ -471,9 +475,9 @@ class TestTheNames:
     def test_a_closing_section_without_a_name_names_the_network_by_its_place(
         self, client, run
     ):
-        response = client.post(URL, json=network_of(run, ("A", AT_T1)))
+        response = run_job(client, COMMAND, network_of(run, ("A", AT_T1)))
 
-        handoff = response.json()["handoff"]
+        handoff = response.json()["result"]["handoff"]
         assert re.fullmatch(
             r"Zlewnia \d+,\d{5}° N, \d+,\d{5}° E, sieć \(2 zlewnie\)",
             handoff["subject"],
@@ -493,10 +497,10 @@ class TestTheNames:
             ("Q", MAIN_ABOVE_T1),
         )
 
-        response = client.post(URL, json=body)
+        response = run_job(client, COMMAND, body)
 
         assert response.status_code == 200, response.text
-        network = response.json()
+        network = response.json()["result"]
         (gauge,) = [j for j in network["junctions"] if j["point"] == "G"]
         (river,) = [
             s
@@ -550,10 +554,10 @@ class TestShortAndFlatReaches:
     def test_a_point_100_m_above_a_confluence_gets_its_move_to_the_node(
         self, client, run
     ):
-        response = client.post(URL, json=above_a_confluence(run))
+        response = run_job(client, COMMAND, above_a_confluence(run))
 
         assert response.status_code == 200, response.text
-        body = response.json()
+        body = response.json()["result"]
         p2 = next(p for p in body["points"] if p["id"] == "P2")
         assert (p2["at_node"], p2["node"]) == (False, "P2")
         reach = next(r for r in body["reaches"] if r["from"] == p2["node"])
@@ -571,7 +575,7 @@ class TestShortAndFlatReaches:
         assert run_cell(notice["move_to"]) == T2_MOUTH
 
     def test_the_point_moved_there_is_the_confluence(self, client, run):
-        first = client.post(URL, json=above_a_confluence(run)).json()
+        first = run_job(client, COMMAND, above_a_confluence(run)).json()["result"]
         reach_id = next(
             r for r in first["reaches"] if r["from"] == first["points"][2]["node"]
         )["id"]
@@ -579,15 +583,15 @@ class TestShortAndFlatReaches:
         body = above_a_confluence(run)
         body["points"][1].update(move_to)
 
-        response = client.post(URL, json=body)
+        response = run_job(client, COMMAND, body)
 
         assert response.status_code == 200, response.text
-        moved = response.json()
+        moved = response.json()["result"]
         p2 = next(p for p in moved["points"] if p["id"] == "P2")
         assert p2["at_node"] is True
         assert reach_notices(moved) == {}
         # T2 enters P2's node with no reach: the network of the points at the mouths
-        mouths = client.post(URL, json=at_the_mouths(run)).json()
+        mouths = run_job(client, COMMAND, at_the_mouths(run)).json()["result"]
         assert structure(moved) == structure(mouths)
 
     def test_a_flat_reach_is_a_notice_and_a_lag_in_the_handoff(
@@ -595,10 +599,10 @@ class TestShortAndFlatReaches:
     ):
         monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R2"))
 
-        response = client.post(URL, json=at_the_mouths(run))
+        response = run_job(client, COMMAND, at_the_mouths(run))
 
         assert response.status_code == 200, response.text
-        body = response.json()
+        body = response.json()["result"]
         r2 = next(r for r in body["reaches"] if r["id"] == "R2")
         lag_min = max(1, round(r2["length_km"] * 1000 / 0.5 / 60))
         # R2 runs from P2's node down to P1's: no confluence the network makes to
@@ -631,7 +635,8 @@ class TestShortAndFlatReaches:
         self, client, run, monkeypatch
     ):
         monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R1"))
-        payload = client.post(URL, json=at_the_mouths(run)).json()["handoff"]["payload"]
+        response = run_job(client, COMMAND, at_the_mouths(run))
+        payload = response.json()["result"]["handoff"]["payload"]
         completed = {
             **payload,
             "timestep_min": 5,
@@ -666,14 +671,14 @@ def run_cell(place):
 
 
 class TestProblems:
-    """Plan test 16: the problem documents of D12."""
+    """Plan test 16: the problem documents of D12, the failed jobs' results."""
 
     def test_a_point_off_the_streams_is_named_in_both_languages(self, client, run):
         body = at_the_mouths(run)
         body["points"].append(point(run, "P7", (30, 5)))
 
-        english = client.post(URL, json=body)
-        polish = client.post(URL, json=body, headers={"Accept-Language": "pl"})
+        english = run_job(client, COMMAND, body)
+        polish = run_job(client, COMMAND, body, headers={"Accept-Language": "pl"})
 
         assert english.status_code == polish.status_code == 404
         problem = english.json()
@@ -690,7 +695,7 @@ class TestProblems:
     ):
         body = network_of(run, ("A", UP_T2), ("P1", T3_MOUTH))
 
-        response = client.post(URL, json=body, headers={"Accept-Language": "pl"})
+        response = run_job(client, COMMAND, body, headers={"Accept-Language": "pl"})
 
         assert response.status_code == 400
         problem = response.json()
@@ -705,7 +710,7 @@ class TestProblems:
         body["points"].append(point(run, "P4", (100, 85)))
         body["points"].append(point(run, "P5", (100, 85)))
 
-        response = client.post(URL, json=body)
+        response = run_job(client, COMMAND, body)
 
         assert response.status_code == 400
         assert response.json()["details"]["reason"] == "network_points_coincide"
@@ -718,8 +723,8 @@ class TestProblems:
         # already divides the catchment into the rivers that join there
         body = network_of(run, ("A", AT_T1), ("P1", (159, 85)))
 
-        english = client.post(URL, json=body)
-        polish = client.post(URL, json=body, headers={"Accept-Language": "pl"})
+        english = run_job(client, COMMAND, body)
+        polish = run_job(client, COMMAND, body, headers={"Accept-Language": "pl"})
 
         assert english.status_code == polish.status_code == 400
         problem = polish.json()
@@ -739,7 +744,7 @@ class TestProblems:
     def test_a_window_above_the_cap_is_unsupported(self, client, run, monkeypatch):
         monkeypatch.setattr(core.network_delineation, "NETWORK_MAX_WINDOW_CELLS", 1000)
 
-        response = client.post(URL, json=at_the_mouths(run))
+        response = run_job(client, COMMAND, at_the_mouths(run))
 
         assert response.status_code == 422
         assert response.json()["code"] == "unsupported"
@@ -751,13 +756,13 @@ class TestProblems:
         monkeypatch.setattr(
             api.endpoints.network, "loaded_catchment_graph", lambda _: None
         )
-        no_graph = client.post(URL, json=at_the_mouths(run))
+        no_graph = run_job(client, COMMAND, at_the_mouths(run))
         monkeypatch.setattr(
             api.endpoints.network, "loaded_catchment_graph", lambda _: graph
         )
         monkeypatch.setenv("DEM_DIR", str(tmp_path))
         get_settings.cache_clear()
-        no_rasters = client.post(URL, json=at_the_mouths(run))
+        no_rasters = run_job(client, COMMAND, at_the_mouths(run))
 
         assert (no_graph.status_code, no_rasters.status_code) == (503, 503)
         assert no_graph.json()["details"]["reason"] == "catchment_graph_unavailable"
@@ -766,18 +771,27 @@ class TestProblems:
     @pytest.mark.parametrize(
         ("change", "pointer"),
         [
-            (lambda b: b["points"][0].update(id="a"), "/body/points"),
-            (lambda b: b["outlet"].pop("id"), "/body/outlet/id"),
-            (lambda b: b.update(points=b["points"] * 11), "/body/points"),
-            (lambda b: b["points"][0].update(id="P 1"), "/body/points/0/id"),
-            (lambda b: b["points"][0].update(id="P" * 17), "/body/points/0/id"),
+            (lambda b: b["points"][0].update(id="a"), "/body/options/points"),
+            (lambda b: b["outlet"].pop("id"), "/body/options/outlet/id"),
+            (lambda b: b.update(points=b["points"] * 11), "/body/options/points"),
+            (lambda b: b["points"][0].update(id="P 1"), "/body/options/points/0/id"),
+            (
+                lambda b: b["points"][0].update(id="P" * 17),
+                "/body/options/points/0/id",
+            ),
             (
                 lambda b: b["points"][0].update(name="Kamiennik\n"),
-                "/body/points/0/name",
+                "/body/options/points/0/name",
             ),
-            (lambda b: b["points"][0].update(name="  "), "/body/points/0/name"),
-            (lambda b: b["outlet"].update(latitude=91), "/body/outlet/latitude"),
-            (lambda b: b.update(threshold_m2=9999), "/body/threshold_m2"),
+            (
+                lambda b: b["points"][0].update(name="  "),
+                "/body/options/points/0/name",
+            ),
+            (
+                lambda b: b["outlet"].update(latitude=91),
+                "/body/options/outlet/latitude",
+            ),
+            (lambda b: b.update(threshold_m2=9999), "/body/options/threshold_m2"),
         ],
         ids=[
             "ids equal without regard to case",
@@ -791,13 +805,13 @@ class TestProblems:
             "a threshold below 1 ha",
         ],
     )
-    def test_an_invalid_request_is_refused_before_the_rasters(
+    def test_an_invalid_request_is_refused_before_the_job_starts(
         self, client, run, change, pointer
     ):
         body = at_the_mouths(run)
         change(body)
 
-        response = client.post(URL, json=body)
+        response = run_job(client, COMMAND, body)
 
         assert response.status_code == 400
         assert response.json()["details"]["reason"] == "invalid_request"
@@ -807,10 +821,10 @@ class TestProblems:
         body = at_the_mouths(run)
         body["points"][0]["id"] = "a"
 
-        response = client.post(URL, json=body)
+        response = run_job(client, COMMAND, body)
 
         assert response.status_code == 400
-        assert response.json()["details"]["fields"] == ["/body/points"]
+        assert response.json()["details"]["fields"] == ["/body/options/points"]
 
     def test_any_other_failure_is_a_failed_network_and_frees_the_worker(
         self, client, run, monkeypatch
@@ -821,9 +835,9 @@ class TestProblems:
             raise RuntimeError("the hand-off")
 
         monkeypatch.setattr(api.endpoints.network, "build_network_handoff", broken)
-        failed = client.post(URL, json=at_the_mouths(run))
+        failed = run_job(client, COMMAND, at_the_mouths(run))
         monkeypatch.setattr(api.endpoints.network, "build_network_handoff", real)
-        next_one = client.post(URL, json=at_the_mouths(run))
+        next_one = run_job(client, COMMAND, at_the_mouths(run))
 
         assert failed.status_code == 500
         assert failed.json()["details"]["reason"] == "network_delineation_failed"
@@ -833,7 +847,7 @@ class TestProblems:
 class TestOneNetworkAtATime:
     """Plan test 17: the lock of the worker (D13)."""
 
-    def test_a_request_waits_for_the_running_network_then_gets_503(
+    def test_a_job_waits_for_the_running_network_then_gets_503(
         self, client, run, monkeypatch
     ):
         monkeypatch.setattr(api.endpoints.network, "NETWORK_LOCK_WAIT_S", 0.3)
@@ -841,8 +855,8 @@ class TestOneNetworkAtATime:
         assert lock.acquire(timeout=1)
         try:
             started = time.monotonic()
-            response = client.post(
-                URL, json=at_the_mouths(run), headers={"Accept-Language": "pl"}
+            response = run_job(
+                client, COMMAND, at_the_mouths(run), headers={"Accept-Language": "pl"}
             )
             waited = time.monotonic() - started
         finally:
@@ -858,11 +872,11 @@ class TestOneNetworkAtATime:
         assert problem["detail"] == text("network_delineation_busy", "pl", problem)
         assert waited >= 0.3
 
-    def test_a_request_runs_when_the_network_before_it_ends_in_time(self, client, run):
+    def test_a_job_runs_when_the_network_before_it_ends_in_time(self, client, run):
         lock = api.endpoints.network._network_lock
         assert lock.acquire(timeout=1)
         threading.Timer(0.2, lock.release).start()
 
-        response = client.post(URL, json=at_the_mouths(run))
+        response = run_job(client, COMMAND, at_the_mouths(run))
 
         assert response.status_code == 200, response.text

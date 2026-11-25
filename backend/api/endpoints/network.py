@@ -1,34 +1,33 @@
 """
-Network delineation endpoints (ADR-080, ADR-081).
+The commands ``network delineate`` and ``network preview`` (ADR-080, ADR-081, ADR-091).
 
-POST /api/delineate-network delineates the network of subcatchments, reaches and
-nodes of a closing section and the control points above it
-(``core.network_delineation``) and hands it to Hydrolog as one ``nogat-handoff/1``
-(``core.handoff.build_network_handoff``). A network reads the saved rasters of the
-closing section's whole catchment, so each worker delineates one network at a time: a
-request waits for the one before it at most NETWORK_LOCK_WAIT_S, then gets 503 (D13).
+``network delineate`` delineates the network of subcatchments, reaches and nodes of a
+closing section and the control points above it (``core.network_delineation``) and
+hands it to Hydrolog as one ``nogat-handoff/1``
+(``core.handoff.build_network_handoff``). It is a long command, served as a job
+(``api.jobs``). A network reads the saved rasters of the closing section's whole
+catchment, so the process delineates one network at a time: a job waits for the one
+before it at most NETWORK_LOCK_WAIT_S, then ends with 503 (D13).
 
-POST /api/delineate-network/preview composes the same network on the catchment graph
-while the person places the points (``core.network_preview``): the same ids, the areas
-and the reach lengths of the full run, the outlines of the sub-catchment polygons. It
-reads no window of the closing section's catchment and takes no lock.
+``network preview`` composes the same network on the catchment graph while the person
+places the points (``core.network_preview``): the same ids, the areas and the reach
+lengths of the full run, the outlines of the sub-catchment polygons. It reads no
+window of the closing section's catchment and takes no lock.
 """
 
 import logging
 import threading
 from typing import Any
 
-from fastapi import APIRouter, Depends
 from shapely.geometry import LineString, MultiPolygon, mapping
 from sqlalchemy.orm import Session
 
-from api.errors import problem_responses
+from api.envelope import Outcome
 from core import network_delineation, network_preview
 from core.attribution import DRAINAGE, ProviderLines, instance_lines, merge
 from core.catchment_graph import loaded_catchment_graph
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2, M_PER_KM
-from core.database import get_db
 from core.errors import HydrografError, InternalError, StoreUnavailableError
 from core.handoff import build_network_handoff, flat_reach_lag_min
 from core.network_tree import Junction
@@ -53,22 +52,14 @@ from models.schemas import (
 from utils.geometry import transform_geometry_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
-# How long a request waits for the network another request of this worker delineates
-# (D13) [s]
-NETWORK_LOCK_WAIT_S = 15.0
+# How long a job waits for the network another job delineates (D13; a job, unlike the
+# request it replaced, has no proxy's time to keep) [s]
+NETWORK_LOCK_WAIT_S = 600.0
 _network_lock = threading.Lock()
 
 
-@router.post(
-    "/delineate-network",
-    response_model=DelineateNetworkResponse,
-    responses=problem_responses(422),
-)
-def delineate_network(
-    request: DelineateNetworkRequest, db: Session = Depends(get_db)
-) -> DelineateNetworkResponse:
+def delineate_network(request: DelineateNetworkRequest, db: Session) -> Outcome:
     """Delineate the network of a closing section and the points above it.
 
     Every point, the closing section included, snaps to the nearest stream cell of
@@ -81,7 +72,8 @@ def delineate_network(
     one away from a node, and add up to the closing section's catchment; each gets the
     parameters of a delineated watershed, each reach the difference of the flow
     distances of its ends as its length and the NMT at its ends for its slope. One
-    network at a time per worker: a request waits 15 s for the one before it.
+    network at a time per process: a job waits NETWORK_LOCK_WAIT_S for the one
+    before it.
     """
     if not _network_lock.acquire(timeout=NETWORK_LOCK_WAIT_S):
         raise StoreUnavailableError(
@@ -108,8 +100,13 @@ def delineate_network(
             if point.name is not None
         }
         lines = _network_lines(network)
-        return _response(
-            network, names, build_network_handoff(network, names, lines=lines), lines
+        return Outcome(
+            _response(
+                network,
+                names,
+                build_network_handoff(network, names, lines=lines),
+                lines,
+            )
         )
     except HydrografError:
         raise
@@ -122,16 +119,11 @@ def delineate_network(
         _network_lock.release()
 
 
-@router.post(
-    "/delineate-network/preview", response_model=DelineateNetworkPreviewResponse
-)
-def delineate_network_preview(
-    request: DelineateNetworkRequest, db: Session = Depends(get_db)
-) -> DelineateNetworkPreviewResponse:
+def preview_network(request: DelineateNetworkRequest, db: Session) -> Outcome:
     """Compose the network of a closing section and its points, without measuring it.
 
     The points snap and move to the nodes, and the tree is built, as for
-    `POST /api/delineate-network`, so the ids of the nodes, subcatchments and reaches,
+    ``network delineate``, so the ids of the nodes, subcatchments and reaches,
     the places of the points and the errors of the composition are the same; each
     subcatchment gets its area (exact to the cell) and an outline from the 1 ha
     sub-catchments (approximate where a point away from a node splits one: the
@@ -164,7 +156,7 @@ def delineate_network_preview(
         for point in (request.outlet, *request.points)
         if point.name is not None
     }
-    return _preview_response(preview, names)
+    return Outcome(_preview_response(preview, names))
 
 
 def _click(point: NetworkPoint) -> network_delineation.Click:

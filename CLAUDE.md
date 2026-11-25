@@ -50,12 +50,12 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
   `slope_percent`, `precipitation_mm`, `length_km` (DEV-8.2).
 - Front end: colours, fonts, radii and shadows come only from the variables of
   `frontend/css/tokens.css` (ADR-065). That file and `frontend/nogat/` (Nogat's GUI kit and
-  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the regulamin template,
-  the admin page's shell; ADR-082) are copies of Nogat's, never edited here: change them in
-  Nogat, then copy them again byte for byte (DEV-15.6). Third-party scripts, styles and
-  fonts are vendored in `frontend/vendor/<package>-<version>/` as published (`-text` in
-  `.gitattributes`), with their licence files and their `integrity`, never loaded from
-  another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py` checks both).
+  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the base maps, the charts,
+  the regulamin template, the admin page's shell; ADR-082, ADR-089, ADR-090) are copies of
+  Nogat's, never edited here: change them in Nogat, then copy them again byte for byte (DEV-15.6).
+  Third-party scripts, styles and fonts are vendored in `frontend/vendor/<package>-<version>/`
+  as published (`-text` in `.gitattributes`), with their licence files and their `integrity`,
+  never loaded from another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py`).
 - After changing a JS or CSS file or adding a `<script>` or `<link>` to `index.html`,
   `admin/index.html` or `instrukcja/index.html`, run `python3 scripts/bump_asset_versions.py`
   before the commit (reference a new file without `?v=`; the script adds it): the pages load
@@ -64,8 +64,13 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
 - Public service (ADR-084): the client's address never reaches the front end or any log,
   not even in a traceback (DEV-15.10, DEV-12.5); it lives only in the memory of
   `api/traffic.py`. `core/nogat_logging.py` is a copy of Nogat's module, never edited here.
-  The request limit and the daily totals are per process, so the API runs one uvicorn
-  process (no `--workers`); a change that needs more processes needs a shared store first.
+  The request limit, the daily totals and the jobs are per process, so the API runs one
+  uvicorn process (no `--workers`); a change that needs more processes needs a shared
+  store first.
+- The REST API is `/api/v1` from the command catalog `api/catalog.py` (ADR-091): a new
+  operation is a command there (its model, texts in English and Polish, examples, codes),
+  answered as the envelope of `api/envelope.py`; a command that can outlast a request is
+  `long` and runs only as a job. Only the map tiles stay outside it, at `/api/tiles/`.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session (DEV-17.3).
 
@@ -75,14 +80,15 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
 cd backend && uv sync --locked          # environment in backend/.venv
 scripts/gate.sh                         # ruff format, ruff check, mypy, pytest + coverage, asset versions, commits
 uv run pytest tests/unit -q             # in backend/: a part of the tests, no coverage
-docker compose up -d db                 # PostGIS for development and for the `db` tests
+uv run pytest tests/e2e -m e2e          # in backend/: the browser tests (PostGIS; once: uv run playwright install chromium)
+docker compose up -d db                 # PostGIS for development and for the `db` and `e2e` tests
 uv run alembic upgrade head             # in backend/: migrations
 uv run uvicorn api.main:app --reload    # in backend/: API on :8000
 uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"   # one-off preprocessing
 ```
 
-Python 3.12 or newer. The default run and the gate leave out the markers `live`, `db` and
-`benchmark`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
+Python 3.12 or newer. The default run and the gate leave out the markers `live`, `db`,
+`benchmark` and `e2e`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
 `fail_under = 80` in `backend/pyproject.toml` (DEV-7.5).
 
 Running the service: the stack runs on the system Docker daemon (the agent user is in the
@@ -96,14 +102,15 @@ deployment steps: README "Deploy" and `docs/USAGE.md`.
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, errors.py, traffic.py, endpoints/, dependencies/
+├── api/                 # FastAPI: main.py, catalog.py, envelope.py, jobs.py, errors.py,
+│                        #   traffic.py, endpoints/, dependencies/
 ├── core/                # business logic, config, database, errors, messages, _errors
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
 ├── utils/               # geometry, raster, sheet and NMT-coverage helpers, the Kartograf
 │                        #   store, the Archiwista project
 ├── migrations/          # Alembic
-└── tests/               # unit, integration, contract, performance, fixtures
+└── tests/               # unit, integration, contract, performance, e2e, fixtures
 frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
                          #   admin/, instrukcja/, nogat/ (Nogat's copies), vendor/
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
@@ -152,8 +159,8 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
 - DEV-2.1: the Python docstrings, comments and log messages, the user-facing texts of the
   API, and the documents under `docs/` that `docs/PROGRESS.md` lists are still Polish until
   they are translated.
-- DEV-5.2: `tests/performance` (timing tests that need the database) stands beside the
-  standard tree.
+- DEV-5.2: `tests/performance` (timing tests that need the database) and `tests/e2e` (the
+  browser tests, one Chromium per package) stand beside the standard tree.
 - DEV-6.2: the environment is `backend/.venv`, not `.venv` in the repository root: the
   Python project is `backend/`.
 - DEV-6.3: GDAL's Python binding must equal the system library of the image, so the
@@ -174,27 +181,20 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
   measured.
 - DEV-7.7: CI runs on Linux only: Hydrograf is deployed with Docker on Linux, and an `app`
   MAY skip the platform matrix.
-- DEV-10.1: `benchmark` is a marker besides `live`, `db` and `slow` (timing tests of
-  `tests/performance`); the default run and the gate leave it out. The `db` tests run in
-  the `db` job of CI.
+- DEV-10.1: markers besides `live`, `db` and `slow`: `benchmark` (`tests/performance`) and
+  `e2e` (`tests/e2e`); the gate leaves them out, the `db` and `e2e` jobs of CI run theirs.
 - DEV-12.3: about half of the 780 log calls use f-strings; new log calls use
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
-  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but for
-  `js/nogat.js`, which imports Nogat's kit (ADR-082), and the kit's copies in
-  `frontend/nogat/`, which keep Nogat's 2 spaces; about 560 lines of its own JavaScript
-  exceed 100 columns.
-- DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in translation
-  resources.
+  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but `js/nogat.js`
+  (imports Nogat's kit, ADR-082), `admin/processing.js` (imports `nogat-basemaps.js`
+  dynamically, ADR-089) and the kit's copies in `frontend/nogat/`, which keep Nogat's 2
+  spaces; about 560 lines of its own JavaScript exceed 100 columns.
+- DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in resources.
+- DEV-15.13: the admin `img-src` admits `data:`, Leaflet's removed tiles, until MapLibre.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
-- DEV-18, DEV-19: profile `tool` only; Hydrograf reads its settings from the environment
-  (`.env.example`), and `nogat.toml` only through the file NOGAT_CONFIG names (its
-  `[nogat.operator]`, `[nogat] gui` and the `state_dir` of `[hydrograf]` or `[nogat]`); it
-  fetches data through Kartograf in the pipeline scripts.
-- AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
-  `schema` member and no result envelope; the error document alone is
-  `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`
-  schemas are unused.
-- AGI-6.1, AGI-6.2: there is no command catalog; `operationId` is the route function name
-  and the operations document `400`, the problems of their route and `500`.
+- DEV-18, DEV-19: profile `tool` only; settings from the environment (`.env.example`) and
+  from the `nogat.toml` NOGAT_CONFIG names (`[nogat.operator]`, `[nogat] gui`; `state_dir`,
+  `basemaps`, `basemap_mirrors`, `basemap_extra` of `[hydrograf]` or `[nogat]`); data
+  through Kartograf in the pipeline scripts.
 - AGI-6.3: the gateway errors of nginx are not problem documents.

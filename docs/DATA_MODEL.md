@@ -777,7 +777,7 @@ CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 | `is_read` | BOOLEAN | NO | false | Read in the admin panel |
 | `context` | JSONB | YES | NULL | `{view, station, parameters, app_version}`: the map mode, `null` (Hydrograf has no stations), the view's parameters (map, clicked point, watershed, hydrograph settings, profile line) and the app version the server adds; at most 100,000 bytes as JSON (`FEEDBACK_CONTEXT_MAX_BYTES`); NULL in the reports of the old form |
 
-The admin list (`GET /api/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
+The admin list (`GET /api/v1/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
 
 ---
 
@@ -1007,7 +1007,7 @@ The request and response models are the Pydantic models of `backend/models/schem
 
 ### 6.1 Request: Delineate Watershed
 
-**Endpoint:** `POST /api/delineate-watershed`
+**Endpoint:** `GET /api/v1/watershed/delineate`; the members below are its query parameters
 
 Precomputed mode (with `threshold_m2`: the sub-catchment at the point by `ST_Contains`, BFS on the catchment graph, the merged boundary; above 300 sub-catchments the boundary is merged from a coarser threshold):
 ```json
@@ -1072,7 +1072,7 @@ class DelineateRequest(BaseModel):
 
 ### 6.3 Request: Generate Hydrograph
 
-**Endpoint:** `POST /api/generate-hydrograph`
+**Endpoint:** the job `hydrograph generate`: `POST /api/v1/jobs` with `{"command": "hydrograph generate", "options": …}`, the options as below
 
 ```json
 {
@@ -1113,7 +1113,7 @@ class HydrographRequest(BaseModel):
 
 Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 400 `validation_error` jako `application/problem+json` (ADR-059; opis po angielsku, po polsku z `Accept-Language: pl`).
 
-`custom_precipitation.derived_from` (`"pmaxtp"` or null, ADR-083): the series started as a copy of a PMAXTP hyetogram, so the response carries PMAXTP's lines.
+`custom_precipitation.derived_from` (`"pmaxtp"`, `"imgw"`, `"chmu"` or null, ADR-083 and its amendment of 2026-11-25): the series started as a copy of a PMAXTP hyetogram, or holds IMGW-PIB's archives or ČHMÚ's open data (Obserwator's series export), so the response carries those data's lines. `custom_precipitation.attribution` and `terms_notice` (lists, at most 20 lines of at most 1000 characters, `[]` by default) are the lines of the series' file, unchanged: each must be one of the lines of the data `derived_from` names, else 400 `validation_error` with reason `unknown_attribution_line` and `details.line`.
 
 A PMAXTP design storm is made of whole time steps (Hydrolog ADR-0046): a `duration` that is not a whole number of `timestep_min` is refused before anything is computed (400 `validation_error`, `storm_not_whole_steps`, reason `not_multiple`), and so is an Euler II step shorter than 5 min, where the PMAXTP depth–duration curve starts (`euler_ii_step_below_curve`, reason `not_covered`; Hydrolog ADR-0042). The 5 min default divides every PMAXTP duration.
 
@@ -1178,7 +1178,7 @@ A PMAXTP design storm is made of whole time steps (Hydrolog ADR-0046): a `durati
 
 Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`morphometry.cn`, `land_cover_stats.weighted_cn`). W aktualnym schemacie: `water_balance.cn_used` (float, CN po przeliczeniu wg AMC), `metadata.amc`, `precipitation.source` (`"pmaxtp"`/`"custom"`); dla własnej serii `precipitation.probability_percent` i `metadata.hietogram_type` są `null`. Schemat bazy danych bez zmian.
 
-The response also has `attribution` and `terms_notice` (ADR-083): the lines the PMAXTP terms require (Nogat DEV-20.2, DEV-20.7) for a PMAXTP rainfall and for an own series with `derived_from: "pmaxtp"`, empty lists for the user's own data; the hand-off `handoff` carries the same two fields when they are not empty.
+The response also has `attribution` and `terms_notice` (ADR-083): the lines the PMAXTP terms require (Nogat DEV-20.2, DEV-20.7) for a PMAXTP rainfall and for an own series with `derived_from: "pmaxtp"`, IMGW-PIB's S, P and RD for `"imgw"`, ČHMÚ's C and CP for `"chmu"`, empty lists for the user's own data; the hand-off `handoff` carries the same two fields when they are not empty.
 
 `notices` (E5b-06; `[]` without warnings) are the warnings Hydrolog gave while it computed this hydrograph, identical ones once: `level` and `code` of Hydrolog's registry `hydrolog.catalog.NOTICES` (`outside_applicability`, called `outside_typical_range` up to Hydrolog 0.8.x, for the applicability range of a formula; `outside_unverified_range` for a typical range that awaits a published source, such as those of Nash's N and K) and `message` in Polish, worded by `core/hydrolog_notices.py` from the warning's details (the method or model, the input, its value and the range); a code without a Polish text keeps Hydrolog's English message. A Snyder hydrograph leaves out the warnings of the tc it does not use.
 

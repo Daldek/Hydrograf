@@ -15,8 +15,9 @@ set -euo pipefail
 # --- project settings --------------------------------------------------------
 # Marker expression of the gate (DEV-10.1). Without a local database `db` stays
 # out; `benchmark` marks the timing tests of tests/performance, which need the
-# database as well. The `db` job of CI runs the database tests.
-OFFLINE="not live and not db and not benchmark"
+# database as well, and `e2e` the browser tests of tests/e2e, which need it and
+# Chromium. The `db` and `e2e` jobs of CI run them.
+OFFLINE="not live and not db and not benchmark and not e2e"
 # The application is several top-level packages, not one: the coverage source and
 # the mypy targets (`files`) are set in backend/pyproject.toml, so the calls below
 # name neither a package nor paths.

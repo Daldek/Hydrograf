@@ -21,7 +21,7 @@ def _noop_auth():
 def app():
     test_app = FastAPI()
     install_error_handlers(test_app)
-    test_app.include_router(admin_router, prefix="/api/admin")
+    test_app.include_router(admin_router, prefix="/api/v1/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
     test_app.dependency_overrides.clear()
@@ -58,7 +58,7 @@ class TestListFeedback:
         db.execute.return_value.fetchone.return_value = _row(total=2, unread=1)
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).get("/api/admin/feedback")
+        response = TestClient(app).get("/api/v1/admin/feedback")
 
         assert response.status_code == 200
         data = response.json()
@@ -90,7 +90,7 @@ class TestListFeedback:
         db.execute.return_value.fetchone.return_value = _row(total=1, unread=0)
         app.dependency_overrides[get_db] = lambda: db
 
-        item = TestClient(app).get("/api/admin/feedback").json()["items"][0]
+        item = TestClient(app).get("/api/v1/admin/feedback").json()["items"][0]
 
         assert item["context"] is None
         assert item["legacy"] == {
@@ -109,7 +109,7 @@ class TestUpdateFeedback:
         app.dependency_overrides[get_db] = lambda: db
 
         response = TestClient(app).patch(
-            "/api/admin/feedback/5", json={"is_read": is_read}
+            "/api/v1/admin/feedback/5", json={"is_read": is_read}
         )
 
         assert response.status_code == 200
@@ -123,7 +123,7 @@ class TestUpdateFeedback:
         app.dependency_overrides[get_db] = lambda: db
 
         response = TestClient(app).patch(
-            "/api/admin/feedback/999", json={"is_read": True}
+            "/api/v1/admin/feedback/999", json={"is_read": True}
         )
 
         assert response.status_code == 404
@@ -133,14 +133,14 @@ class TestUpdateFeedback:
         db = MagicMock()
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).patch("/api/admin/feedback/5", json=body)
+        response = TestClient(app).patch("/api/v1/admin/feedback/5", json=body)
 
         assert response.status_code == 400
         assert response.json()["code"] == "validation_error"
         db.execute.assert_not_called()
 
     def test_the_old_read_route_is_gone(self, app):
-        response = TestClient(app).post("/api/admin/feedback/5/read")
+        response = TestClient(app).post("/api/v1/admin/feedback/5/read")
 
         assert response.status_code == 404
 
@@ -151,7 +151,7 @@ class TestDeleteFeedback:
         db.execute.return_value.rowcount = 1
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).delete("/api/admin/feedback/5")
+        response = TestClient(app).delete("/api/v1/admin/feedback/5")
 
         assert response.status_code == 200
         assert response.json() == {"status": "deleted"}
@@ -162,6 +162,6 @@ class TestDeleteFeedback:
         db.execute.return_value.rowcount = 0
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).delete("/api/admin/feedback/999")
+        response = TestClient(app).delete("/api/v1/admin/feedback/999")
 
         assert response.status_code == 404

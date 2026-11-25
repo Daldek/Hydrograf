@@ -1,5 +1,5 @@
 """
-Terrain profile endpoint.
+The command ``terrain profile`` (ADR-091).
 
 Extracts elevation profile along a GeoJSON LineString
 by sampling the DEM raster file via rasterio, and on request the maximum
@@ -10,10 +10,11 @@ import logging
 import math
 
 import rasterio
-from fastapi import APIRouter, Response
 from pyproj import Transformer
 from shapely.geometry import LineString
+from sqlalchemy.orm import Session
 
+from api.envelope import Outcome
 from core.analysis_results import provider_lines, sample_water_levels
 from core.attribution import ELEVATION, instance_lines, merge
 from core.config import get_settings
@@ -31,7 +32,6 @@ from models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 # Reusable CRS transformer (WGS84 lon,lat -> PL-1992 x,y)
 _transformer_4326_to_2180 = Transformer.from_crs(
@@ -39,13 +39,9 @@ _transformer_4326_to_2180 = Transformer.from_crs(
 )
 
 
-@router.post("/terrain-profile", response_model=TerrainProfileResponse)
-def terrain_profile(
-    request: TerrainProfileRequest,
-    response: Response,
-) -> TerrainProfileResponse:
+def terrain_profile(request: TerrainProfileRequest, db: Session) -> Outcome:
     """
-    Extract terrain elevation profile along a line.
+    Extract terrain elevation profile along a line: ``terrain profile``.
 
     Samples N equally spaced points along the input LineString and
     reads elevation values directly from the DEM raster file. A sample where
@@ -58,11 +54,14 @@ def terrain_profile(
     ----------
     request : TerrainProfileRequest
         GeoJSON LineString geometry, number of samples, analysis result ids
+    db : Session
+        Database session (unused: the profile reads the rasters).
 
     Returns
     -------
-    TerrainProfileResponse
-        Arrays of distances, elevations and gaps along the profile, water levels
+    Outcome
+        ``TerrainProfileResponse``: distances, elevations and gaps along the
+        profile, water levels; ``Cache-Control: public, max-age=3600``.
 
     Raises
     ------
@@ -157,15 +156,17 @@ def terrain_profile(
             ]
         )
 
-        response.headers["Cache-Control"] = "public, max-age=3600"
-        return TerrainProfileResponse(
-            distances_m=distances,
-            elevations_m=elevations,
-            dem_gaps=dem_gaps,
-            total_length_m=total_length_m,
-            water_levels=water_levels,
-            attribution=list(lines.attribution),
-            terms_notice=list(lines.terms_notice),
+        return Outcome(
+            TerrainProfileResponse(
+                distances_m=distances,
+                elevations_m=elevations,
+                dem_gaps=dem_gaps,
+                total_length_m=total_length_m,
+                water_levels=water_levels,
+                attribution=list(lines.attribution),
+                terms_notice=list(lines.terms_notice),
+            ),
+            cache_control="public, max-age=3600",
         )
 
     except HydrografError:

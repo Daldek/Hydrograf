@@ -1021,8 +1021,8 @@ them group D (ADR-078).
 
 ### `preprocess_precipitation.py`: IMGW precipitation
 
-Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator 3.2.1, the package
-`obserwator` pinned by its tag `v3.2.1`, range `>=3.1.0,<4`) for a grid of points inside a
+Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator 3.3.0, the package
+`obserwator` pinned by its tag `v3.3.0`, range `>=3.1.0,<4`) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 
@@ -1094,10 +1094,11 @@ ORDER BY threshold_m2;
    ~85 B per cell.
 2. **Coordinate system**: only EPSG:2180 (PL-1992) is processed; sheets in PUWG 2000 are reprojected
    to it before the mosaic is built.
-3. **`analyze_watershed.py` delineates sub-catchments, not cells**: step 3 runs the code of
-   `POST /api/delineate-watershed` (precomputed mode) on the catchment graph of the database, so the
-   catchments of `--threshold-m2` (default 10000, one of the thresholds of `process_dem`) must be
-   loaded (`--process` or the bootstrap) and the boundary is the merge of whole sub-catchments, not a
+3. **`analyze_watershed.py` delineates sub-catchments, not cells**: step 3 runs the command
+   `watershed delineate` (`GET /api/v1/watershed/delineate`, precomputed mode) on the catchment
+   graph of the database, so the catchments of `--threshold-m2` (default 10000, one of the
+   thresholds of `process_dem`) must be loaded (`--process` or the bootstrap) and the boundary is
+   the merge of whole sub-catchments, not a
    polygon around single cells. The cell layer of `--save-qgis` and the cell elevation histogram of
    the figures are gone (the hypsometric curve replaces the histogram). Tests:
    `tests/unit/test_analyze_watershed_delineate.py` (step 3 on a synthetic graph, offline) and

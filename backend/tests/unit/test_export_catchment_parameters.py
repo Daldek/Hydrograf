@@ -4,7 +4,7 @@ process_dem runs over a synthetic DEM (a valley falling to the south, ridges acr
 and a hill) with its rasters saved and the database replaced by recorders of the rows
 it would insert; the catchment graph is built from those rows as CatchmentGraph.load
 builds it from the database. For a watershed of the graph the response builder of
-POST /api/delineate-watershed (precomputed mode) gives the values of the panel, and
+`watershed delineate` (precomputed mode) gives the values of the panel, and
 the export of the boundary of that watershed must give the same values. The database
 of both is a fake: synthetic land cover, BDOT10k flags and the ends of the stream
 segments.
@@ -123,7 +123,7 @@ def boundary_of(run, cg, outlet_idx):
 
 
 def panel_of(cg, outlet_idx, boundary, db):
-    """The response of POST /api/delineate-watershed for a watershed of the graph."""
+    """The result of `watershed delineate` for a watershed of the graph."""
     upstream = cg.traverse_upstream(outlet_idx)
     stats = cg.aggregate_stats(upstream, outlet_idx=outlet_idx)
     return _build_watershed_response(
@@ -133,8 +133,6 @@ def panel_of(cg, outlet_idx, boundary, db):
         boundary_to_polygon(boundary),
         upstream,
         outlet_idx,
-        cg.get_segment_idx(outlet_idx),
-        THRESHOLD_M2,
         THRESHOLD_M2,
         stats["area_km2"],
         stats,

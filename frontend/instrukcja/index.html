@@ -165,7 +165,7 @@
     <figure class="detail"><a href="Hydrograf-v2-warstwy.png"><img class="app-shot wide-shot crop-left" src="Hydrograf-v2-warstwy.png" width="1188" height="1063" alt="Panel Warstwy z podkładami, liniami spływu, SFINCS i mapą zagrożenia powodziowego obok mapy z warstwą głębokości wody."></a><figcaption>Panel „Warstwy”. Kliknij obraz, aby powiększyć.</figcaption></figure>
     <div class="stack">
       <div class="card"><span class="label">Wiersz warstwy</span><p>Pole wyboru włącza warstwę, suwak ustawia krycie w %. Pełną nazwę skróconego wiersza pokaże najechanie kursorem.</p></div>
-      <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”.</p></div>
+      <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”. Przeglądarka zapamięta wybrany podkład.</p></div>
       <div class="card"><span class="label">Przybliż do zasięgu</span><p>Ikona ramki obok tytułu panelu dopasowuje widok do włączonych warstw, a gdy żadna nie jest włączona — do całego obszaru danych.</p></div>
       <div class="card"><span class="label">Legendy</span><p>NMT, linie spływu, grupy glebowe, pokrycie terenu, wynik SFINCS i mapa zagrożenia powodziowego mają legendę w lewym dolnym rogu mapy, dopóki są włączone.</p></div>
     </div>
@@ -200,7 +200,7 @@
     <div class="col">
       <h4 class="label">Podkłady kartograficzne</h4>
       <dl class="defs">
-        <div><dt>OpenFreeMap szary</dt><dd>Domyślny podkład wektorowy w odcieniach szarości.</dd></div>
+        <div><dt>OpenFreeMap szary</dt><dd>Domyślny podkład wektorowy w odcieniach szarości, z polskimi nazwami miejscowości; jasny lub ciemny razem z motywem.</dd></div>
         <div><dt>OSM GUGiK szary (tylko Polska)</dt><dd>OpenStreetMap z serwera GUGiK, w szarości.</dd></div>
         <div><dt>Ortofotomapa GUGiK</dt><dd>Zdjęcia lotnicze Polski z serwera GUGiK.</dd></div>
         <div><dt>bez podkładu</dt><dd>Same warstwy na jednolitym tle.</dd></div>
@@ -213,6 +213,7 @@
       </dl>
     </div>
   </div>
+  <p class="hint">Podkład, którego serwer nie odpowiada, dostaje na liście dopisek „Podkład nie odpowiada”, a mapa mówi o tym w lewym górnym rogu — wybierz wtedy inny; Hydrograf nie zmienia go sam. Źródło podkładu jest w prawym dolnym rogu mapy (na telefonie po pierwszym przesunięciu mapy chowa się za „i”).</p>
   <p class="hint">Cieki BDOT10k pochodzą z mapy, a linie spływu Hydrograf wylicza z NMT — to na nich wyznacza zlewnie. Porównaj obie warstwy przed wyborem punktu.</p>
 
 </section>
@@ -279,7 +280,7 @@
     <div class="step"><span class="number">02</span><strong>Kliknij odcinek</strong><p>Włącz tryb „Wybierz zlewnię” (u góry mapy „Jedna zlewnia”) i kliknij przy linii. Ujście wypadnie na dolnym końcu klikniętego odcinka — zwykle na najbliższym połączeniu cieków poniżej.</p></div>
     <div class="step"><span class="number">03</span><strong>Poczekaj na granicę</strong><p>Zlewnie cząstkowe zapalają się od ujścia w górę i pulsują, aż serwer scali granicę — przy setkach km² nawet ponad minutę. Wynik trafi do panelu „Zlewnia”.</p></div>
   </div>
-  <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu.</p>
+  <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu. Gdy ujście leży dalej niż 500&nbsp;m od kliknięcia, panel podaje tę odległość w ostrzeżeniu nad sekcjami: zlewnia obejmuje wtedy też teren, z którego woda dopływa między punktem a ujściem.</p>
   <p class="hint">Nowe kliknięcie od razu zastępuje poprzedni wynik. Poza obszarem danych panel pokaże „Błąd: Nie znaleziono zlewni cząstkowej w tym miejscu…”.</p>
 
 
@@ -386,7 +387,7 @@
       <div class="card"><span class="label">Opad PMAXTP</span><p>Suma opadu z atlasu PMAXTP (IMGW-PIB), średnia w zlewni z punktów siatki co 2&nbsp;km ważonych wielobokami Thiessena. Czas trwania 5&nbsp;min–72&nbsp;h (domyślnie 24&nbsp;h), prawdopodobieństwo 0,01–99,9&nbsp;% (domyślnie 1&nbsp;%); p&nbsp;=&nbsp;1&nbsp;% to okres powtarzalności 100&nbsp;lat.</p></div>
       <div class="card"><span class="label">Rozkład opadu</span><p>Podział opadu na kroki po 5&nbsp;min: Beta (α, β; domyślnie szczyt w 0,2 czasu trwania), Euler II — przyrosty krzywej PMAXTP wysokość–czas trwania, największy od 0,3 czasu trwania, Blokowy — stałe natężenie.</p></div>
       <div class="card"><span class="label">Uwilgotnienie AMC</span><p>I — suche, II — przeciętne (domyślne), III — mokre. AMC przelicza CN zlewni, a z nim straty, opad efektywny i cały hydrogram.</p></div>
-      <div class="card"><span class="label">Wykres, bilans, eksport</span><p>Wykres „Opad” pokazuje opad całkowity i efektywny oraz szczyt Pmax. Pod nim bilans: sumy opadów, skąd opad PMAXTP (liczba punktów), wsp. odpływu, CN użyty (z AMC), S i Ia. „Eksport”: hietogram CSV lub JSON, punkty PMAXTP z wagami jako GeoJSON.</p></div>
+      <div class="card"><span class="label">Wykres, bilans, eksport</span><p>Wykres „Opad” pokazuje słupkami opad całkowity i efektywny w każdym kroku oraz krok największego opadu Pmax. Pod nim bilans: sumy opadów, skąd opad PMAXTP (liczba punktów), wsp. odpływu, CN użyty (z AMC), S i Ia. „Eksport”: hietogram CSV lub JSON, punkty PMAXTP z wagami jako GeoJSON; „PNG” przy tytule wykresu zapisuje go tak, jak go widać, z liniami źródeł danych pod nim.</p></div>
     </div>
   </div>
   <p class="hint">Każda zmiana pola przelicza hietogram i hydrogram po chwili — nie ma przycisku „Oblicz”. Pole „Współczynnik redukcji obszarowej (własny)” jest domyślnie puste (bez redukcji); wpisana wartość 0–1 mnoży opad PMAXTP.</p>
@@ -400,7 +401,7 @@
     <div class="stack">
       <div class="card"><span class="label">Tabela</span><p>W „Hietogramie” wybierz „Własna seria”. Czas trwania i krok [min] tworzą tabelę: czas trwania to wielokrotność kroku, krok do 1440&nbsp;min, najwyżej 2000&nbsp;kroków. „Czas [min]” to koniec kroku.</p></div>
       <div class="card"><span class="label">Wartości</span><p>W „Opad [mm]” wpisz wysokość opadu w kroku (≥&nbsp;0, suma&nbsp;&gt;&nbsp;0) — nie natężenie w mm/h. Kolumnę z arkusza wklejasz od wybranej komórki w dół.</p></div>
-      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny.</p></div>
+      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny. Otworzysz też eksport szeregu Obserwatora (<code>obserwator series export … --variables P --format csv</code>) z opadem dobowym IMGW-PIB lub ČHMÚ: kolumna „P [mm]” dzień po dniu (krok 1440&nbsp;min), najwyżej 2000&nbsp;dni — dłuższy plik jest odrzucany, wyeksportuj krótszy zakres (<code>--start</code>, <code>--end</code>). Linie źródła danych z pliku idą z hydrogramem i jego plikami.</p></div>
       <div class="card"><span class="label">Przyciski</span><p>„Wczytaj z bieżącego hietogramu” kopiuje ostatni hietogram PMAXTP, „Wyczyść” opróżnia tabelę. Seria dotyczy jednej zlewni — nowa zlewnia ją czyści.</p></div>
     </div>
   </div>
@@ -432,6 +433,7 @@
       <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz lub Regresja urban.; Snyder — z najdłuższej drogi spływu i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp, obok których stoi wtedy pole L<sub>c</sub>.</p></div>
       <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. Każdą liczy Hydrolog z danych, które podaje jej źródło, bez zastępników — najdłuższa droga spływu i jej spadek oraz spływ powierzchniowy pochodzą z wyznaczenia zlewni. FAA wymaga „C (spływ)” z tabeli FAA, obie metody Kerby’ego — „N (opór)” z tabeli Kerby’ego; pola są puste, dopóki ich nie wypełnisz. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub>, więc przy nim lista jest wyłączona.</p></div>
       <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc i Tc (nie dla Snydera), Hydrogram jedn. (dla Nasha także N i K, a dla metody Lutza udział lasów W i terenów zurbanizowanych U z pokrycia terenu zlewni).</p></div>
+      <div class="card"><span class="label">Przybliżanie wykresów</span><p>Przeciągnij po wykresie, aby pokazać część osi czasu (odległości, powierzchni); <kbd>Ctrl</kbd> z kółkiem myszy przybliża w miejscu kursora, a samo kółko przewija panel; <kbd>Shift</kbd> z przeciąganiem albo przeciąganie środkowym przyciskiem przesuwa. Dwuklik, klawisz <kbd>0</kbd> albo „Cały zakres” pod wykresem pokazują całość, „−” i „+” oddalają i przybliżają. Na telefonie dwa palce przybliżają i przesuwają, jeden przewija i odczytuje wartości. Odczyt także strzałkami, gdy wykres ma fokus.</p></div>
       <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wyborem: dla jakich zlewni powstała metoda (np. Kirpich — małe zlewnie rolnicze, Giandotti — duże). Gdy wartość wychodzi poza zakres stosowania metody albo poza typowy zakres, który czeka na opublikowane źródło, pod sekcją „Hydrogram” pojawia się ostrzeżenie Hydrologu.</p></div>
     </div>
   </div>
@@ -557,7 +559,7 @@
       <div class="step"><span class="number">01</span><strong>Włącz „Profil terenu”</strong><p>Na pasku nad mapą; pomaga warstwa „NMT (wysokości)”. Pojawi się pasek rysowania z licznikiem punktów.</p></div>
       <div class="step"><span class="number">02</span><strong>Klikaj punkty linii</strong><p>Kliknięcie (dotknięcie) dodaje punkt; „Cofnij” lub <kbd>Backspace</kbd> usuwa ostatni, „Anuluj” lub <kbd>Esc</kbd> porzuca linię.</p></div>
       <div class="step"><span class="number">03</span><strong>Narysuj profil</strong><p>Kliknij lub dotknij ponownie ostatni punkt, kliknij dwukrotnie albo naciśnij „Rysuj profil” (min. 2&nbsp;punkty). Szuflada pokaże długość, wysokości i wykres.</p></div>
-      <div class="step"><span class="number">04</span><strong>Odczytaj i zacznij od nowa</strong><p>Najechanie na wykres wskaże miejsce na linii. Kliknięcie mapy zaczyna nową linię; × w szufladzie zamyka profil.</p></div>
+      <div class="step"><span class="number">04</span><strong>Odczytaj i zacznij od nowa</strong><p>Najechanie na wykres, przesunięcie po nim palcem albo strzałki wskażą miejsce na linii; wykres przybliża się jak hydrogram („Przybliżanie wykresów”), a „PNG” zapisuje go z liniami źródeł. Kliknięcie mapy zaczyna nową linię; × w szufladzie zamyka profil.</p></div>
     </div>
   </div>
   <p class="hint">Wykres ma zawsze 100&nbsp;punktów — przy długiej linii drobne formy terenu znikają. Odcinek linii poza zasięgiem NMT to przerwa w wykresie (komunikat nad wykresem podaje udział takich próbek); linia całkiem poza tym zasięgiem daje „Linia leży poza zasięgiem NMT: brak danych wysokościowych.” <strong>Woda na wykresie:</strong> gdy w panelu „Warstwy” jest włączony wynik modelu (np. SFINCS), a linia przecina zalany teren, wykres pokaże wodę na niebiesko — do najwyższego poziomu z symulacji. Najechanie na wodę poda poziom wody i głębokość.</p>
@@ -900,7 +902,7 @@
   <div class="explain" id="o-custom-rain">
     <h4>Własna seria opadu</h4>
     <p>Własna seria, np. z&nbsp;deszczomierza, daje hydrogram konkretnego zdarzenia – bez przypisanego prawdopodobieństwa – i&nbsp;zachowuje rzeczywisty rozkład natężenia, który obok sumy i&nbsp;czasu trwania decyduje o&nbsp;kulminacji. W&nbsp;Hydrografie seria zastępuje czas trwania, prawdopodobieństwo i&nbsp;rozkład opadu PMAXTP; hydrogram jest liczony z&nbsp;krokiem <math><mrow><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> serii, a&nbsp;straty SCS-CN i&nbsp;przeliczenie AMC działają tak samo jak dla opadu PMAXTP.</p>
-    <p>Tabela ma <math><mrow><mi>n</mi><mo>=</mo><mi>D</mi><mo lspace="0" rspace="0">/</mo><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> wierszy z&nbsp;czasem końca kroku i&nbsp;opadem; jej wypełnianie, import CSV i&nbsp;przyciski opisuje <a href="#wlasna-seria">„Własna seria opadu zamiast PMAXTP”</a>. W&nbsp;pliku CSV z&nbsp;dwiema kolumnami czas [min] to koniec kroku albo 0&nbsp;na początku, a&nbsp;czasy w&nbsp;równych odstępach wyznaczają krok.</p>
+    <p>Tabela ma <math><mrow><mi>n</mi><mo>=</mo><mi>D</mi><mo lspace="0" rspace="0">/</mo><mi mathvariant="normal">Δ</mi><mi>t</mi></mrow></math> wierszy z&nbsp;czasem końca kroku i&nbsp;opadem; jej wypełnianie, import CSV i&nbsp;przyciski opisuje <a href="#wlasna-seria">„Własna seria opadu zamiast PMAXTP”</a>. W&nbsp;pliku CSV z&nbsp;dwiema kolumnami czas [min] to koniec kroku albo 0&nbsp;na początku, a&nbsp;czasy w&nbsp;równych odstępach wyznaczają krok. Eksport szeregu Obserwatora to opad dobowy: kolumna „P [mm]” z&nbsp;krokiem 1440&nbsp;min, dzień po dniu, bez dni bez pomiaru („missing”) i&nbsp;sum z&nbsp;kilku dni („accumulated”), najwyżej 2000&nbsp;dni. Jego linie źródła danych, IMGW-PIB albo ČHMÚ, idą z&nbsp;hydrogramem i&nbsp;jego plikami; API sprawdza je z&nbsp;liniami tego dostawcy.</p>
     <p class="explain-src">Źródła: KZGW 2017</p>
   </div>
   <div class="explain" id="o-pmaxtp_interpolation">
@@ -1132,8 +1134,8 @@
 <p class="back"><a href="#toc-title">↑ Spis treści</a></p></section></div></main>
 <script defer="" src="../js/theme-switch.js?v=2d10fe19e0"></script>
 <script defer="" src="../js/instance.js?v=04b557b531"></script>
-<script defer="" src="../js/terms.js?v=5b87c2c7ae"></script>
-<script type="module" src="../js/nogat.js?v=709227bbe2"></script>
+<script defer="" src="../js/terms.js?v=8a010e90bc"></script>
+<script type="module" src="../js/nogat.js?v=599214cccc"></script>
 
 
 

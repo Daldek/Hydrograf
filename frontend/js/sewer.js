@@ -37,7 +37,7 @@
             return null;
         }
 
-        return L.vectorGrid.protobuf('/api/tiles/sewer/{z}/{x}/{y}.pbf', {
+        return Hydrograf.map.nameOverlay(L.vectorGrid.protobuf('/api/tiles/sewer/{z}/{x}/{y}.pbf', {
             vectorTileLayerStyles: {
                 sewer_lines: function () {
                     return {
@@ -63,7 +63,7 @@
             maxZoom: 20,
             minZoom: 10,
             interactive: true,
-        });
+        }), 'sewer');
     }
 
     function getSewerLayer() {

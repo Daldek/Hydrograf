@@ -22,10 +22,10 @@
             })
             .then(function (meta) {
                 depressionsBounds = L.latLngBounds(meta.bounds);
-                depressionsOverlay = L.imageOverlay('/data/depressions.png', depressionsBounds, {
+                depressionsOverlay = Hydrograf.map.nameOverlay(L.imageOverlay('/data/depressions.png', depressionsBounds, {
                     opacity: 0.7,
                     attribution: 'Zagłębienia (blue spots)',
-                });
+                }), 'depressions');
 
                 // Add to layers panel — "Warstwy podkładowe" group; the depressions
                 // of the NMT put its line into the view's strip while on (DEV §20)

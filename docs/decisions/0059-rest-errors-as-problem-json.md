@@ -4,6 +4,11 @@
 > (with `Retry-After`) for every `/api/` operation; only the gateway errors of nginx stay
 > plain responses.
 
+> **Amended by ADR-091 (2026-11-25):** the operations are the commands of Hydrograf's catalog,
+> each `operationId` `hydrograf_<group>_<verb>` with the error responses of its codes; the
+> OpenAPI document is at `/api/v1/openapi.json` with relative paths; a problem of a command
+> or of a job's result carries `command`; the 429 has the reason `job_limit` too.
+
 **Date:** 2026-10-25
 **Status:** accepted
 

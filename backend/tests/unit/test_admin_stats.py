@@ -1,4 +1,4 @@
-"""GET /api/admin/stats: the days of stats.jsonl and their sums (Nogat DEV-15.13).
+"""GET /api/v1/admin/stats: the days of stats.jsonl and their sums (Nogat DEV-15.13).
 
 The days between `from` and `to`, both included (by default the last 30 up to today),
 in date order, the current day as counted so far: what earlier processes stored of it
@@ -35,7 +35,7 @@ def traffic(tmp_path, monkeypatch):
 def client(traffic):
     app = FastAPI()
     install_error_handlers(app)
-    app.include_router(admin.router, prefix="/api/admin")
+    app.include_router(admin.router, prefix="/api/v1/admin")
     app.dependency_overrides[verify_admin_key] = lambda: None
     app.state.traffic = traffic
     return TestClient(app)
@@ -65,7 +65,7 @@ def _days_ago(n: int) -> datetime.date:
 def test_by_default_the_last_30_days_up_to_today(client, traffic):
     _store(traffic, _line(_days_ago(30)), _line(_days_ago(29)), _line(_days_ago(1)))
 
-    days = client.get("/api/admin/stats").json()["days"]
+    days = client.get("/api/v1/admin/stats").json()["days"]
 
     assert [day["date"] for day in days] == [
         _days_ago(29).isoformat(),
@@ -78,7 +78,7 @@ def test_the_period_includes_both_days(client, traffic):
     _store(traffic, *(_line(_days_ago(n), visitors=n) for n in range(10, 0, -1)))
 
     answer = client.get(
-        "/api/admin/stats",
+        "/api/v1/admin/stats",
         params={"from": _days_ago(7).isoformat(), "to": _days_ago(5).isoformat()},
     ).json()
 
@@ -90,10 +90,10 @@ def test_today_adds_this_process_to_what_earlier_ones_stored(client, traffic):
     traffic.usage.visit("203.0.113.7", "Firefox/1")
     traffic.usage.add("page_views")
 
-    before = client.get("/api/admin/stats").json()["days"][-1]
+    before = client.get("/api/v1/admin/stats").json()["days"][-1]
     traffic.store()
     traffic.usage.add("page_views")
-    after = client.get("/api/admin/stats").json()["days"][-1]
+    after = client.get("/api/v1/admin/stats").json()["days"][-1]
 
     assert before == _line(TODAY, visitors=3, page_views=6, downloads=1)
     assert after == _line(TODAY, visitors=3, page_views=7, downloads=1)
@@ -106,7 +106,7 @@ def test_the_totals_sum_every_key_but_visitors(client, traffic):
         _line(_days_ago(1), visitors=6, page_views=5, analyses_run=2),
     )
 
-    totals = client.get("/api/admin/stats").json()["totals"]
+    totals = client.get("/api/v1/admin/stats").json()["totals"]
 
     assert totals == {
         "page_views": 15,
@@ -117,14 +117,14 @@ def test_the_totals_sum_every_key_but_visitors(client, traffic):
 
 
 def test_the_whole_record_without_a_file(client, traffic):
-    answer = client.get("/api/admin/stats", params={"from": "1970-01-01"}).json()
+    answer = client.get("/api/v1/admin/stats", params={"from": "1970-01-01"}).json()
 
     assert answer["days"] == [_line(TODAY, visitors=0)]
 
 
 def test_a_period_that_ends_before_it_begins_is_refused(client):
     response = client.get(
-        "/api/admin/stats", params={"from": "2026-11-10", "to": "2026-11-01"}
+        "/api/v1/admin/stats", params={"from": "2026-11-10", "to": "2026-11-01"}
     )
 
     assert response.status_code == 400

@@ -6,32 +6,37 @@ totals live in that process's memory (``app.state.traffic``):
 - Limit (``core.request_limit``): pages and API routes, 300 requests in 60 s per client
   address by default (HYDROGRAF_REQUEST_LIMIT, HYDROGRAF_REQUEST_WINDOW); map tiles
   (``/api/tiles/``) ten times that in the same window instead; „Zgłoś uwagę”
-  (``POST /api/feedback``) besides at most 5 reports in 5 minutes. nginx serves the
-  static files itself, so they are not counted; ``/health`` is not either. Over a
-  limit a page answers 429 with a Polish page and an API route with the problem
+  (``POST /api/v1/feedback``) besides at most 5 reports in 5 minutes; and at most 2
+  active jobs per client (``JobSlots``, AGI-6.10, ADR-091). nginx serves the static
+  files itself, so they are not counted; ``/health`` is not either. Over a limit a
+  page answers 429 with a Polish page and an API route with the problem
   ``rate_limited``, both with ``Retry-After`` in seconds.
 - Totals (``core.usage``): a visitor for every counted request, and the page views,
   analyses and downloads of ``count``; stored every 10 minutes, at 00:00 UTC and at
   shutdown in ``<data_dir>/hydrograf/stats.jsonl``.
 - Admin panel (Nogat DEV-15.13, ADR-086): its page under ``/admin/`` and its API under
-  ``/api/admin/`` are limited like any page or route but count in no total, and each
-  of their answers, a refusal included, is ``Cache-Control: no-store``.
+  ``/api/v1/admin/`` are limited like any page or route but count in no total, and
+  each of their answers, a refusal included, is ``Cache-Control: no-store``.
 
-The client's address: nginx passes the address of its own peer in ``X-Real-IP``.
-Behind the Cloudflare Tunnel that peer is the tunnel's connector on the host, which
-nginx sees from the Docker network, and the client is the address Cloudflare reports
-in ``CF-Connecting-IP``. Each header is believed only from a hop on a loopback or
-private network (nginx, the connector); a public hop is the client itself. The address
-stays in memory, for the limit's window and the visitor's hash only; no log, file or
-table holds it (DEV-15.10).
+The client's address (Nogat AGI-6.9, ADR-091): nginx passes ``X-Forwarded-For`` with
+the address of its own peer appended (``$proxy_add_x_forwarded_for``). Behind the
+Cloudflare Tunnel, or behind Latarnik, that peer is the proxy on the host, which nginx
+sees from the Docker network, and the proxy has put the client's address before it.
+The API believes the header only from a hop on a loopback or private network (nginx,
+a proxy on the host) and takes its right-most address that is no such hop, as
+Archiwista takes the right-most that is no trusted proxy: a client cannot forge the
+addresses on the right, which each proxy writes. A public hop is the client itself.
+The address stays in memory, for the limit's window, the visitor's hash and an active
+job's place only; no log, file or table holds it (DEV-15.10).
 """
 
 import asyncio
 import datetime
 import ipaddress
 import logging
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import Request, Response
@@ -48,25 +53,29 @@ logger = logging.getLogger(__name__)
 # Requests no limit and no total counts: the health checks of Docker and nginx
 UNCOUNTED = frozenset({"/health"})
 # The admin panel and its API: limited, never counted, never cached (DEV-15.13)
-ADMIN = ("/admin/", "/api/admin/")
+ADMIN = ("/admin/", "/api/v1/admin/")
 TILES = "/api/tiles/"
-FEEDBACK = ("POST", "/api/feedback")
+FEEDBACK = ("POST", "/api/v1/feedback")
 # Map tiles have their own limit: this many times the general one, in its window
 TILE_FACTOR = 10
 # „Zgłoś uwagę” besides the general limit: reports per address and window [s]
 FEEDBACK_LIMIT = 5
 FEEDBACK_WINDOW_S = 300
+# Active jobs per client address (AGI-6.10), and the wait a refusal names [s]
+JOBS_PER_CLIENT = 2
+JOB_RETRY_AFTER_S = 10
 # What the totals count besides visitors (README "Statistics"): successful answers of
-# the routes that compute, and the files the interface reports it saved
+# the routes that compute (a job of the hydrograph or the network when it starts), and
+# the files the interface reports it saved
 ANALYSES = frozenset(
     {
-        ("POST", "/api/delineate-watershed"),
-        ("POST", "/api/delineate-network"),
-        ("POST", "/api/generate-hydrograph"),
-        ("POST", "/api/terrain-profile"),
+        ("GET", "/api/v1/watershed/delineate"),
+        ("POST", "/api/v1/terrain/profile"),
+        ("POST", "/api/v1/precipitation/depth"),
+        ("POST", "/api/v1/jobs"),
     }
 )
-DOWNLOADS = frozenset({("POST", "/api/downloads")})
+DOWNLOADS = frozenset({("POST", "/api/v1/downloads")})
 # Housekeeping: windows that ended are forgotten within this many seconds [s]
 FORGET_EVERY_S = 5.0
 # The day's totals are stored this often [s]
@@ -125,6 +134,55 @@ class Refusal:
     limit: RequestLimit
 
 
+@dataclass(eq=False)
+class JobSlot:
+    """One active job's place in its client's limit (``JobSlots``)."""
+
+    owner: "JobSlots" = field(repr=False)
+    address: str = field(repr=False)
+    released: bool = False
+
+    def release(self) -> None:
+        """Give the place back to its client; a second call does nothing."""
+        self.owner.give_back(self)
+
+
+class JobSlots:
+    """The active jobs of each client address, at most ``limit`` (AGI-6.10).
+
+    Parameters
+    ----------
+    limit : int
+        Active jobs per address.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self._active: dict[str, int] = {}
+        self._lock = threading.Lock()
+
+    def take(self, address: str) -> JobSlot | None:
+        """Return a place for a new job of ``address``, None when it has ``limit``."""
+        with self._lock:
+            active = self._active.get(address, 0)
+            if active >= self.limit:
+                return None
+            self._active[address] = active + 1
+        return JobSlot(self, address)
+
+    def give_back(self, slot: JobSlot) -> None:
+        """Free the place of ``slot`` once."""
+        with self._lock:
+            if slot.released:
+                return
+            slot.released = True
+            active = self._active.get(slot.address, 0) - 1
+            if active > 0:
+                self._active[slot.address] = active
+            else:
+                self._active.pop(slot.address, None)
+
+
 class Traffic:
     """The limits and the day's totals of this process.
 
@@ -144,6 +202,7 @@ class Traffic:
         self.stats = StatsFile(
             Path(settings.hydrograf_data_dir) / "hydrograf" / "stats.jsonl"
         )
+        self.jobs = JobSlots(JOBS_PER_CLIENT)
 
     def check(self, method: str, path: str, address: str, now: float) -> Refusal | None:
         """Count a request of ``address`` against its limits; the refusal, if any."""
@@ -198,15 +257,24 @@ class Traffic:
 
 def client_address(request: Request) -> str:
     """Return the address of the client of ``request`` (see the module)."""
-    address = request.client.host if request.client else ""
-    for header in ("x-real-ip", "cf-connecting-ip"):
+    peer = request.client.host if request.client else ""
+    nearest = _address(peer) or peer
+    if not _is_proxy(peer):
+        return nearest
+    forwarded = [
+        item.strip()
+        for value in request.headers.getlist("x-forwarded-for")
+        for item in value.split(",")
+        if item.strip()
+    ]
+    for item in reversed(forwarded):
+        address = _address(item)
+        if address is None:
+            break
         if not _is_proxy(address):
-            break
-        reported = _address(request.headers.get(header))
-        if reported is None:
-            break
-        address = reported
-    return address
+            return address
+        nearest = address
+    return nearest
 
 
 def _address(text: str | None) -> str | None:
@@ -251,6 +319,21 @@ def too_many_requests(request: Request, refusal: Refusal) -> Response:
             "window_s": refusal.limit.window_s,
         },
         headers=headers,
+    )
+
+
+def too_many_jobs(request: Request, slots: JobSlots) -> Response:
+    """Answer a job over the client's limit of active jobs (429, ``job_limit``)."""
+    return problem_response(
+        request,
+        "rate_limited",
+        message_id="job_limit",
+        details={
+            "reason": "job_limit",
+            "retry_after_s": JOB_RETRY_AFTER_S,
+            "limit": slots.limit,
+        },
+        headers={"Retry-After": str(JOB_RETRY_AFTER_S)},
     )
 
 

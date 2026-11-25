@@ -1,5 +1,5 @@
 """
-Integration tests for tile (MVT) endpoints.
+Integration tests for tile (MVT) endpoints and the ``layers thresholds`` command.
 """
 
 from unittest.mock import MagicMock
@@ -226,13 +226,13 @@ class TestCatchmentsMVT:
 
 
 class TestThresholdsEndpoint:
-    """Tests for GET /api/tiles/thresholds."""
+    """Tests for GET /api/v1/layers/thresholds."""
 
     def test_returns_200(self, client, mock_db_with_thresholds):
         """Test thresholds endpoint returns 200."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_thresholds
 
-        response = client.get("/api/tiles/thresholds")
+        response = client.get("/api/v1/layers/thresholds")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -241,8 +241,8 @@ class TestThresholdsEndpoint:
         """Test response has streams and catchments keys."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_thresholds
 
-        response = client.get("/api/tiles/thresholds")
-        data = response.json()
+        response = client.get("/api/v1/layers/thresholds")
+        data = response.json()["result"]
 
         assert "streams" in data
         assert "catchments" in data
@@ -254,8 +254,8 @@ class TestThresholdsEndpoint:
         """Test that returned thresholds match mock data."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_thresholds
 
-        response = client.get("/api/tiles/thresholds")
-        data = response.json()
+        response = client.get("/api/v1/layers/thresholds")
+        data = response.json()["result"]
 
         assert data["streams"] == [1000, 10000, 100000]
         assert data["catchments"] == [1000, 10000]
@@ -273,8 +273,8 @@ class TestThresholdsEndpoint:
         mock_session.execute.side_effect = execute_side_effect
         app.dependency_overrides[get_db] = lambda: mock_session
 
-        response = client.get("/api/tiles/thresholds")
-        data = response.json()
+        response = client.get("/api/v1/layers/thresholds")
+        data = response.json()["result"]
 
         assert response.status_code == 200
         assert data["streams"] == []
@@ -303,8 +303,8 @@ class TestThresholdsEndpoint:
         mock_session.execute.side_effect = execute_side_effect
         app.dependency_overrides[get_db] = lambda: mock_session
 
-        response = client.get("/api/tiles/thresholds")
-        data = response.json()
+        response = client.get("/api/v1/layers/thresholds")
+        data = response.json()["result"]
 
         assert response.status_code == 200
         assert data["streams"] == [10000]

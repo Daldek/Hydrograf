@@ -1,7 +1,7 @@
 /**
  * Hydrograf advanced mode (Hydrogram section).
  *
- * Editable copy of the morphometry sent to POST /api/generate-hydrograph.
+ * Editable copy of the morphometry sent to `hydrograph generate` (a job of the API).
  * The delineated watershed object is never modified: "Parametry podstawowe"
  * keep the original values, edits only change the request payload.
  * State lives per watershed; a new delineation reloads the form.
@@ -48,7 +48,7 @@
     var _original = null;    // its morphometry (never modified)
     var _rows = {};          // key -> { field, wrap, input, reset, err, orig, shown }
     var _timer = null;
-    var _areaLimit = null;   // km², area_limit_km2 of GET /api/scenarios
+    var _areaLimit = null;   // km², area_limit_km2 of `hydrograph scenarios`
     var els = {};
     var SNYDER_KEY = 'length_to_centroid_km';
     var _snyder = false;     // the UH model is Snyder (hydrograph.js)
@@ -266,7 +266,7 @@
     }
 
     /**
-     * Area limit of the hydrograph (GET /api/scenarios); the field "Powierzchnia
+     * Area limit of the hydrograph (`hydrograph scenarios`); the field "Powierzchnia
      * zlewni" accepts no more, like a delineated watershed.
      */
     function setAreaLimit(limit) {

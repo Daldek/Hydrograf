@@ -429,7 +429,7 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict[st
 def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
     """Wyznacz zlewnię dla punktu.
 
-    Uruchamia ten sam kod co API (``POST /api/delineate-watershed``, tryb
+    Uruchamia ten sam kod co API (``watershed delineate``, tryb
     precomputed: graf zlewni, kaskada progów, scalona granica, morfometria
     z grafu), nie ma tu drugiej implementacji.
     """
@@ -437,7 +437,6 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
     logger.info("KROK 3: Wyznaczanie zlewni")
     logger.info("=" * 60)
 
-    from fastapi import Response
     from shapely.geometry import Polygon, shape
 
     from api.endpoints.watershed import delineate_watershed as delineate_endpoint
@@ -446,7 +445,7 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
         loaded_catchment_graph,
         wait_for_catchment_graph,
     )
-    from models.schemas import DelineateRequest
+    from models.schemas import DelineateQuery, DelineateResponse
     from utils.geometry import (
         transform_polygon_wgs84_to_pl1992,
         transform_wgs84_to_pl1992,
@@ -461,14 +460,14 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
 
     start = time.time()
     delineation = delineate_endpoint(
-        DelineateRequest(
+        DelineateQuery(
             latitude=config.latitude,
             longitude=config.longitude,
             threshold_m2=config.threshold_m2,
         ),
-        Response(),
-        db=db,
-    )
+        db,
+    ).document
+    assert isinstance(delineation, DelineateResponse)
     result = delineation.watershed
     if delineation.info_message:
         logger.info(delineation.info_message)

@@ -2,8 +2,8 @@
  * Hydrograf Layers module.
  *
  * Layers panel: overlay rows (checkbox, name, opacity slider), rows for the
- * results of external analyses (results.js), base map radio list with the
- * flood hazard map overlay (MZP, WMS of Wody Polskie) above it, and one
+ * results of external analyses (results.js), the base maps of Nogat's kit with
+ * the flood hazard map overlay (MZP, WMS of Wody Polskie) above them, and one
  * zoom-to-extent action for all enabled overlays.
  */
 (function () {
@@ -11,60 +11,36 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
-    var currentBaseLayer = null;
-    var baseLayers = {};
-    var DEFAULT_BASE_LAYER = 'openfreemap';
-    var currentBaseLayerName = DEFAULT_BASE_LAYER;
     var _overlayRegistry = [];
     var _groups = {};
     var _rowCount = 0;
 
-    var GUGIK_OSM_URL = 'https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png';
+    // ===== Base maps (Nogat DEV-15.15, ADR-089) =====
+    //
+    // GET /api/v1/basemaps gives the entries of the kit's catalogue that the deployment
+    // allows (its setting `basemaps`, a copy of its own in a provider's place), then its
+    // own base maps, in the catalogue's shape. The kit's <nogat-basemaps> lists them and
+    // „bez podkładu”, opens on the choice the browser keeps (`nogat-basemap`) while it is
+    // offered, else on the first entry the catalogue marks as a default, and tells of a
+    // person's choice by `change`. The kit's leafletBasemap (js/nogat.js) draws the chosen
+    // one under the overlays with its credit in the map's attribution: a raster entry as
+    // image tiles, OpenFreeMap through MapLibre in the kit's grey style. An entry whose
+    // provider fails is marked in the list and said on the map; nothing switches by itself.
 
-    /** GUGiK OSM raster (Poland only), desaturated by the .basemap-grey class. */
-    function createGugikOsmLayer() {
-        return L.tileLayer(GUGIK_OSM_URL, {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://www.geoportal.gov.pl">GUGiK</a>',
-            className: 'basemap-grey',
-            maxZoom: 19,
-        });
+    // The names of the kit's grey style: Noto Sans 2.0 of openmaptiles/fonts, vendored
+    var GLYPHS = new URL('vendor/openmaptiles-fonts-2.0/{fontstack}/{range}.pbf', document.baseURI).href
+        .replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+    var basemaps = {
+        element: null,  // the kit's <nogat-basemaps>
+        layer: null,    // the Leaflet layer of the base map drawn
+        shown: 'none',  // the id chosen, "none" for „bez podkładu”
+        call: 0,        // the latest drawing: one still loading when another starts draws nothing
+    };
+
+    /** The kit's base maps of js/nogat.js, or null without its module. */
+    function basemapKit() {
+        return (window.Hydrograf.nogat && window.Hydrograf.nogat.basemaps) || null;
     }
-
-    /** OpenFreeMap vector basemap; falls back to GUGiK when MapLibre is missing. */
-    function createOpenFreeMapLayer() {
-        if (typeof L.maplibreGL !== 'function') {
-            console.warn('MapLibre GL Leaflet not loaded — falling back to OSM GUGiK basemap');
-            return createGugikOsmLayer();
-        }
-        return L.maplibreGL({
-            style: 'https://tiles.openfreemap.org/styles/positron',
-            attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        });
-    }
-
-    // GUGiK orthophoto WMTS (KVP), matrix set EPSG:3857 = the web-mercator grid,
-    // levels EPSG:3857:0..19; the layer's WGS84 box keeps requests within Poland.
-    var GUGIK_ORTHO_URL = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution'
-        + '?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTOFOTOMAPA&STYLE=default'
-        + '&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}'
-        + '&TILEROW={y}&TILECOL={x}';
-
-    /** GUGiK orthophoto (Poland only). */
-    function createGugikOrthoLayer() {
-        return L.tileLayer(GUGIK_ORTHO_URL, {
-            attribution: 'Ortofotomapa &copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
-            bounds: L.latLngBounds([48.8, 13.8], [55.0, 24.4]),
-            maxZoom: 19,
-        });
-    }
-
-    /** Base maps in panel order; `create` null means no base map. */
-    var BASEMAPS = [
-        { name: 'openfreemap', label: 'OpenFreeMap szary', create: createOpenFreeMapLayer },
-        { name: 'gugik-osm', label: 'OSM GUGiK szary (tylko Polska)', create: createGugikOsmLayer },
-        { name: 'gugik-ortho', label: 'Ortofotomapa GUGiK', create: createGugikOrthoLayer },
-        { name: 'none', label: 'bez podkładu', create: null },
-    ];
 
     /**
      * Create a panel group (section with a title) and add it to the list.
@@ -86,55 +62,94 @@
     }
 
     /**
-     * Build the base map radio list.
+     * Put the kit's base-map switcher at the end of the group and give it the entries
+     * of GET /api/v1/basemaps; without the kit's module or the answer no base map is drawn.
      */
-    function createBaseLayerList(group) {
-        var radioList = document.createElement('div');
-        radioList.className = 'radio-list';
-        radioList.setAttribute('role', 'radiogroup');
-        radioList.setAttribute('aria-label', 'Podkład kartograficzny');
-
-        BASEMAPS.forEach(function (basemap) {
-            var lbl = document.createElement('label');
-            var radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = 'basemap';
-            radio.value = basemap.name;
-            radio.checked = basemap.name === DEFAULT_BASE_LAYER;
-            radio.addEventListener('change', function () {
-                if (radio.checked) setBaseLayer(basemap.name);
-            });
-            lbl.appendChild(radio);
-            lbl.appendChild(document.createTextNode(' ' + basemap.label));
-            radioList.appendChild(lbl);
-            baseLayers[basemap.name] = basemap.create;
+    function createBaseMapSwitcher(group) {
+        if (!basemapKit()) return;
+        var element = document.createElement('nogat-basemaps');
+        basemaps.element = element;
+        group.appendChild(element);
+        element.addEventListener('change', function (event) {
+            showBaseMap(event.detail.id);
         });
-
-        group.appendChild(radioList);
+        Hydrograf.map.onThemeChange(repaintBaseMap);
+        Hydrograf.api.getBasemaps()
+            .then(function (entries) {
+                element.entries = entries;
+                showBaseMap(element.value);
+            })
+            .catch(function (err) {
+                console.warn('Base maps unknown, none is drawn:', err.message);
+            });
     }
 
     /**
-     * Switch base layer. Pass 'none' to disable all base layers.
+     * Draw the base map `id` under the overlays in place of the one drawn; "none"
+     * (or an id not offered) draws none. The view stays.
      */
-    function setBaseLayer(name) {
-        currentBaseLayerName = name;
-
+    function showBaseMap(id) {
         var map = Hydrograf.map._getMap();
+        var call = ++basemaps.call;
+        basemaps.shown = id;
+        showBaseMapNotice(null);
         if (!map) return;
-
-        if (currentBaseLayer) {
-            map.removeLayer(currentBaseLayer);
-            currentBaseLayer = null;
+        if (basemaps.layer) {
+            map.removeLayer(basemaps.layer);
+            basemaps.layer = null;
         }
+        var entry = basemaps.element.entries.find(function (candidate) {
+            return candidate.id === id;
+        });
+        if (!entry) return;
+        basemapKit().leaflet(L, entry, {
+            glyphs: GLYPHS,
+            texts: basemaps.element.texts,
+            onFailure: function (failed) { onBaseMapFailure(failed, entry); },
+        }).then(function (layer) {
+            if (call === basemaps.call) basemaps.layer = layer.addTo(map);
+        }).catch(function () {
+            // onBaseMapFailure has marked the entry and said it on the map
+        });
+    }
 
-        var factory = baseLayers[name];
-        if (factory) {
-            currentBaseLayer = factory();
-            currentBaseLayer.addTo(map);
-            // The MapLibre layer has no bringToBack; it sits in tilePane below overlays anyway.
-            if (typeof currentBaseLayer.bringToBack === 'function') {
-                currentBaseLayer.bringToBack();
-            }
+    /**
+     * A base map's provider does not answer (its TileJSON or first tiles): the kit took
+     * the layer off the map; the list marks the entry and, while it is the one chosen,
+     * the map says so until the next choice.
+     */
+    function onBaseMapFailure(id, entry) {
+        basemaps.element.fail(id);
+        if (id !== basemaps.shown) return;
+        basemaps.layer = null;
+        showBaseMapNotice(entry);
+    }
+
+    /** The notice on the map of a base map that does not answer; null hides it. */
+    function showBaseMapNotice(entry) {
+        var notice = document.getElementById('basemap-notice');
+        if (!notice) return;
+        notice.hidden = !entry;
+        if (!entry) {
+            notice.textContent = '';
+            return;
+        }
+        var texts = basemaps.element.texts;
+        var label = (texts.labels && texts.labels[entry.id]) || entry.label;
+        notice.textContent = texts.failed + ': ' + label + '. Wybierz inny podkład w panelu „Warstwy”.';
+    }
+
+    /** Repaint a vector base map in the colours of the new theme (Hydrograf.map.onThemeChange). */
+    function repaintBaseMap() {
+        var layer = basemaps.layer;
+        var gl = layer && typeof layer.getMaplibreMap === 'function' ? layer.getMaplibreMap() : null;
+        if (!gl) return;
+        var repaint = basemapKit().repaint;
+        try {
+            repaint(gl);
+        } catch (err) {
+            // Its style is still loading, with the colours read when it was built
+            gl.once('load', function () { repaint(gl); });
         }
     }
 
@@ -153,7 +168,7 @@
     /**
      * Register an overlay for #zoom-extent and, with `kind`, for the view's strip: a
      * layer of Hydrograf's data (`elevation`, `drainage`, `topography`, `soils`: the
-     * kinds of `layers` of GET /api/terms) puts the lines of its GUGiK and SoilGrids
+     * kinds of `layers` of GET /api/v1/terms) puts the lines of its GUGiK and SoilGrids
      * data into the strip while it is on (Nogat DEV §20; showDataLines, after every
      * change in the panel).
      */
@@ -558,7 +573,7 @@
                 if (!layer) {
                     // 512 px images: a third of the requests to a slow
                     // service, at the resolution (and scale) of the zoom.
-                    layer = L.tileLayer.wms(mzpUrl(scenario), {
+                    layer = Hydrograf.map.nameOverlay(L.tileLayer.wms(mzpUrl(scenario), {
                         layers: scenario.layer,
                         format: 'image/png',
                         transparent: true,
@@ -568,7 +583,7 @@
                         maxZoom: 22,
                         pane: 'hazardPane',
                         attribution: MZP_ATTRIBUTION,
-                    });
+                    }), 'hazard');
                     entry.applyOpacity();
                 }
                 map.on('zoomend', sync);
@@ -691,14 +706,14 @@
         );
 
         // Sewer network overlay (MVT, no known extent): only when the server
-        // holds sewer data (GET /api/layers). A placeholder keeps the row's
+        // holds sewer data (`layers availability`). A placeholder keeps the row's
         // place in the group while the answer is pending.
         if (window.Hydrograf.sewer) {
             var sewerSlot = document.createComment('sewer');
             overlayGroup.appendChild(sewerSlot);
             Hydrograf.api.getLayers()
-                .then(function (available) {
-                    if (!available.sewer) {
+                .then(function (answer) {
+                    if (!answer.result.sewer) {
                         sewerSlot.remove();
                         return;
                     }
@@ -710,8 +725,7 @@
                         noBounds,
                         function (opacity) {
                             var layer = window.Hydrograf.sewer.getLayer();
-                            var container = layer && layer.getContainer();
-                            if (container) container.style.opacity = opacity;
+                            if (layer) layer.setOpacity(opacity);
                         },
                         50
                     );
@@ -735,12 +749,12 @@
             streamsSlot.replaceWith(rows);
         }
 
-        // Fetch available thresholds, then build streams entry
-        fetch('/api/tiles/thresholds')
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                var streamsThresholds = data.streams && data.streams.length > 0
-                    ? data.streams : FALLBACK_THRESHOLDS;
+        // Fetch available thresholds (`layers thresholds`), then build streams entry
+        Hydrograf.api.getThresholds()
+            .then(function (answer) {
+                var streams = answer.result.streams;
+                var streamsThresholds = streams && streams.length > 0
+                    ? streams : FALLBACK_THRESHOLDS;
                 placeStreamsEntry(streamsThresholds);
             })
             .catch(function () {
@@ -760,19 +774,19 @@
             });
         }
 
-        // ===== Base layers (at the bottom of the panel) =====
-        // The flood hazard map row sits above the base map list it is drawn over.
+        // ===== Base maps (at the bottom of the panel) =====
+        // The flood hazard map row sits above the kit's switcher of the base maps it is
+        // drawn over.
         var baseGroup = createGroup(list, 'Podkłady kartograficzne');
         addHazardEntry(baseGroup);
-        createBaseLayerList(baseGroup);
-        setBaseLayer(DEFAULT_BASE_LAYER);
+        createBaseMapSwitcher(baseGroup);
     }
 
     window.Hydrograf.layers = {
         init: init,
         addOverlayEntry: addOverlayEntry,
         formatThreshold: formatThreshold,
-        getBaseLayerName: function () { return currentBaseLayerName; },
+        getBaseLayerName: function () { return basemaps.shown; },
         getActiveOverlays: function () {
             return _overlayRegistry
                 .filter(function (entry) { return entry.cb.checked; })

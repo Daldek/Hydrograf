@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.27
+**Version:** 2.32
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -25,17 +25,17 @@
 │  - Reverse Proxy                                                │
 │  - Static Files Serving                                         │
 │  - SSL Termination                                              │
-│  - Pages and /api/* passed to FastAPI (X-Accel-Redirect)        │
+│  - Pages, /api/v1/, /api/tiles/ to FastAPI (X-Accel-Redirect)   │
 └───────────┬─────────────────────────────┬───────────────────────┘
             │                             │
-            │ /api/*                      │ /
+            │ /api/v1/*, /api/tiles/*     │ /
             │                             │
 ┌───────────▼──────────────┐    ┌────────▼──────────────────────┐
 │   APPLICATION LAYER      │    │     FRONTEND LAYER            │
 │      (FastAPI)           │    │  (Static HTML/CSS/JS)         │
 │                          │    │                               │
 │  - REST API Endpoints    │    │  - Leaflet.js (Map)          │
-│  - Request Validation    │    │  - Chart.js (Plots)          │
+│  - Request Validation    │    │  - Nogat kit charts (SVG)    │
 │  - Business Logic        │    │  - Nogat tokens (UI)         │
 │  - Error Handling        │    │  - Vanilla JavaScript        │
 │  - Request Limit, Stats  │    │                              │
@@ -106,7 +106,7 @@ Summary of the key ADRs:
 | ADR-029 | trace_main_channel() | Selection of the main channel by Strahler order (for channel_slope) |
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
 | ADR-033 | Building raising | `raise_buildings_in_dem()` +5 m under the BUBD footprints |
-| ADR-034 | Admin panel | amended by ADR-086: `/admin/` on Nogat's kit, `/api/admin/*` with the key of ADMIN_API_KEY, bootstrap SSE |
+| ADR-034 | Admin panel | amended by ADR-086: `/admin/` on Nogat's kit, `/api/v1/admin/*` (ADR-091) with the key of ADMIN_API_KEY, bootstrap SSE |
 | ADR-035 | Multi-stage containerization | Multi-stage Dockerfile, entrypoint with wait-for-db, dev/prod override |
 | ADR-036 | Docker container hardening | Security headers, resource limits, non-root user |
 | ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data; the cache of the downloads is the Kartograf store `cache/kartograf/` since ADR-061 |
@@ -120,16 +120,18 @@ Summary of the key ADRs:
 | ADR-047 | Chaikin smoothing of streams in preprocessing | Smooth the stream geometry during preprocessing |
 | ADR-048 | Flow path from the watershed divide | Longest flow path + divide flow path as morphometric parameters |
 | ADR-049 | DEM auto-discovery with a fallback chain | Find the DEM file automatically (VRT → mosaic → single TIFF) |
-| ADR-050 | Unified delineate-watershed endpoint | One endpoint with the modes precomputed (BFS) and precise (pyflwdir on the fly) |
+| ADR-050 | Unified delineate-watershed endpoint | One endpoint, the command `watershed delineate` since ADR-091, with the modes precomputed (BFS) and precise (pyflwdir on the fly) |
 | ADR-051 | Storm-sewer network integration | Inlet burning + FA routing through the sewer network in preprocessing |
 | ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
 | ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; no Bootstrap since ADR-086 |
-| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; no Bootstrap since ADR-086; the base maps from Nogat's kit since ADR-089 |
+| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/v1/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product | PMAXTP's lines of Nogat DEV §20 from one module (`core/attribution.py`) in the responses, the hand-off and every export; the front end shows what a response or the results manifest carries |
 | [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service | Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG; the request limit per client address and the daily totals in the API (one process), the pages through the API; logs without addresses, 14 days (the API's own files since ADR-085); the form with the text and the view's context |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines, own files and the logs of ECO-066 | G and SG with the dates of `instance.json` on every product of their data, the GUGiK orthophoto, no remote scripts, the logs `nogat-log/1` of `<state_dir>/hydrograf/logs` |
-| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit | `/admin/` is the kit's `<nogat-admin>` with Hydrograf's sections, `GET /api/admin/status` and `stats`, the key of `ADMIN_API_KEY` or `ADMIN_API_KEY_FILE` |
+| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit | `/admin/` is the kit's `<nogat-admin>` with Hydrograf's sections, `GET /api/v1/admin/status` and `stats`, the key of `ADMIN_API_KEY` or `ADMIN_API_KEY_FILE` |
+| [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit | The kit's catalogue and `<nogat-basemaps>` fed by `GET /api/v1/basemaps` (settings `basemaps`, `basemap_mirrors`, `basemap_extra`), drawn by the kit's Leaflet adapter until the map moves to MapLibre; OpenFreeMap in the kit's grey style with vendored glyphs; the choice kept in the browser; a static nginx CSP checked against the catalogue |
+| [ADR-091](decisions/0091-api-v1-command-catalog-envelopes-and-jobs.md) | The API at /api/v1: a command catalog, result envelopes and jobs | One API for every tool behind Latarnik (Nogat AGI-4.1, AGI-4.2, AGI-6.1 to AGI-6.10): 14 commands of `api/catalog.py` at `/api/v1/<group>/<verb>`, `GET /api/v1/commands/list` and `schema`, the envelope `hydrograf-result/1`, `/api/v1/openapi.json`, `GET /api/v1/server`, the hydrograph and the network as jobs `nogat-job/1`, `precipitation depth`, the client's address from `X-Forwarded-For`; `/api` removed but the tiles at `/api/tiles/` |
 
 ---
 
@@ -140,27 +142,36 @@ Summary of the key ADRs:
 ```
 backend/
 ├── api/
-│   ├── __init__.py
-│   ├── errors.py                  # Problem responses application/problem+json (RFC 9457) of every error, their OpenAPI documentation, operationId (ADR-059)
-│   ├── main.py                    # FastAPI app instance, lifespan (the logs' start and stop), middleware (the access log outermost)
-│   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (CF-Connecting-IP through private hops), the request limit, the 429 page or problem, the daily totals
+│   ├── __init__.py                # API_BASE = "/api/v1", the base of the API (ADR-091)
+│   ├── catalog.py                 # The command catalog hydrograf-commands/1 (ADR-091): 14 commands, each with its function, options model, domain document, method and route /api/v1/<group>/<verb>, English and Polish texts, rules, examples and registry codes; commands list and commands schema
+│   ├── envelope.py                # The result envelope hydrograf-result/1 of every command: Outcome (document, notices, Cache-Control), envelope(), the OpenAPI models of each answer (ADR-091)
+│   ├── errors.py                  # Problem responses application/problem+json (RFC 9457) of every error, with `command` on a command's route and in a job's result; the OpenAPI document at /api/v1/openapi.json, its paths relative to the base and `servers` ../v1, a command's operationId from the catalog (hydrograf_<group>_<verb>), another's the route function's name (ADR-059, ADR-091)
+│   ├── jobs.py                    # The jobs of the long commands, nogat-job/1 (ADR-091): JobStore in the process's memory, 4 running at once in daemon threads, an ended job kept one hour, the active ones listed in <state_dir>/hydrograf/jobs.json and marked interrupted at the next start
+│   ├── main.py                    # FastAPI app instance, the routers under /api/v1 (the tiles under /api, the pages and /health at the root), lifespan (the logs' start and stop; a wrong setting of the base maps stops the start with hydrograf-error/1 on stderr; the jobs a previous process left marked interrupted), middleware (the access log outermost)
+│   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (the right-most X-Forwarded-For address that is no loopback or private hop, ADR-091), the request limit, at most 2 active jobs per client (JobSlots), the 429 page or problem, the daily totals
 │   ├── dependencies/
 │   │   ├── __init__.py
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # /api/admin/*: status, stats (Nogat DEV-15.13), resources, cleanup, bootstrap, sewer (ADR-086)
-│       ├── depressions.py         # GET /depressions
-│       ├── feedback.py            # POST /feedback (the text and the view's context), the admin list GET/PATCH/DELETE /admin/feedback
-│       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
+│       ├── admin.py               # /api/v1/admin/*: status, stats (Nogat DEV-15.13), resources, cleanup, bootstrap, sewer (ADR-086)
+│       ├── basemaps.py            # GET /api/v1/basemaps: the base maps the map offers, the kit's catalogue as the deployment's settings allow it (Nogat DEV-15.15, ADR-089)
+│       ├── commands.py            # One route per command of the catalog at /api/v1/<group>/<verb>: GET options from the query, POST from the JSON body, the envelope of the run; a long command's route answers 409 run_as_job (ADR-091)
+│       ├── depressions.py         # The command depressions list
+│       ├── feedback.py            # POST /api/v1/feedback (the text and the view's context), the admin list GET/PATCH/DELETE /api/v1/admin/feedback
+│       ├── gui.py                 # GET /api/v1/gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
 │       ├── health.py              # GET /health
-│       ├── hydrograph.py          # POST /generate-hydrograph, GET /scenarios
-│       ├── profile.py             # POST /terrain-profile
-│       ├── identify.py            # GET /identify-point (core/point_info.py)
-│       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker; POST /delineate-network/preview (ADR-081): the same network composed on the catchment graph
-│       ├── site.py                # The pages answered with X-Accel-Redirect, /regulamin.html, GET /terms, POST /downloads (ADR-084)
-│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /tiles/thresholds, GET /layers
-│       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
+│       ├── hydrograph.py          # The commands hydrograph generate (long: a job) and hydrograph scenarios
+│       ├── identify.py            # The command point identify (core/point_info.py)
+│       ├── jobs.py                # /api/v1/jobs: POST starts a job of a long command; GET jobs/<id>, GET jobs/<id>/result, POST jobs/<id>/cancel (ADR-091)
+│       ├── layers.py              # The commands layers availability and layers thresholds (ADR-091)
+│       ├── network.py             # The commands network delineate (ADR-080; long: a job): the network at control points and its hand-off, one network at a time per process; network preview (ADR-081): the same network composed on the catchment graph
+│       ├── precipitation.py       # The command precipitation depth: a catchment's PMAXTP design depth, the Thiessen mean that hydrograph generate takes (ADR-069, ADR-091)
+│       ├── profile.py             # The command terrain profile
+│       ├── server.py              # GET /api/v1/server: nogat-server/1, the version, the API's base, capabilities, GUI, regulamin and providers' lines (ADR-091)
+│       ├── site.py                # The pages answered with X-Accel-Redirect, /regulamin.html, GET /api/v1/terms, POST /api/v1/downloads (ADR-084)
+│       ├── tiles.py               # The map's MVT tiles, GET /api/tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, outside the API (ADR-091)
+│       └── watershed.py           # The commands watershed delineate (precomputed + precise modes) and watershed preview
 │
 ├── core/
 │   ├── __init__.py
@@ -168,11 +179,12 @@ backend/
 │   ├── active_run.py              # The pointer <output_dir>/active_run.json to the published run by PGW units, whose VRT mosaics the raster resolvers of core/config.py return (ADR-071)
 │   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile, the providers' lines of a result (provider_lines, ADR-083)
 │   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083, ADR-085): PMAXTP's PS, PP, M and the terms line RK, GUGiK's G with the dates of core/data_sources.py, ISRIC's SG; ProviderLines, merge, is_terms, data_lines
+│   ├── basemaps.py                # The base maps of the deployment (Nogat DEV-15.15, DEV-18.1; ADR-089): the kit's catalogue frontend/nogat/nogat-basemaps.json and the settings basemaps, basemap_mirrors, basemap_extra (deployment_basemaps, current_basemaps once per process), the regulamin's blocks they name (basemap_blocks); InvalidSettingError stops the API at start
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS), reloaded when the network in the database changes
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics and state_dir() of the logs (Nogat DEV-18.1, DEV-18.2)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics, state_dir() of the logs (Nogat DEV-18.1, DEV-18.2), the base maps' environment variables and KIT_DIR, the kit's directory
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── data_sources.py            # The products of the instance's data and when they were made and downloaded: `sources` of frontend/data/instance.json (ADR-085)
 │   ├── database.py                # Database connection pool
@@ -192,7 +204,7 @@ backend/
 │   ├── network_preview.py         # The network composed on the catchment graph (ADR-081): the full run's snapping and tree, areas exact to the cell, reach lengths, outlines from a cover of the sub-catchment polygons
 │   ├── network_tree.py            # Network at control points on the catchment graph (ADR-080): the points drawn to the nodes of the network, parents, trunks, junctions, elements of the units, ids J/P/Z/R from the closing section upward in the order of the hand-off
 │   ├── nogat_logging.py           # Copy of Nogat's reference module (never edited here, schemas/nogat/README.md): ServerLog (the files nogat-log/1 of <state_dir>/hydrograf/logs, deleted after 14 days; lifecycle and reduced errors on stderr) and the middleware AccessLog (Nogat DEV-12.4 to DEV-12.9)
-│   ├── point_info.py              # What Hydrograf knows at one point (GET /api/identify-point)
+│   ├── point_info.py              # What Hydrograf knows at one point (the command point identify, GET /api/v1/point/identify)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
 │   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
@@ -201,7 +213,7 @@ backend/
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
 │   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
-│   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf (ADR-084)
+│   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf, with DATA_BLOCKS and the blocks of the allowed base maps (kept_blocks; ADR-084, ADR-089)
 │   ├── unit_flow_paths.py         # Flow-path operations on the disk-backed D8 cells of the PGW units (ADR-071)
 │   ├── unit_hydrology.py          # The fill and D8 of the whole grid once, taken by owner and routed on disk (ADR-071)
 │   ├── unit_ownership.py          # The PGW owners (or the catchments grouped into them) rasterized on the DEM grid (ADR-071)
@@ -264,8 +276,9 @@ backend/
 ├── tests/
 │   ├── unit/                      # 100+ unit test files (offline)
 │   ├── integration/               # 20+ integration test files (TestClient; marker db: PostGIS)
-│   ├── contract/                  # Contracts: error registry, messages, OpenAPI, problems, README, .env.example, kit, vendor
+│   ├── contract/                  # Contracts: error registry, messages, the command catalog, its envelopes and the server and job documents, OpenAPI, problems, README, .env.example, kit, vendor, the nginx CSP against the kit's catalogue of base maps
 │   ├── performance/               # Performance tests (benchmarks)
+│   ├── e2e/                       # Browser tests of the map and the panels in Chromium (marker e2e: PostGIS, Playwright)
 │   ├── fixtures/                  # Test data
 │   └── conftest.py
 │
@@ -278,6 +291,138 @@ backend/
 
 ### 2.2 API Endpoints
 
+#### 2.2.0 The API at /api/v1 (ADR-091)
+
+The REST API is `/api/v1` (`API_BASE` of `api/__init__.py`, Nogat AGI-6.1): the routes of the commands of the catalog `api/catalog.py` (§2.2.0a), the server document (§2.2.0b), the jobs of the long commands (§2.2.0c), the GUI's own routes (`/gui`, `/basemaps`, `/terms`, `/downloads`, `/feedback`; §2.2.1a to §2.2.1c) and the admin API `/api/v1/admin/*` (§2.2.8). Outside it stay `/health` (§2.2.1), the pages (§2.2.1b) and the map's MVT tiles at `/api/tiles/` (§2.2.7), the one path below `/api/` that is no part of the API. The routes of `/api/` before ADR-091 are gone, and nginx proxies none of them (§5.2).
+
+Each command is one route `/api/v1/<group>/<verb>` (`api/endpoints/commands.py`): `GET` with its options in the query string (a list option as a repeated parameter) or `POST` with a JSON body, both checked by the command's Pydantic model (`models/schemas.py`). Every command reads only and needs no key.
+
+| Command | Route | Result | § |
+|---|---|---|---|
+| `watershed delineate` | `GET /api/v1/watershed/delineate` | `hydrograf-watershed/1` | 2.2.2 |
+| `watershed preview` | `GET /api/v1/watershed/preview` | `hydrograf-watershed-preview/1` | 2.2.2a |
+| `network delineate` (long) | a job, `POST /api/v1/jobs` | `hydrograf-network/1` | 2.2.2b |
+| `network preview` | `POST /api/v1/network/preview` | `hydrograf-network-preview/1` | 2.2.2c |
+| `hydrograph generate` (long) | a job, `POST /api/v1/jobs` | `hydrograf-hydrograph/1` | 2.2.3 |
+| `hydrograph scenarios` | `GET /api/v1/hydrograph/scenarios` | `hydrograf-scenarios/1` | 2.2.4 |
+| `precipitation depth` | `POST /api/v1/precipitation/depth` | `hydrograf-design-depth/1` | 2.2.4a |
+| `terrain profile` | `POST /api/v1/terrain/profile` | `hydrograf-terrain-profile/1` | 2.2.5 |
+| `point identify` | `GET /api/v1/point/identify` | `hydrograf-point/1` | 2.2.5a |
+| `depressions list` | `GET /api/v1/depressions/list` | `hydrograf-depressions/1` | 2.2.6 |
+| `layers availability` | `GET /api/v1/layers/availability` | `hydrograf-layers/1` | 2.2.3a |
+| `layers thresholds` | `GET /api/v1/layers/thresholds` | `hydrograf-thresholds/1` | 2.2.7 |
+| `commands list` | `GET /api/v1/commands/list` | `hydrograf-command-list/1` | 2.2.0a |
+| `commands schema` | `GET /api/v1/commands/schema` | `hydrograf-commands/1` | 2.2.0a |
+
+A command answers the envelope `hydrograf-result/1` (`api/envelope.py`, Nogat AGI-4.2, `result-1`), synchronously or as the result of its job:
+
+```
+{"schema": "hydrograf-result/1", "tool": "hydrograf", "version": "0.7.0",
+ "command": "watershed delineate", "check": false, "status": "ok",
+ "result": {"schema": "hydrograf-watershed/1", "mode": "precomputed", "watershed": {...}, ...},
+ "notices": [{"level": "warning", "code": "outlet_far_from_point", "message": "Ujście zlewni leży 1,9 km od wskazanego punktu, …"}]}
+```
+
+`result` is the command's domain document, the body its route answered before ADR-091 with its `schema` as the first member; the sections below show the members of `result`. `notices` are the `{level, code, message}` notices of the run: an outlet far from the point of a delineation (§2.2.2) and Hydrolog's warnings of a hydrograph (§2.2.3); `[]` without. The network keeps its own `notices` inside `result`, since they name its points and reaches (§2.2.2b). `status` is `ok`, or `cancelled` with `result` null for a cancelled job; `check` is always false. The routes outside the catalog (the server, the jobs, the GUI's routes, the admin API) answer their own documents, with no envelope. A delineation, a terrain profile and the depressions answer with `Cache-Control: public, max-age=3600`.
+
+An error is `application/problem+json` (RFC 9457, ADR-059) with a code of the registry and `details.reason`; on a command's route and in a job's result it carries `command`, the catalog's name. The texts follow `Accept-Language` (English without it, Polish for `pl`). The OpenAPI document is `/api/v1/openapi.json` (`install_openapi` of `api/errors.py`, Nogat AGI-6.2): its paths relative to the base, `servers` `[{"url": "../v1"}]`, so that it reads right behind a prefix; each command's `operationId` `hydrograf_<group>_<verb>` and its error responses from the catalog's codes, `rate_limited` and `internal_error` included; any other operation named by its route function (e.g. `start_job`). `/health`, the pages and the tiles are not in it.
+
+#### 2.2.0a The Command Catalog (`commands list`, `commands schema`)
+```
+GET /api/v1/commands/list
+
+Response: 200 OK; the envelope of `commands list`, its result:
+{
+  "schema": "hydrograf-command-list/1", "tool": "hydrograf", "version": "0.7.0",
+  "commands": [
+    {"name": "watershed delineate", "operation_id": "hydrograf_watershed_delineate",
+     "summary": "Delineate the watershed of a point in Poland and compute its parameters.",
+     "read_only": true,
+     "effects": {"read_only": true, "writes": "none", "idempotent": true, "network": false, "destructive": false},
+     "check": null, "rest": {"method": "GET", "path": "/api/v1/watershed/delineate", "key": false}},
+    {"name": "network delineate", ..., "rest": {"method": "POST", "path": "/api/v1/network/delineate", "key": false},
+     "long": true},   // served as a job only
+    ...
+  ]
+}
+
+GET /api/v1/commands/schema                                  — every command
+GET /api/v1/commands/schema?command=watershed%20delineate    — one command
+
+Response: 200 OK; the envelope of `commands schema`, its result:
+{
+  "schema": "hydrograf-commands/1", "tool": "hydrograf", "version": "0.7.0",
+  "commands": [
+    {"name": "watershed delineate", "operation_id": "hydrograf_watershed_delineate",
+     "function": "api.endpoints.watershed.delineate_watershed", "summary": "…", "description": "…",
+     "options": [{"name": "latitude", "type": "number", "required": true,
+                  "description": "Latitude in WGS84 (decimal degrees)", "unit": "°", "min": -90, "max": 90,
+                  "examples": [52.23]}, ...],
+     "result": {"schema": "hydrograf-watershed/1", "cardinality": "single"},
+     "effects": {...}, "check": null, "rest": {...},
+     "families": ["core"], "rules": ["Give latitude and longitude in WGS84 decimal degrees.", ...],
+     "examples": [{"call": "GET /api/v1/watershed/delineate?latitude=51.01917&longitude=15.88497&threshold_m2=100000",
+                   "result": {"status": "ok", "result": {...}, "notices": []}}],
+     "errors": ["validation_error", "not_found", "unsupported", "calculation_error", "store_unavailable",
+                "rate_limited", "internal_error"],
+     "i18n": {"pl": {"summary": "…", "description": "…", "rules": [...]}}}
+  ]
+}
+
+Errors: 400 validation_error (unknown_command): `command` names no command of the catalog
+```
+
+`api/catalog.py` (`hydrograf-commands/1`, Nogat AGI §2) holds the 14 commands: for each its name `<group> <verb>`, the function that runs it (`function`, the dotted path of the backend function: Hydrograf has no command line), the Pydantic model of its options, from which the catalog derives each option's JSON type, unit (from the suffix of its name, DEV-8.2), bounds, default, enum with the meaning of each value, examples and description, its domain document, its method and route, its English and Polish texts, its rules, its examples (an example's `call` is the HTTP call: the method, the path with its query and, for a POST, the JSON body on the same line; for a long command the start of its job) and the registry codes its route answers. `commands list` is the summary to start discovery with, `commands schema` the full entry. The same table builds the routes (`api/endpoints/commands.py`), the operation ids and the error responses of the OpenAPI document, and the jobs (§2.2.0c).
+
+#### 2.2.0b The Server Document
+```
+GET /api/v1/server
+
+Response: 200 OK (no envelope)
+{"schema": "nogat-server/1",
+ "services": [{"tool": "hydrograf", "version": "0.7.0", "api": {"1": "/api/v1"},
+               "capabilities": ["watershed", "network", "hydrograph", "precipitation", "terrain", "point",
+                                "depressions", "layers", "catalog", "jobs"],
+               "gui": "/",                                            // the entry hydrograf of the deployment's GUIs (§2.2.1a), else /
+               "terms": {"url": "/regulamin.html", "version": "1.1"},  // left out without an operator
+               "attribution": [...], "terms_notice": [...]}]}         // as GET /api/v1/terms gives them
+```
+
+What this server serves, `nogat-server/1` (Nogat AGI-6.7, `api/endpoints/server.py`): one entry for Hydrograf with its version, its API's major and base, its capabilities (the groups of the catalog in its order, without `commands`, then `catalog` and `jobs`), the address of its GUI (`deployment_gui()` of `core/config.py`), its regulamin with the version of the filled template (`core/terms.py`) where the deployment names an operator, and the providers' lines of its data. Latarnik and Goniec read it to find the API, and a GUI finds its own API base here.
+
+#### 2.2.0c Jobs (Nogat AGI-6.10, `nogat-job/1`)
+```
+POST /api/v1/jobs
+Content-Type: application/json
+
+Request:
+{"command": "hydrograph generate",   // a long command: hydrograph generate or network delineate
+ "options": {"latitude": 51.01917, "longitude": 15.88497, "duration": "1h", "probability": 1}}
+                                     // its options, as its route takes them in its body
+
+Response: 202 Accepted, Location: jobs/<id>
+{"schema": "nogat-job/1", "id": "3f9c2a7be1d04c56a8e2b7f01d9c4e6a", "tool": "hydrograf",
+ "command": "hydrograph generate", "state": "queued", "created_at": "2026-11-25T10:15:02.120Z",
+ "started_at": null, "finished_at": null}
+
+GET  /api/v1/jobs/<id>          — 200: the job's document
+GET  /api/v1/jobs/<id>/result   — once the job has ended: the envelope of a succeeded job (status
+                                  cancelled and result null for a cancelled one), the problem of a
+                                  failed one with its own status and command; 409 conflict before it
+                                  ends (job_running) and for an interrupted job (job_interrupted)
+POST /api/v1/jobs/<id>/cancel   — 202 and the document: a queued job ends cancelled at once, a running
+                                  one when its computation returns, its result discarded; an ended job
+                                  stays as it is
+
+Errors (application/problem+json):
+- 400 validation_error: a command of no catalog entry (unknown_command); a command that is not long
+  (not_a_job, details.allowed); options its model refuses (errors[].pointer /body/options/…)
+- 404 not_found (job_expired): an id this server does not keep
+- 429 rate_limited (job_limit, details retry_after_s 10 and limit 2), Retry-After: 10: the client holds 2 active jobs
+```
+
+`hydrograph generate` and `network delineate` can outlast a request: they carry `long: true` in the catalog and run only as jobs. Their routes, `POST /api/v1/hydrograph/generate` and `POST /api/v1/network/delineate`, check the body and answer 409 `conflict`, reason `run_as_job`; `POST /api/v1/jobs` checks the options as the route would, starts the job and answers at once. A job is `queued` or `running` while it is active and ends `succeeded`, `failed`, `cancelled` or `interrupted` (the schema's `partial` is never set). The store (`JobStore` of `api/jobs.py`, `app.state.jobs`) keeps every job in the process's memory, its options and result included, never on disk (ECO-059); its id, 128 random bits as 32 hexadecimal digits, is the only way to it. At most 4 jobs run at once (`WORKERS`), each in a daemon thread with a database session of its own, the others waiting `queued`; an unexpected failure ends a job `failed` with 500 `internal_error`, reason `job_failed`. An ended job is kept one hour (`KEEP_S`), then answers 404 `job_expired`. A client address holds at most 2 active jobs (`JobSlots` of `api/traffic.py`, §2.2.1b), each place given back when its job ends. At every change the ids, commands and times of the active jobs (never their options, results or clients) are written to `<state_dir>/hydrograf/jobs.json`, so that the next start of the API marks them `interrupted` (their result 409 `job_interrupted`, kept like an ended job); the ended jobs of a previous process are not kept. The front end runs both commands through `runJob` of `js/api.js` (§4.2.2).
+
 #### 2.2.1 Health Check
 ```
 GET /health
@@ -288,11 +433,11 @@ Response: 200 OK
   "version": "0.6.0"
 }
 ```
-`version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin status (`GET /api/admin/status`) reports the same.
+`version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin status (`GET /api/v1/admin/status`) reports the same. `/health` stays outside the API `/api/v1` and its OpenAPI document; the request limit leaves it out.
 
 #### 2.2.1a The Ecosystem's GUIs (ADR-082)
 ```
-GET /api/gui
+GET /api/v1/gui
 Response: 200 OK
 {
   "hydrolog": "http://127.0.0.1:8070/",
@@ -303,7 +448,7 @@ The table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) of the deployment: `HYDR
 
 #### 2.2.1b The Public Service (ADR-084)
 ```
-GET /api/terms
+GET /api/v1/terms
 Response: 200 OK
 {"url": "/regulamin.html", "operator_email": "kontakt@debever.pl",   // both null without [nogat.operator]
  "attribution": ["Źródłem pochodzenia danych jest …", …],     // PMAXTP's lines when precipitation_data has rows (or the database cannot tell), then G and SG of the instance's data (core/attribution.py)
@@ -312,52 +457,70 @@ Response: 200 OK
             "drainage": {…}, "topography": {…}, "soils": {…}}}   // the lines of each kind of the map's layers
 
 GET /regulamin.html            — the regulamin of the deployment (text/html); 404 without an operator
-POST /api/downloads            — 204: count one file the interface saved (the daily total downloads)
+POST /api/v1/downloads         — 204: count one file the interface saved (the daily total downloads)
 
-POST /api/feedback
+POST /api/v1/feedback
 {"message": "…", "context": {"view": "select", "station": null, "parameters": {...}}}
 Response: 200 {"id": 41, "status": "ok"}; any other member, at the top or in context: 400 validation_error
 
 Over a limit: 429, Retry-After: <s>; a page: a Polish HTML page; a route: the problem
 rate_limited, details {reason: request_limit|tile_limit|feedback_limit, retry_after_s,
-limit, window_s}
+limit, window_s}; a third active job of a client: rate_limited, details {reason: job_limit,
+retry_after_s: 10, limit: 2}, Retry-After: 10 (§2.2.0c)
 ```
-`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 1.1.0; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
+`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks of Hydrograf's own data, `DATA_BLOCKS` (`pmaxtp`, `gugik`, `isric`, `wody-polskie`), and those the allowed base maps name (`osm` with `openfreemap` or `gugik-osm`; `kept_blocks`, §2.2.1c) (kit 1.3.0, regulamin 1.1; no `copernicus`: CORINE is not used; ADR-085, ADR-089). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
 
-The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin/index.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
+The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address (Nogat AGI-6.9, ADR-091): when the API's peer is a loopback or private hop (RFC 1918, ULA, link-local: nginx, or a proxy on the host), the API takes the right-most address of `X-Forwarded-For` that is no such hop (nginx appends its own peer, `$proxy_add_x_forwarded_for`, §5.2; behind the Cloudflare Tunnel or Latarnik the proxy has put the client's address before it), and a public peer is the client itself; `X-Real-IP` and `CF-Connecting-IP` are not read. Pages (`GET` of `/index.html`, `/admin/index.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/v1/feedback` besides against 5 in 300 s; `/health` not at all; and a client holds at most 2 active jobs (`JobSlots`, §2.2.0c). An address lives in memory for its window (ended windows are forgotten within 5 s), while it holds an active job's place, and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `GET /api/v1/watershed/delineate`, `POST /api/v1/terrain/profile`, `POST /api/v1/precipitation/depth` and `POST /api/v1/jobs`, a hydrograph or a network counted when its job starts; not the previews) and `downloads`. Both need one API process.
+
+#### 2.2.1c The Base Maps (ADR-089)
+```
+GET /api/v1/basemaps
+Response: 200 OK
+[
+  {"id": "openfreemap", "label": "OpenFreeMap szary", "kind": "vector",
+   "url": "https://tiles.openfreemap.org/planet", "origin": "https://tiles.openfreemap.org",
+   "minzoom": 0, "maxzoom": 14, "bounds": [-180, -85.051129, 180, 85.051129],
+   "grey": true, "default": true,
+   "credit": {"text": "OpenFreeMap © OpenMapTiles, dane © autorzy OpenStreetMap",
+              "links": [["OpenFreeMap", "https://openfreemap.org"], …]},
+   "blocks": ["osm"]},
+  {"id": "gugik-osm", …, "bounds": [13.8, 48.8, 24.4, 55.0], "blocks": ["osm", "gugik"]},
+  {"id": "gugik-ortho", …},
+  {"id": "powiat-ortho", "label": "Ortofotomapa powiatu", "kind": "raster",   // an own base map of basemap_extra: no zoom range, bounds or blocks
+   "url": "https://maps.example.org/wms?SERVICE=WMS&…&BBOX={bbox-epsg-3857}",
+   "origin": "https://maps.example.org", "grey": false, "default": false,
+   "credit": {"text": "Ortofotomapa © Starostwo", "links": []}}
+]
+```
+The entries of Nogat's catalogue `frontend/nogat/nogat-basemaps.json` (kit 1.3.0, Nogat DEV-15.15) that the setting `basemaps` allows, in the catalogue's order and as it writes them, but for the `url` and `origin` of a copy the deployment serves (`basemap_mirrors`); then the deployment's own base maps (`basemap_extra`); `[]` means no base map. `core/basemaps.py` reads the settings once per process (`current_basemaps()`, called at the start of the API): `basemaps` is the first of `HYDROGRAF_BASEMAPS` and `NOGAT_BASEMAPS` (ids joined by `,`; set but empty, none), then `basemaps` of `[hydrograf]`, then of `[nogat]` in the nogat.toml of NOGAT_CONFIG (a list of ids), else every entry; `basemap_mirrors` (a table of catalogue ids to http or https addresses) and `basemap_extra` (a list of tables `{id, name, kind = "xyz"|"wms"|"vector", url, attribution, grayscale?}`; `name` becomes `label`, `xyz` and `wms` `raster`, a WMS address a tile template with `{bbox-epsg-3857}` as Archiwista builds it) come from the first of the two sections that has the key. An unknown id or a wrong value raises `InvalidSettingError` (`validation_error`; `basemap_unknown`, `basemaps_invalid`, `basemap_mirrors_invalid`, `basemap_extra_invalid`, `basemap_extra_missing`; `details` `option`, `value`, `source`, `reason`, and `field` of an own base map), an unreadable catalogue `FileOperationError` (`basemap_catalogue_unreadable`), and the API stops at start after printing the error document `hydrograf-error/1` on standard error. The CSP of nginx is not built from these settings (§5.2).
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
-POST /api/delineate-watershed
-Content-Type: application/json
-
 Precomputed mode (with threshold_m2: the sub-catchment at the point + BFS over the graph):
-Request:
-{
-  "latitude": 52.123456,
-  "longitude": 21.123456,
-  "threshold_m2": 10000
-}
+GET /api/v1/watershed/delineate?latitude=52.123456&longitude=21.123456&threshold_m2=10000
 
 Precise mode (no threshold_m2; raster delineation with pyflwdir on the fly):
-Request:
-{
-  "latitude": 52.123456,
-  "longitude": 21.123456
-}
+GET /api/v1/watershed/delineate?latitude=52.123456&longitude=21.123456&include_hypsometric_curve=true
 
-Response: 200 OK
+include_hypsometric_curve (false by default) adds the hypsometric curve in the precise mode; the
+precomputed mode always adds it.
+
+Response: 200 OK, Cache-Control: public, max-age=3600; the envelope of `watershed delineate`, its result:
 {
+  "schema": "hydrograf-watershed/1",
   "mode": "precomputed",  // or "precise"
   "watershed": { "boundary_geojson": { "type": "Feature", ... }, "outlet": {...}, "morphometry": {...}, ... },
   "stream": { "segment_idx": 42, "strahler_order": 3, ... },   // precomputed mode only
   "upstream_segment_indices": [42, 43, 44, ...],              // for the MVT highlighting
   "display_threshold_m2": 10000,                              // the threshold of those indices
   "info_message": null,                                       // a note when threshold_m2 was raised
+  "snap_distance_m": 1918.5,                                  // from the point to watershed.outlet (E7-GAP-04)
   "handoff": {"schema": "nogat-handoff/1", ...},              // the watershed for Hydrolog's GUI (ADR-068)
   "attribution": ["Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT, BDOT10k (…); dane przetworzone", …],   // G, and SG with soil groups (ADR-085)
   "terms_notice": []
 }
+The envelope's notices: [{"level": "warning", "code": "outlet_far_from_point", "message": "Ujście zlewni leży 1,9 km od wskazanego punktu, …"}]
+above 500 m; [] otherwise
 
 Errors (application/problem+json):
 - 404 not_found: no sub-catchment at this point
@@ -372,20 +535,15 @@ The precise mode delineates the watershed of the point with pyflwdir on the flow
 
 #### 2.2.2a Delineation Preview
 ```
-POST /api/delineate-watershed/preview
-Content-Type: application/json
+GET /api/v1/watershed/preview?latitude=50.929&longitude=16.119&threshold_m2=10000
 
-Request (as in the precomputed mode; threshold_m2 is required, the precise mode has no preview):
-{
-  "latitude": 50.929,
-  "longitude": 16.119,
-  "threshold_m2": 10000
-}
+Query as in the precomputed mode; threshold_m2 is required, the precise mode has no preview.
 
-Response: 200 OK
+Response: 200 OK; the envelope of `watershed preview`, its result:
 {
+  "schema": "hydrograf-watershed-preview/1",
   "threshold_m2": 100000,      // threshold of the sub-catchments after the minimum threshold and the cascade
-  "segment_count": 289,        // how many sub-catchments delineate-watershed merges
+  "segment_count": 289,        // how many sub-catchments watershed delineate merges
   "catchments": {              // GeoJSON FeatureCollection (WGS84), ascending by depth
     "type": "FeatureCollection",
     "features": [
@@ -403,14 +561,15 @@ Errors (application/problem+json):
 - 503 store_unavailable: the catchment graph is not loaded
 ```
 
-A preview for the animation of the GUI, before `POST /api/delineate-watershed` merges the boundary. The selection of the sub-catchments is shared with the precomputed mode (`_select_precomputed`: the minimum threshold `DEFAULT_THRESHOLD_M2`, the sub-catchment at the point, BFS, the cascade above 300 segments), so the preview covers the same area as the result. `depth` is the number of links upstream from the outlet sub-catchment (`CatchmentGraph.upstream_segments_by_depth`); each depth is one MultiPolygon collected by `ST_Collect` (no union), the polygons are simplified by `ST_Simplify` with a tolerance of √A / 500 m (about one pixel once the map fits the catchment, at least 1 m), and the coordinates have 5 decimal places. At most 5000 sub-catchments, the nearest to the outlet. Time (review instance): 52 km², 25 ms against 4.6 s of the full delineation; 778 km² (4418 sub-catchments, 147 depths), 0.15–0.24 s against 88 s.
+A preview for the animation of the GUI, before `watershed delineate` merges the boundary. The selection of the sub-catchments is shared with the precomputed mode (`_select_precomputed`: the minimum threshold `DEFAULT_THRESHOLD_M2`, the sub-catchment at the point, BFS, the cascade above 300 segments), so the preview covers the same area as the result. `depth` is the number of links upstream from the outlet sub-catchment (`CatchmentGraph.upstream_segments_by_depth`); each depth is one MultiPolygon collected by `ST_Collect` (no union), the polygons are simplified by `ST_Simplify` with a tolerance of √A / 500 m (about one pixel once the map fits the catchment, at least 1 m), and the coordinates have 5 decimal places. At most 5000 sub-catchments, the nearest to the outlet. Time (review instance): 52 km², 25 ms against 4.6 s of the full delineation; 778 km² (4418 sub-catchments, 147 depths), 0.15–0.24 s against 88 s.
 
 #### 2.2.2b Delineate Network (ADR-080)
 ```
-POST /api/delineate-network
+POST /api/v1/jobs
 Content-Type: application/json
 
-Request:
+Request: {"command": "network delineate", "options": {…}} (§2.2.0c); POST /api/v1/network/delineate
+checks the same options and answers 409 conflict (run_as_job). The options:
 {
   "outlet": {"id": "P1", "latitude": 51.128, "longitude": 15.909, "name": "Kaczawa"},  // the closing section; id required (the client's handle, no default)
   "points": [                  // 0–30 control points above it; none: the closing section alone is a network
@@ -420,8 +579,9 @@ Request:
   "threshold_m2": 100000       // the stream network the points snap to (the streams of the map), ≥ 10000
 }
 
-Response: 200 OK
+Result of the job (GET /api/v1/jobs/<id>/result): the envelope of network delineate, its result:
 {
+  "schema": "hydrograf-network/1",
   "threshold_m2": 100000,
   "unit_threshold_m2": 10000,  // the sub-catchments the elements are made of
   "area_km2": 238.712375,      // the closing section's catchment, exact to the cell
@@ -446,7 +606,7 @@ Response: 200 OK
     {"id": "J1", "kind": "point", "point": "P2", "name": "Kamiennik", "latitude": 51.0157,
      "longitude": 15.8901, "inflows": ["Z1", "Z2"]}
   ],
-  "notices": [                // one per reach shorter than 200 m or of the minimum slope (D10a)
+  "notices": [                // in result, not the envelope's: one per reach shorter than 200 m or of the minimum slope (D10a)
     {"code": "reach_short_or_flat", "ids": ["R2"], "reach": {"length_m": 50.4,
      "slope_minimum": true, "upper_point": "P3", "lower": "J1",   // upper_point: the handle at the upper node
      "move_to": {"latitude": 50.9197045, "longitude": 15.9542906},  // the cell above J1 on P3's branch
@@ -456,27 +616,29 @@ Response: 200 OK
   "attribution": [...], "terms_notice": []         // G and SG of the network's data (ADR-085), as in its hand-off
 }
 
-Errors (application/problem+json; details.point_id or details.point_ids name the point):
+Errors (application/problem+json with command; the 400 of the options' model at the start of the job, every other one as the
+failed job's result; details.point_id or details.point_ids name the point):
 - 400 validation_error: coordinates, more than 30 points, an outlet without an id, an id not ^[A-Za-z0-9][A-Za-z0-9_-]{0,15}$, two ids equal without regard to case, a name with control characters, threshold_m2 below 10000 (reason invalid_request, errors[].pointer); a point that does not drain to the closing section (network_point_outside); two points on one node or stream cell, the closing section included (network_points_coincide: „Punkty {point_ids} trafiają w ten sam węzeł sieci: …”)
 - 404 not_found (network_point_off_stream): no stream cell of threshold_m2 within 100 m of a point, or a point off the rasters
 - 422 unsupported (network_window_too_large): the window of the closing section's catchment holds more than 60 million cells (details cells, max_cells)
-- 503 store_unavailable: the catchment graph is not loaded (catchment_graph_unavailable); a raster missing (network_rasters_missing) or not on the grid of the others (raster_grids_differ); another network of this worker still running after 15 s (network_delineation_busy, details.wait_s)
+- 503 store_unavailable: the catchment graph is not loaded (catchment_graph_unavailable); a raster missing (network_rasters_missing) or not on the grid of the others (raster_grids_differ); another network of this process still running after 600 s (network_delineation_busy, details.wait_s)
 - 500 internal_error: the elements do not add up to the closing section's catchment (network_area_mismatch); any other failure (network_delineation_failed)
 ```
 
 The network of a closing section and the control points above it (plans `docs/plans/2026-11-10-network-delineation.md` and `docs/plans/2026-11-11-network-nodes.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, the closing section included, snaps to the nearest stream cell of `threshold_m2` within 100 m, then moves to the nearest node of the network (a stream cell of `threshold_m2` into which two or more such streams drain) within 50 m of flow distance below or above it (`at_node`). Every point is a node: `points[].node` is `J<n>` at a confluence and `P<n>` elsewhere. The ids of the request are only the client's handles (`details.point_id` and `details.point_ids` name them); the ids of the response and the hand-off are the network's, numbered by a walk from the closing section (`J1` or `P1`) upward, each kind on its own, and the same points in any order give the same ids. `subcatchments[].kind` is `headwater` (a river entering a node with no reach, also one without a point; `point` the handle of the person's point at its node, else null) or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[]` are the nodes, `kind` `confluence` (one the network made, `point` and `name` null), `point` (a person's point, a `J` or a `P`) or `outlet` (the closing section, which flows into `O`), with the `name` of its point. `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) (each only when it has ids) and one `reach_short_or_flat` for every reach shorter than 200 m (`SHORT_REACH_M`) or of the minimum slope (ADR-080 D10a): its length, whether it is flat, the point at its upper end, the junction below, `move_to` (from a point into a confluence: the outlet cell above the confluence on the reach's branch, from where the point is drawn to the node; the map mode's „Przesuń P… do zbiegu”) and `lag_min`, the lag of a flat reach; the front end words them. A reach of the minimum slope is a `lag` reach of `lag_min` = max(1, round(length / 0.5 m/s / 60)) in the hand-off, with `method_reason: "flat"` and its length and slope in `node_provenance`: Hydrolog's Muskingum-Cunge cannot route a flat reach. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
 
-A network reads the saved rasters of the closing section's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. The API runs one process (ADR-084), so one network runs at a time. The router registers the problems 404 and 503 of the watershed routes and the route its 422, besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
+A network reads the saved rasters of the closing section's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each process delineates one network at a time: the run holds a `threading.Lock` of its process, and a job waits for it at most `NETWORK_LOCK_WAIT_S` (600 s; a job, unlike the request it replaced, has no proxy timeout), then ends with 503 `network_delineation_busy`. The API runs one process (ADR-084), so one network runs at a time while other jobs may run beside it (§2.2.0c). The OpenAPI responses of the command are the catalog's codes (`validation_error`, `not_found`, `unsupported`, `calculation_error`, `store_unavailable`, `conflict`, besides `rate_limited` and `internal_error`); any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
 
 #### 2.2.2c Network Preview (ADR-081)
 ```
-POST /api/delineate-network/preview
+POST /api/v1/network/preview
 Content-Type: application/json
 
-Request: the request of POST /api/delineate-network (§2.2.2b)
+Request: the options of network delineate (§2.2.2b)
 
-Response: 200 OK
+Response: 200 OK; the envelope of `network preview`, its result:
 {
+  "schema": "hydrograf-network-preview/1",
   "threshold_m2": 100000,
   "unit_threshold_m2": 10000,
   "area_km2": 240.328025,      // the closing section's catchment, exact to the cell: the full run's
@@ -498,18 +660,19 @@ Response: 200 OK
   "attribution": [...], "terms_notice": []    // G of the network's drainage (ADR-085)
 }
 
-Errors: those of POST /api/delineate-network but 422 and network_delineation_busy (no window,
-no lock); any other failure is 500 internal_error (network_preview_failed)
+Errors: those of network delineate but 422 and network_delineation_busy (no window, no lock);
+any other failure is 500 internal_error (network_preview_failed)
 ```
 
 The option „Sieć zlewni” of „Wybierz zlewnię” asks for it after every change of its points (ADR-081, plan `docs/plans/2026-11-11-network-preview.md`; `core/network_preview.py`, §2.4.10). The points snap as for the full run (`snap_point`, the windows around the clicks) and `build_network_tree` builds the same tree, so the ids, the places of the points and junctions and the errors of the composition are the full run's. The areas are the cells of the units, a unit split by a point counted from the accumulation at the point; the reach lengths are the differences of the flow distances; the outlines unite on a grid of 10 m the largest sub-catchment of any threshold that one element holds whole, the units of 1 ha only around the outlets of the elements (production's whole area: 91 polygons); a unit split by a point goes whole to the element with most of its cells (`inside_unit`, `outline_approximate`). No window of the closing section's catchment is read and no lock is taken: on production 0.08 s for the Kamiennik and 0.37 s for the whole area of 792 km².
 
 #### 2.2.3 Generate Hydrograph
 ```
-POST /api/generate-hydrograph
+POST /api/v1/jobs
 Content-Type: application/json
 
-Request:
+Request: {"command": "hydrograph generate", "options": {…}} (§2.2.0c); POST /api/v1/hydrograph/generate
+checks the same options and answers 409 conflict (run_as_job). The options:
 {
   "latitude": 52.123456,
   "longitude": 21.123456,
@@ -519,20 +682,25 @@ Request:
   "custom_precipitation": {    // optional: your own series instead of PMAXTP and the hietogram
     "timestep_min": 10,        // > 0 and ≤ 1440
     "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0],  // ≥ 0, 1–2000 values, sum > 0
-    "derived_from": null       // "pmaxtp": a copy of a PMAXTP hyetogram (ADR-083)
+    "derived_from": null,      // "pmaxtp": a copy of a PMAXTP hyetogram; "imgw", "chmu": a series of
+                               // IMGW-PIB's archives or ČHMÚ's open data (ADR-083, amended 2026-11-25)
+    "attribution": [],         // the lines of the series' file unchanged (Obserwator's series export),
+    "terms_notice": []         // each a line of the data derived_from names, ≤ 20 of ≤ 1000 characters
   },
   "morphometry": { ... }       // optional: the fast path (advanced mode), fractional cn
 }
 
-Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
+Result of the job (GET /api/v1/jobs/<id>/result): the envelope of hydrograph generate, its result
+hydrograf-hydrograph/1 (full structure in DATA_MODEL.md, section 6.4):
   precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
   water_balance.cn_used: float (the CN after the AMC conversion)
   metadata.amc; metadata.hietogram_type = null for your own series
-  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, then G and SG of
-  the watershed's data (delineated, or with morphometry_origin); terms_notice: [RK] with PMAXTP;
+  attribution: PMAXTP's [PS, PP, M] for PMAXTP and a series derived from it, IMGW-PIB's [S, P] or
+  ČHMÚ's [C, CP] for a series of their data, then G and SG of the watershed's data (delineated,
+  or with morphometry_origin); terms_notice: [RK] with PMAXTP, [RD] with IMGW-PIB's archives;
   [] and [] for your own rainfall on your own morphometry (ADR-083, ADR-085); the hand-off has
   the same fields, without them when they are empty
-  notices: [{"level": "warning", "code": "outside_applicability", "message": "Hydrogram
+  the envelope's notices (not a member of result): [{"level": "warning", "code": "outside_applicability", "message": "Hydrogram
   jednostkowy SCS: powierzchnia zlewni = 100 km² – powyżej zakresu stosowania 0–51,8 km². …"}]:
   Hydrolog's warnings while it computed this hydrograph, identical ones once, in Polish from
   core/hydrolog_notices.py (`outside_applicability` for the applicability range of a formula,
@@ -545,8 +713,12 @@ Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
   conversion, the tc and the unit hydrograph or Nash's estimation, the convolution, and, for a
   delineated watershed, its tr55_cn and equal_area_slope; the hand-off's result.computed_with
   carries both
+Problems (application/problem+json with command): the 400 of the options' model at the start of
+          the job (errors[].pointer /body/options/…), every other one as the failed job's result
 Response: 400 validation_error (application/problem+json), e.g. for the rainfall series; before
-          anything is computed, storm_not_whole_steps (reason not_multiple) for a duration that
+          anything is computed, unknown_attribution_line (with details.line) for a line of
+          custom_precipitation that is not one of the data derived_from names, or that comes
+          without derived_from; storm_not_whole_steps (reason not_multiple) for a duration that
           is not a whole number of timestep_min, euler_ii_step_below_curve (reason not_covered)
           for an Euler II step under 5 min (Hydrolog ADR-0046, ADR-0042); Hydrolog's refusals of
           an input by the standard's reason (outside_physical_range, invalid_type,
@@ -558,10 +730,13 @@ Response: 400 validation_error (application/problem+json), e.g. for the rainfall
           flow path longer than its overland segment) have sentences of their own; any other
           refusal is invalid_parameters with Hydrolog's message
 Response: 422 unsupported (catchment_too_large) above area_limit_km2 (250 km²), for a
-          delineated catchment and for one given in morphometry alike; lutz_parameters_missing
-          and snyder_parameters_missing (reason missing_morphometry) without the longest flow
-          path, its equal-area slope (Lutz) or Lc
+          delineated catchment (before its boundary is merged) and for one given in
+          morphometry alike; lutz_parameters_missing and snyder_parameters_missing (reason
+          missing_morphometry) without the longest flow path, its equal-area slope (Lutz)
+          or Lc
 ```
+
+Without `morphometry` (the full path) the command delineates the watershed as `watershed delineate` does in the precomputed mode at 10 000 m², with its cascade to a coarser threshold above 300 sub-catchments (E5b-04: merging thousands of 1 ha sub-catchments took minutes), and computes with that watershed's morphometry, CN, PMAXTP cells and lines, as the GUI sends them on the fast path; `watershed` is the delineation without its hypsometric curve, and the area of the computation the graph's, unrounded.
 
 Euler II is built from the PMAXTP depth–duration curve of the probability: each of the 16
 durations weighed as the design depth and multiplied by the user's areal reduction factor
@@ -571,23 +746,24 @@ Hydrolog ADR-0053), Snyder's L `flow_path_length_km` (Hydrolog ADR-0043).
 
 `attribution` and `terms_notice` are the lines of Nogat DEV-20.2 and DEV-20.7 for PMAXTP data, byte for byte from `core/attribution.py`: the source with the address of the PMAXTP page (PS), the note that the data were processed (PP), the monograph of the project (M) and the link to the PMAXTP terms (RK, „Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne”); no summary of the terms (Nogat ECO-065); then G of the GUGiK data of the watershed with the dates of `instance.json` and SG with its soil groups (ADR-085). A product made with the result shows them visibly and carries them on (ADR-083).
 
-`GET /api/scenarios` also returns `amc` (`["I", "II", "III"]`), `custom_precipitation_max_steps` (2000) and `area_limit_km2` (250). The messages of `errors[]` of a 400 follow `Accept-Language` like `detail`: pydantic's English without the header, a Polish text of the error type with its limits for `pl` (e.g. `/body/hietogram_alpha`: „Wartość nie może być większa niż 20.”); pointers and types do not change.
+`hydrograph scenarios` (§2.2.4) also returns `amc` (`["I", "II", "III"]`), `custom_precipitation_max_steps` (2000) and `area_limit_km2` (250). The messages of `errors[]` of a 400 follow `Accept-Language` like `detail`: pydantic's English without the header, a Polish text of the error type with its limits for `pl` (e.g. `/body/options/hietogram_alpha` of a job's start: „Wartość nie może być większa niż 20.”); pointers and types do not change.
 
 #### 2.2.3a Layer Availability
 ```
-GET /api/layers
+GET /api/v1/layers/availability
 
-Response: 200 OK
-{"sewer": true}   // whether sewer_network or sewer_nodes holds data
+Response: 200 OK; the envelope of `layers availability`, its result:
+{"schema": "hydrograf-layers/1", "sewer": true}   // whether sewer_network or sewer_nodes holds data
 ```
 The „Warstwy” panel shows the layer „Kanalizacja deszczowa” only with `sewer: true`.
 
 #### 2.2.4 List Scenarios
 ```
-GET /api/scenarios
+GET /api/v1/hydrograph/scenarios
 
-Response: 200 OK
+Response: 200 OK; the envelope of `hydrograph scenarios`, its result:
 {
+  "schema": "hydrograf-scenarios/1",
   "durations": ["5min","10min","15min","30min","45min","1h","1.5h","2h","3h","6h","12h","18h","24h","36h","48h","72h"],
   "probabilities": [0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9],
   "tc_methods": [...],
@@ -598,9 +774,47 @@ Response: 200 OK
 }
 ```
 
+#### 2.2.4a Design Depth (ADR-069, ADR-091)
+```
+POST /api/v1/precipitation/depth
+Content-Type: application/json
+
+Request:
+{
+  "boundary": {"type": "Polygon", "coordinates": [[[15.85, 51.0], [15.95, 51.0], [15.95, 51.06], [15.85, 51.06], [15.85, 51.0]]]},
+                               // a GeoJSON Polygon or MultiPolygon, or a Feature of one, in WGS84:
+                               // result.watershed.boundary_geojson of watershed delineate
+  "duration_min": 60,          // a duration of PMAXTP's tables: 5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320
+  "probability_percent": 1     // an exceedance probability of PMAXTP's tables (those of hydrograph scenarios)
+}
+
+Response: 200 OK; the envelope of `precipitation depth`, its result:
+{
+  "schema": "hydrograf-design-depth/1",
+  "pmaxtp_depth_mm": …,        // the Thiessen mean over the boundary, unrounded
+  "duration_min": 60,
+  "probability_percent": 1.0,
+  "interpolation": "thiessen",
+  "area_km2": …,               // the area of the boundary, to 0.0001 km²
+  "pmaxtp_points": [{"easting_m": ..., "northing_m": ..., "latitude": ..., "longitude": ...,
+                     "precipitation_mm": ..., "weight": ..., "area_km2": ..., "distance_m": null}, ...],
+  "attribution": [...],        // PMAXTP's PS, PP and M
+  "terms_notice": [...]        // PMAXTP's RK
+}
+
+Errors (application/problem+json):
+- 400 validation_error: a duration or probability outside PMAXTP's tables; a boundary that is no
+  Polygon or MultiPolygon, empty, invalid or outside WGS84 (boundary_invalid)
+- 422 unsupported (boundary_too_large): a boundary above 10 000 km² (details area_km2, limit_km2)
+- 404 no_data (no_design_depth_data): no PMAXTP data of the scenario around the boundary
+- 500 internal_error (design_depth_failed)
+```
+
+The design depth of a catchment, for a client that computes the hydrograph elsewhere (Nogat's flow F1: one point gives one design depth in the ecosystem; `api/endpoints/precipitation.py`). It is the depth `hydrograph generate` takes for the same watershed and scenario before any areal reduction factor (`thiessen_cells` and `areal_depth` of `core/precipitation.py`, ADR-069, §2.4.8), so a hydrograph made from it by Hydrolog with that total equals Hydrograf's own. No areal reduction factor is applied.
+
 #### 2.2.5 Terrain Profile
 ```
-POST /api/terrain-profile
+POST /api/v1/terrain/profile
 Content-Type: application/json
 
 Request:
@@ -610,8 +824,9 @@ Request:
   "result_ids": ["sfincs-kamiennik-24h-p1"]
 }
 
-Response: 200 OK
+Response: 200 OK, Cache-Control: public, max-age=3600; the envelope of `terrain profile`, its result:
 {
+  "schema": "hydrograf-terrain-profile/1",
   "distances_m": [0.0, 10.5, ...],
   "elevations_m": [150.0, 151.2, ..., 0.0],
   "dem_gaps": [false, false, ..., true],
@@ -629,7 +844,9 @@ Response: 404 no_data (no_elevation_data) when no sample has DEM data
 
 #### 2.2.5a Identify Point
 ```
-GET /api/identify-point?latitude=51.0158&longitude=15.9042&threshold_m2=100000&result_ids=sfincs-kamiennik-24h-p1
+GET /api/v1/point/identify?latitude=51.0158&longitude=15.9042&threshold_m2=100000&result_ids=sfincs-kamiennik-24h-p1
+
+Response: 200 OK; the envelope of `point identify`, its result hydrograf-point/1
 ```
 Everything Hydrograf knows at one point, for the mode „Identyfikuj”: `coordinates` (WGS84; PL-1992 `easting_m`/`northing_m`; `pl2000` with `zone`, `epsg`, `easting_m` and `northing_m` in the PL-2000 zone of the longitude, EPSG:2176–2179; only the Polish systems), `elevation_m` and `slope_percent` (DEM rasters), `water` (per requested result whose `water_level` raster holds the point: `water_level_m`, `depth_m` = level − DEM, `null` where dry or below the terrain), `stream` (the nearest `bdot_streams` line up to 5 km away, a nearest-neighbour search over its GiST index, with `distance_m`), `water_body` (BDOT10k `OT_PTWP_A` polygon from `FRONTEND_DATA_DIR/bdot_lakes.geojson`, not in the database), `land_cover` (category, BDOT10k class, `cn` for AMC II as in the catchment CN, `cn_amc_i` and `cn_amc_iii` converted by Hydrolog's `SCSCN.adjust_cn_for_amc` as for the hydrograph, imperviousness), `soil_hsg`, `depression` and `subcatchment` (`stream_catchments` + `stream_network` at `threshold_m2`, floored to 10000; `channel_length_km`, the main channel at the segment's downstream end traced as for a watershed delineated there, and `distance_to_outlet_km`, the D8 flow distance from there to the outlet of the network, where the water leaves the data area, both from the in-memory `CatchmentGraph` and `null` without it). A member is `null` where its source has nothing; a point off the DEM is outside the data: 404 `no_data`; no DEM: 503 `store_unavailable`.
 
@@ -639,10 +856,12 @@ The query parameters: `latitude` and `longitude` (required, WGS84), `threshold_m
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
-GET /api/depressions?min_volume=0&max_volume=1e9&min_area=100&max_area=1e9&bbox=minlon,minlat,maxlon,maxlat
+GET /api/v1/depressions/list?min_volume=0&max_volume=1e9&min_area=100&max_area=1e9&bbox=minlon,minlat,maxlon,maxlat
 
-Response: 200 OK (GeoJSON FeatureCollection in WGS84, at most 500, the largest volume first;
-          bbox optional, in WGS84)
+Response: 200 OK, Cache-Control: public, max-age=3600; the envelope of `depressions list`, its
+          result hydrograf-depressions/1: a GeoJSON FeatureCollection in WGS84, at most 500
+          features, the largest volume first, each with id, volume_m3, area_m2, max_depth_m
+          and mean_depth_m; bbox optional, in WGS84
 ```
 
 #### 2.2.7 MVT Tiles
@@ -651,9 +870,17 @@ GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold=100000      (threshold [m²], d
 GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold=100000
 GET /api/tiles/landcover/{z}/{x}/{y}.pbf
 GET /api/tiles/sewer/{z}/{x}/{y}.pbf
-GET /api/tiles/thresholds
 
-Response: Mapbox Vector Tiles (PBF) / JSON
+Response: Mapbox Vector Tiles (PBF)
+```
+The tiles stay at `/api/tiles/` (`api/endpoints/tiles.py`, ADR-091), the one path below `/api/` outside `/api/v1`: they are no command and no part of the API (no envelope, not in the OpenAPI document), the map's URLs and caches key them, and they keep their own limit (ten times the general one, §2.2.1b) and their quiet access log (§7.1). Their thresholds, which an agent reads to choose `threshold_m2`, are the command `layers thresholds`:
+```
+GET /api/v1/layers/thresholds
+
+Response: 200 OK; the envelope of `layers thresholds`, its result:
+{"schema": "hydrograf-thresholds/1", "streams": [10000, 100000, …], "catchments": [10000, 100000, …]}
+// [m²], smallest first: the DISTINCT threshold_m2 of stream_network and of stream_catchments
+// (catchments [] while stream_catchments does not exist)
 ```
 
 #### 2.2.8 Admin Panel (ADR-034)
@@ -661,27 +888,27 @@ Response: Mapbox Vector Tiles (PBF) / JSON
 All endpoints require the X-Admin-Key header with the key of ADMIN_API_KEY or ADMIN_API_KEY_FILE
 (read per request); without a key on the server every one answers 401 admin_key_not_configured.
 Every answer is Cache-Control: no-store; the requests are limited, never counted (ADR-086).
-Prefix: /api/admin
+Prefix: /api/v1/admin (ADR-091)
 
-GET  /api/admin/status             — app, version, started_at, uptime_s, data_dir, disk, checks (database, catchment_graph, data_dir) of Nogat DEV-15.13
-GET  /api/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
-GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories
-GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
-POST /api/admin/cleanup            — {"targets": ["all" | "cache"]}: the processing data (rasters, overlays, tiles, the tables) or the download cache, through execute_clean() of scripts/clean.py
-GET  /api/admin/bootstrap/status   — status of the bootstrap process
-POST /api/admin/bootstrap/start    — start the bootstrap subprocess
-POST /api/admin/bootstrap/cancel   — cancel bootstrap
-GET  /api/admin/bootstrap/stream   — SSE stream of the bootstrap logs (timeout 3600s)
-POST /api/admin/bootstrap/upload-boundary — upload a watershed boundary
+GET  /api/v1/admin/status             — app, version, started_at, uptime_s, data_dir, disk, checks (database, catchment_graph, data_dir) of Nogat DEV-15.13
+GET  /api/v1/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
+GET  /api/v1/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories (each walked in a thread of its own, the request waiting at most 5 s: null and total_mb null until its first walk ends; E5b-02)
+GET  /api/v1/admin/cleanup/estimate   — estimate of the space that cleanup frees (size_mb null while a directory of the target is walked for the first time)
+POST /api/v1/admin/cleanup            — {"targets": ["all" | "cache"]}: the processing data (rasters, overlays, tiles, the tables) or the download cache, through execute_clean() of scripts/clean.py
+GET  /api/v1/admin/bootstrap/status   — status of the bootstrap process
+POST /api/v1/admin/bootstrap/start    — start the bootstrap subprocess
+POST /api/v1/admin/bootstrap/cancel   — cancel bootstrap
+GET  /api/v1/admin/bootstrap/stream   — SSE stream of the bootstrap logs (timeout 3600s)
+POST /api/v1/admin/bootstrap/upload-boundary — upload a watershed boundary
 
-POST   /api/admin/sewer/upload     — upload a sewer network file (ADR-051/052), auto-detects the format, returns detected_format and layers
-GET    /api/admin/sewer/status     — status of the sewer data
-DELETE /api/admin/sewer            — delete the sewer data
-PUT    /api/admin/sewer/config     — enabled, source file and layers, field_mapping and role_mapping (ADR-052)
+POST   /api/v1/admin/sewer/upload     — upload a sewer network file (ADR-051/052), auto-detects the format, returns detected_format and layers
+GET    /api/v1/admin/sewer/status     — status of the sewer data
+DELETE /api/v1/admin/sewer            — delete the sewer data
+PUT    /api/v1/admin/sewer/config     — enabled, source file and layers, field_mapping and role_mapping (ADR-052)
 
-GET    /api/admin/feedback         — reports, newest first (limit, offset), with unread_count; each {id, created_at, message, context, is_read, legacy}: legacy the contact, page_url, user_agent and diagnostics of a report of the old form, null for new reports
-PATCH  /api/admin/feedback/{id}    — {"is_read": true|false}: mark a report read or unread
-DELETE /api/admin/feedback/{id}    — delete a report
+GET    /api/v1/admin/feedback         — reports, newest first (limit, offset), with unread_count; each {id, created_at, message, context, is_read, legacy}: legacy the contact, page_url, user_agent and diagnostics of a report of the old form, null for new reports
+PATCH  /api/v1/admin/feedback/{id}    — {"is_read": true|false}: mark a report read or unread
+DELETE /api/v1/admin/feedback/{id}    — delete a report
 ```
 
 ---
@@ -692,13 +919,13 @@ DELETE /api/admin/feedback/{id}    — delete a report
 ```
 User → Frontend → API → Core Logic → Database → Core Logic → API → Frontend → User
   |       |        |         |           |          |        |       |        |
-  Click   POST     Validate  Find        Query     Build    JSON    Render   See
+  Click   GET      Validate  Find        Query     Build    JSON    Render   See
   point   request  coords    nearest     graph     GeoJSON  response boundary boundary
                              stream      upstream
 ```
 
 **Detailed flow (ADR-022, ADR-026):**
-1. **Frontend:** The user clicks a point (lat, lon) → POST /api/delineate-watershed (precomputed or precise mode)
+1. **Frontend:** The user clicks a point (lat, lon) → `GET /api/v1/watershed/delineate` with the point in the query (precomputed mode with `threshold_m2`, else precise)
 2. **API (FastAPI):** Pydantic validation (are lat/lon in range)
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
    - `CatchmentGraph.find_catchment_at_point(x, y, threshold, db)` → the sub-catchment containing the point (`ST_Contains` on `stream_catchments`), the threshold raised to `DEFAULT_THRESHOLD_M2` (ADR-026)
@@ -709,7 +936,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
    - Aggregation of the pre-computed stats from numpy arrays (zero raster operations)
 4. **Database:** PostGIS queries to `stream_network` + `stream_catchments`
 5. **Core Logic:** Conversion to GeoJSON (EPSG:2180 → WGS84)
-6. **API:** Return JSON response
+6. **API:** Return the envelope `hydrograf-result/1`: the delineation as its `result`, the notice of an outlet far from the point as its `notices` (§2.2.0)
 7. **Frontend:** Leaflet.js renders the polygon on the map, MVT tiles highlight the sub-catchments
 
 **Execution time:** < 1s (typical), < 5s (large watersheds)
@@ -718,6 +945,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 
 #### Hydrograph Generation (Sequence Diagram)
 ```
+0. The front end starts a job of hydrograph generate (POST /api/v1/jobs, §2.2.0c) and follows it (GET /api/v1/jobs/<id>) until it ends
 1. Delineate the watershed (as above)
 2. Compute the parameters (area, length, slope, CN)
 3. Take the PMAXTP depth (the mean over the Thiessen polygons of the grid in the watershed, ADR-069; times an areal reduction factor if given) or your own series (custom_precipitation)
@@ -726,7 +954,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 6. Compute tc by the chosen method (NRCS by default; Hydrolog, from each method's own inputs; none for Nash)
 7. Generate the UH (SCS, Nash or Snyder)
 8. Convolution Pe * UH = Q(t)
-9. Return JSON with a chart
+9. End the job: GET /api/v1/jobs/<id>/result answers the envelope, the hydrograph as its result and Hydrolog's warnings as its notices
 ```
 
 **Execution time:** < 5s
@@ -746,7 +974,7 @@ The main stream is traced by `CatchmentGraph.trace_main_channel()` in `core/catc
 
 The delineation itself (nearest catchment, upstream traversal over the catchment graph, boundary
 merge) is in `core/watershed_service.py` and `core/catchment_graph.py`; the API endpoint and
-`scripts/analyze_watershed.py` both run it through `POST /api/delineate-watershed`.
+`scripts/analyze_watershed.py` both run it through `watershed delineate` (`GET /api/v1/watershed/delineate`).
 
 #### 2.4.2 `core/catchment_graph.py`
 
@@ -792,7 +1020,7 @@ Details: `core/watershed_service.py`
 - `zonal_bincount`, `zonal_min`, `zonal_max`, `zonal_elevation_histogram` (`np.bincount`, scipy): `generate_depressions.py` and the reference of `zonal_summary` in the tests
 
 #### 2.4.7 Hydrolog library (external)
-**Responsibilities:** (delegated to `hydrolog`, pinned by its tag `v0.9.1` (0.9.1, the release round of 2026-11-24) in `backend/pyproject.toml`, REL-5.3; range `>=0.9.0,<0.10`)
+**Responsibilities:** (delegated to `hydrolog`, pinned by its tag `v0.10.0` (0.10.0, Nogat's release set candidate-16 of the release round of 2026-11-25) in `backend/pyproject.toml`, REL-5.3; range `>=0.10.0,<0.11`, REL-5.2; Hydrograf 0.6.1 pinned its tag `v0.9.1` within `>=0.9.0,<0.10`)
 - Hyetograph generation (Beta, Block, Euler II)
 - SCS CN model (effective precipitation)
 - Unit hydrograph: SCS, Nash IUH, Snyder
@@ -886,7 +1114,7 @@ Inclusion of the storm-sewer network in the hydrological model. The network topo
   - **Step 4b — Sewer routing:** routing of the flow accumulation through the sewer network (`route_fa_through_sewer()`)
   - **Step 4c — FA propagation:** propagation of the modified FA down the stream network (`propagate_fa_downstream()`)
 
-Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junctions, storage) and `sewer_network` (pipe segments). A file is uploaded through the admin panel (`/api/admin/sewer/upload`, SHP, GPKG, GeoJSON or ZIP up to 100 MB, format auto-detection) and loaded by the pipeline with CRS validation and reprojection to EPSG:2180. Modules: `core/sewer_topology.py` (parser + topology validator, 11 validation rules), `core/sewer_service.py` (graph building and FA routing logic), `scripts/download_sewer.py` (loads a file, returns the tuple `(points_gdf, lines_gdf)`).
+Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junctions, storage) and `sewer_network` (pipe segments). A file is uploaded through the admin panel (`/api/v1/admin/sewer/upload`, SHP, GPKG, GeoJSON or ZIP up to 100 MB, format auto-detection) and loaded by the pipeline with CRS validation and reprojection to EPSG:2180. Modules: `core/sewer_topology.py` (parser + topology validator, 11 validation rules), `core/sewer_service.py` (graph building and FA routing logic), `scripts/download_sewer.py` (loads a file, returns the tuple `(points_gdf, lines_gdf)`).
 
 ---
 
@@ -1213,21 +1441,28 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (vendor/), no Bootstrap
+├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL (vendor/), the kit's charts, no Bootstrap
 ├── admin/                   # Admin panel at /admin/ (ADR-086): index.html is Nogat's <nogat-admin> shell with the sections
 │                            #   „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja” (admin.css, admin.js shared,
-│                            #   resources.js, processing.js with the Leaflet area map, cleanup.js, boundaries.js; IIFE scripts)
+│                            #   resources.js, processing.js with the Leaflet area map over the kit's first raster base map, cleanup.js, boundaries.js; IIFE scripts)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
-├── nogat/                    # Copies of Nogat's GUI kit 1.1.0 (design/kit/, ADR-082 to ADR-086) — do NOT edit, copy them again
+├── nogat/                    # Copies of Nogat's GUI kit 1.3.0 (design/kit/, ADR-082 to ADR-086, ADR-089) — do NOT edit, copy them again
 │   ├── nogat-admin.js        # <nogat-admin> and its views „Zgłoszenia”, „Statystyki” (the days shown saved as hydrograf_stats_<first>_<last>.csv, Nogat DEV-19.21), „Stan” (ES module, ADR-086)
 │   ├── nogat-admin.css       # Their styles, in the tokens
 │   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
+│   ├── nogat-basemaps.json   # The catalogue of the shared base maps (Nogat DEV-15.15): ids, labels, tiles, origins, bounds, credits, the regulamin's blocks; read by core/basemaps.py (ADR-089)
+│   ├── nogat-basemaps.js     # <nogat-basemaps> (the switcher, the choice kept as nogat-basemap), BASEMAP_TEXTS, leafletBasemap (Hydrograf's adapter) and maplibreBasemap, the kit's grey style and its repaint (ES module)
+│   ├── nogat-basemaps.css    # The switcher, the credit in the map's attribution control (12 px, folded behind „i” up to 860 px), the grey style's colours
+│   ├── nogat-chart.js        # The kit's chart module (Nogat DEV-15.16, ADR-090): every chart of js/charts.js (ES module, through nogat.js)
+│   ├── nogat-chart.css       # Its styles, in the tokens (Hydrograf's series classes in css/app.css)
+│   ├── nogat-command-form.js # The kit's command form (Nogat DEV-15.17), not used by Hydrograf yet (ES module)
+│   ├── nogat-command-form.css # Its styles, in the tokens
 │   ├── nogat-sources.js      # <nogat-sources>: the view's strip of provider lines and its dialog, fillSources() for the welcome window (ES module)
 │   ├── nogat-sources.css     # Its styles, in the tokens
 │   ├── nogat-handoff.js      # The hand-off: labels, hydrograf_handoff_<subject>.json (nameSlug, Nogat DEV-19.21), text, clipboard with its fallback, download (ES module)
-│   ├── nogat-terms.html      # The regulamin template with its blocks, which core/terms.py fills (ADR-084)
+│   ├── nogat-terms.html      # The regulamin template 1.1 with its blocks, which core/terms.py fills (ADR-084)
 │   ├── nogat-terms.css       # Its styles, in the tokens
 │   ├── nogat-terms.md        # The regulamin's text for review
 │   ├── nogat-terms-operator.md # The kit's draft regulamin for an operator's instance (Nogat ECO-079), not linked
@@ -1240,9 +1475,9 @@ frontend/
 │   └── Hydrograf-*.png       # Shared 256-colour screenshots for guide and presentation
 ├── vendor/                   # Third-party libraries byte for byte as published (npm), each with its licence files; no CDN
 │   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and the area map of /admin/)
-│   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (vector basemap)
+│   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (the vector base map, through the kit's Leaflet adapter)
 │   ├── maplibre-gl-leaflet-0.0.22/ # leaflet-maplibre-gl.js
-│   ├── chart.js-4.4.7/       # chart.umd.js
+│   ├── openmaptiles-fonts-2.0/ # noto-sans-regular/: the glyph ranges 0-255, 256-511, 512-767, 1024-1279, 8192-8447 (.pbf) of openmaptiles/fonts v2.0 with LICENSE (OFL-1.1), the names of the kit's grey style
 │   └── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
 ├── css/
 │   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 7786271) — do NOT edit, copy it again
@@ -1252,34 +1487,34 @@ frontend/
     ├── theme-init.js         # Theme from localStorage (`nogat-theme`) before the first paint
     ├── theme-switch.js       # Theme switch Auto/Jasny/Ciemny in /instrukcja
     ├── shell.js              # Main-page shell: panels, width handles, phone layout, theme
-    ├── api.js                # API calls (fetch wrappers)
+    ├── api.js                # API client of /api/v1 (ADR-091): fetch wrappers resolving to the envelopes; runJob starts a job of a long command (POST /api/v1/jobs), polls it after 300 ms and then every second, reads its result and cancels it on an aborted signal
     ├── map.js                # Leaflet map, drawing, MVT; wheel zoom without the tail of a gesture or late input
     ├── coords.js             # Cursor coordinates (bottom left): WGS84, PL-1992 or PL-2000 by Gauss–Krüger in the browser; not on touch screens
-    ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
+    ├── charts.js             # The kit's charts (ADR-090): hypsometry, land cover/HSG bars, profile (its readout moves the map marker), hietogram, hydrograph; their „PNG”
     ├── attribution.js        # The providers' lines of a response or a manifest entry (ADR-083): their union over the view's surfaces in the strip #view-sources, the trailing CSV columns and the JSON/GeoJSON fields of the exports
-    ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
+    ├── layers.js             # „Warstwy” panel: the flood hazard map overlay (WMS of Wody Polskie) and the kit's <nogat-basemaps> fed by GET /api/v1/basemaps, drawn by leafletBasemap with the failure notice #basemap-notice (ADR-089), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
     ├── rain-export.js        # Export of the hietogram (CSV, JSON) and of its PMAXTP points with weights (GeoJSON), named by Nogat DEV-19.21: hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>].csv/.json, hydrograf_pmaxtp-points_<…>.geojson; an own series hydrograf_hyetograph_custom.csv/.json
     ├── info.js               # (i) explanations: markers, shared panel, MathML formulas; opened by a click, a tap, Enter or Space, closed by the same (i), Esc or a click outside
     ├── info-texts.js         # 87 explanations (formula, variables, unit, meaning) keyed by an API field, a control id or a kind of the network's elements
-    ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
+    ├── advanced.js           # Advanced mode: editing of the morphometry for hydrograph generate (a job)
     ├── depressions.js        # Depressions (blue spots) overlay
-    ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
+    ├── sewer.js              # Storm-sewer layer (MVT overlay of /api/tiles/sewer/; only when layers availability reports data)
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
-    ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
-    ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
+    ├── identify.js           # Mode „Identyfikuj”: marker and point card (point identify, GET /api/v1/point/identify)
+    ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (network preview, POST /api/v1/network/preview), the characteristics (network delineate as a job), the network on the map, its tree and selection in the panel (ADR-080, ADR-081, ADR-091)
     ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
-    ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
-    ├── terms.js              # GET /api/terms: the link „Regulamin” at the bottom of the rail and under the guide's table of contents (`#terms-link`), the `terms` of the menu and of the strip, every line of the service's data (PMAXTP's, G, SG) for the welcome window and the lines of the layers' kinds (`layers`) for the strip, the operator's e-mail under „Zgłoś uwagę” (ADR-084, ADR-085)
+    ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/v1/gui as the apps of <nogat-app-menu>, defines <nogat-basemaps>, puts the hand-off module and the kit's base maps (texts, leaflet, repaint) on window.Hydrograf.nogat (ADR-082, ADR-089)
+    ├── terms.js              # GET /api/v1/terms: the link „Regulamin” at the bottom of the rail and under the guide's table of contents (`#terms-link`), the `terms` of the menu and of the strip, every line of the service's data (PMAXTP's, G, SG) for the welcome window and the lines of the layers' kinds (`layers`) for the strip, the operator's e-mail under „Zgłoś uwagę” (ADR-084, ADR-085)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>): the text and the view's context, no contact (ADR-084)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the main-page top-bar "Instrukcja" button; the full provider lines and terms (fillSources)
     └── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
 ```
 
-`js/` holds 25 IIFE modules on `window.Hydrograf`, all loaded by the main page (`instance.js` and `terms.js` by the guide too), and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. `admin/` holds the 5 IIFE scripts of the admin panel. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 25 IIFE modules on `window.Hydrograf`, all loaded by the main page (`instance.js` and `terms.js` by the guide too), and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. `admin/` holds the 5 IIFE scripts of the admin panel; `processing.js` imports the kit's `nogat-basemaps.js` dynamically for its area map (ADR-089). ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -1292,21 +1527,21 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
 - **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), the app menu „Aplikacje” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. The admin page `/admin/` has the kit's own top bar („Hydrograf · Administracja”, „Wróć do aplikacji”, „Wyloguj”; ADR-086).
-- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without a table of GUIs (`HYDROGRAF_GUI`, else `[nogat] gui` of NOGAT_CONFIG), or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
+- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/v1/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without a table of GUIs (`HYDROGRAF_GUI`, else `[nogat] gui` of NOGAT_CONFIG), or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two paragraphs (a factual summary of what Hydrograf computes; the area of the data and that the results are estimates for preliminary analyses, not a hydrological forecast) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
 - **Navigation rail** — Mapa and Logowanie (`/admin/`, the admin panel on Nogat's kit, ADR-086); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
-- **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
-- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
+- **Left panel „Warstwy”** — overlays with an opacity slider, the group „Podkłady kartograficzne” (the overlay „Mapa zagrożenia powodziowego”, then the kit's base-map switcher) and one button that zooms to the extent of the layers that are on.
+- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `point identify`, `GET /api/v1/point/identify`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
 - **„Wybierz zlewnię” and its two options** (`app.js`, `setClickMode`; ADR-080, note of 2026-11-11) — while the mode is on, the radio group „Co wyznaczyć” sits at the top of the map (`#select-tools`, placed and styled like the drawing tools of „Profil terenu”, `.map-tools`, also on phones): „Jedna zlewnia” (the default; the click mode `select`) or „Sieć zlewni” (the click mode `network`). The button of the mode is on for both; it returns to the option chosen last in the page (`state.selectTarget`, not kept across reloads). Switching the option keeps both the watershed and the network.
-- **„Wybierz zlewnię” → „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — the first click places the closing section and every later click a point (at most 30), as draggable markers; a marker not yet in a preview shows the first free `P<n>` among the shown ids, which is also its handle in the request, so a problem names it as the map does, and after every preview each marker shows its node's id (`points[].node`: `J<n>` at a confluence, `P<n>` elsewhere). The closing section alone is a network: „Oblicz charakterystyki” needs no other point. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `POST /api/delineate-network/preview` (`api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” calls `POST /api/delineate-network` with the names and draws the closing section's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the option (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the closing section first, then the points by their ids, each with its name field and „w węźle sieci” when it was drawn to a node (`at_node`), the check of B5, the notices and the tree from the closing section upward (a node entered without a reach as „J4 → J1”; in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Jedna zlewnia” leaves the map in the option (`map.setWatershedShown`) and returns, with its sections, after it.
-- **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. A watershed above 250 km² (`hydrograph_available` false) has no hietogram and hydrograph sections; the notice under the sections (`#hydrograph-limit`) gives that limit of SCS-CN and the watershed's area. Under the sections, `#hydrograph-notices` shows the `notices` of the hydrograph shown, one notice each (`hydrograph.js`, E5b-06); a new watershed takes them away. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc hides the panel as the × does and never clears the result.
-- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 76 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) follow Nogat DEV-15.14: a definition of one or two sentences, a formula (built as MathML through the DOM, without libraries) with the list „gdzie:” of the variables and their units and the unit of the result, how to read the value (`reading`) and „Źródła:”, at most about 400 characters without the formula and the sources; 68 of them link their longer explanation, a section `o-<key>` of the guide's part „Objaśnienia wielkości i metod” (`/instrukcja/#objasnienia-wielkosci`, static MathML), with „Więcej w instrukcji” in a new tab. The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice (`summary`); Hydrolog's warnings of a computed hydrograph, a value outside the applicability range of its method or outside a range that awaits a published source, come from the API as `notices` and stand under the sections (right panel, above).
+- **„Wybierz zlewnię” → „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — the first click places the closing section and every later click a point (at most 30), as draggable markers; a marker not yet in a preview shows the first free `P<n>` among the shown ids, which is also its handle in the request, so a problem names it as the map does, and after every preview each marker shows its node's id (`points[].node`: `J<n>` at a confluence, `P<n>` elsewhere). The closing section alone is a network: „Oblicz charakterystyki” needs no other point. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `network preview` (`POST /api/v1/network/preview`; `api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” runs `network delineate` as a job (`POST /api/v1/jobs`, §2.2.0c; cancelled when the characteristics are dropped) with the names and draws the closing section's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the option (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the closing section first, then the points by their ids, each with its name field and „w węźle sieci” when it was drawn to a node (`at_node`), the check of B5, the notices and the tree from the closing section upward (a node entered without a reach as „J4 → J1”; in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Jedna zlewnia” leaves the map in the option (`map.setWatershedShown`) and returns, with its sections, after it.
+- **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. A watershed above 250 km² (`hydrograph_available` false) has no hietogram and hydrograph sections; the notice under the sections (`#hydrograph-limit`) gives that limit of SCS-CN and the watershed's area. Under the sections, `#hydrograph-notices` shows the `notices` of the envelope of the hydrograph shown, one notice each (`hydrograph.js`, E5b-06); a new watershed takes them away. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc hides the panel as the × does and never clears the result.
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the option „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 76 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) follow Nogat DEV-15.14: a definition of one or two sentences, a formula (built as MathML through the DOM, without libraries) with the list „gdzie:” of the variables and their units and the unit of the result, how to read the value (`reading`) and „Źródła:”, at most about 400 characters without the formula and the sources; 68 of them link their longer explanation, a section `o-<key>` of the guide's part „Objaśnienia wielkości i metod” (`/instrukcja/#objasnienia-wielkosci`, static MathML), with „Więcej w instrukcji” in a new tab. The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice (`summary`); Hydrolog's warnings of a computed hydrograph, a value outside the applicability range of its method or outside a range that awaits a published source, come as the `notices` of the hydrograph's envelope and stand under the sections (right panel, above).
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
-- **The providers' lines** (`attribution.js`, ADR-083 and its amendment, ADR-085, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry and the short forms GK and SK of G and SG (for PMAXTP: PS and PP, two rows at 1440 px; up to 860 px one line cut with an ellipsis and „więcej”, which unfolds it in place, Nogat ECO-080), and „Źródła i warunki”, a dialog with every line (PS, PP, M, G, SG), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the delineated watershed and of the network, of the layers of Hydrograf's data that are on (the kinds of `layers` of `GET /api/terms`), of the results whose layer is on, of the point card and of the profile. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/terms` under its text (the kit's `fillSources`), ending on a public deployment with „Regulamin serwisu”, the welcome window's link to the regulamin. The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
+- **The providers' lines** (`attribution.js`, ADR-083 and its amendment, ADR-085, Nogat DEV-20.5) — one strip for the view, the kit's `<nogat-sources id="view-sources">` in the foot of the view (`#view-foot`, across the map and both panels): 12 px in `--text-3`, the lines S, P, PS and PP that the shown data carry and the short forms GK and SK of G and SG (for PMAXTP: PS and PP, two rows at 1440 px; up to 860 px one line cut with an ellipsis and „więcej”, which unfolds it in place, Nogat ECO-080), and „Źródła i warunki”, a dialog with every line (PS, PP, M, G, SG), the terms (RK) and „Regulamin serwisu” on a public deployment; without lines it is not drawn. Its lines are the union of those of the hydrograph response while „Hietogram” or „Hydrogram” is laid out, of an own series while its table is (filled by „Wczytaj z bieżącego hietogramu”, it keeps the lines of the PMAXTP result it copied and goes out with `derived_from: "pmaxtp"` through edits, pastes and changes of its size, until „Wyczyść”, an imported CSV or a new watershed), of the delineated watershed and of the network, of the layers of Hydrograf's data that are on (the kinds of `layers` of `GET /api/v1/terms`), of the results whose layer is on, of the point card and of the profile. On phones the sheets stop above the foot of the view (`--view-foot-h`, `shell.js`), so the strip stays in sight. The welcome dialog shows the full lines and terms of `GET /api/v1/terms` under its text (the kit's `fillSources`), ending on a public deployment with „Regulamin serwisu”, the welcome window's link to the regulamin. The exports carry the lines of the response: „Hietogram CSV” the trailing columns `attribution` and `terms_notice` (one line per cell from the first row down; with fewer rows the last row holds the rest, joined by a line feed), „Hietogram JSON” and „Punkty PMAXTP (GeoJSON)” the fields of the same names (in the GeoJSON foreign members); without lines nothing is added. The hand-off file and copy are the API's document with its fields.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Snyder computes its own lag from L and Lc, so for Snyder „Metoda Tc” stays in view, disabled, with the note „Snyder nie używa Tc: …” instead of its applicability note, the request carries no `tc_method`, C or N, and the result table leaves out the Tc that the API still reports. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
-- **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`), 16 fields: area, perimeter, length, elevations, mean slope, stream length and slope, the longest flow path, its slope and its equal-area slope (Lutz's Jg, ADR-088), the overland segment's length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km (the overland segment 0.001 km), elevations 0.1 m, slopes 0.01 % (the equal-area slope 0.001 %), CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. While Snyder is chosen and the mode is off, the field Lc stands with Ct and Cp (`#snyder-lc-col`) and the request takes it, the other fields only in the mode; a catchment without Lc (none or 0) gets „Model Snydera wymaga Lc: podaj wartość.” at the field, and Snyder's request waits for the user's value.
+- **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `hydrograph generate` (a job of `POST /api/v1/jobs`, §2.2.3; the fast path `morphometry`), 16 fields: area, perimeter, length, elevations, mean slope, stream length and slope, the longest flow path, its slope and its equal-area slope (Lutz's Jg, ADR-088), the overland segment's length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km (the overland segment 0.001 km), elevations 0.1 m, slopes 0.01 % (the equal-area slope 0.001 %), CN 0.1 (1–100); the area at most `area_limit_km2` of `hydrograph scenarios` (`GET /api/v1/hydrograph/scenarios`; 250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. While Snyder is chosen and the mode is off, the field Lc stands with Ct and Cp (`#snyder-lc-col`) and the request takes it, the other fields only in the mode; a catchment without Lc (none or 0) gets „Model Snydera wymaga Lc: podaj wartość.” at the field, and Snyder's request waits for the user's value.
 - **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
-- **Sewer layer** — the entry „Kanalizacja deszczowa” of the „Warstwy” panel appears only when `GET /api/layers` returns `sewer: true`; without data no `/api/tiles/sewer` tiles are requested.
+- **Sewer layer** — the entry „Kanalizacja deszczowa” of the „Warstwy” panel appears only when `layers availability` (`GET /api/v1/layers/availability`) returns `sewer: true`; without data no `/api/tiles/sewer` tiles are requested.
 - **External analysis results** — `results.js` reads the manifest `/data/results/index.json` once at startup (`frontend/data/results/`, served by `location ^~ /data/`):
 
   ```json
@@ -1324,17 +1559,17 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
   `bounds` is [west, south, east, north] in WGS84; the tiles are XYZ PNG with transparency (`gdal2tiles --xyz`). Every `raster_tiles` result gives a row in the group `group` (the existing „Wyniki analiz” under „Linie spływu”; a new group is created above the basemaps only when a result needs it): an `L.tileLayer` in the pane `resultsPane` (z-index 300: above the DEM and the land cover, below the flow lines) with `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` from the manifest and the opacity from `opacity`; the legend (swatches from `legend.classes`, the unit in the title) only while the layer is on; `description` and `source` in the (i) explanation. The extent counts for „Przybliż do zasięgu warstw”. Other values of `kind` are skipped with a warning; a missing manifest, invalid JSON or another `schema` give one console warning and no rows.
 
-  `water_level` (optional; a backward-compatible extension of `hydrograf-results/1` that older clients skip) names a GeoTIFF of the maximum water surface elevation on the model grid (float32, LZW, nodata where the maximum depth is below 0.05 m, the lowest legend class); `crs` and `unit` describe the raster. The API reads it, not the browser: `POST /api/terrain-profile` with `result_ids` (§2.2.5) samples the raster at the points of the profile (`core/analysis_results.py`). The path `/data/…` names a file in `FRONTEND_DATA_DIR` (default `/frontend/data`, the directory `frontend/data` mounted in the API container) and must stay in its subdirectory `results/`; otherwise the result is skipped. The terrain profile (`profile.js`) asks for the results with `water_level` whose layer is on (`results.shownWaterLevels()`), and switching such a layer on or off redraws an open profile. The water surface is a blue area between the terrain and the water level where the water lies above the DEM; under the chart the legend „Teren” and „Zwierciadło wody — <result title>”, and the readout under the cursor (under the finger on a phone) gives the terrain, the water level and the depth (water level minus DEM). A line that does not cross a result gives an unchanged chart. The raster is made by the publication script of a Hydraulik run from `zsmax` in `sfincs_map.nc`.
+  `water_level` (optional; a backward-compatible extension of `hydrograf-results/1` that older clients skip) names a GeoTIFF of the maximum water surface elevation on the model grid (float32, LZW, nodata where the maximum depth is below 0.05 m, the lowest legend class); `crs` and `unit` describe the raster. The API reads it, not the browser: `terrain profile` (`POST /api/v1/terrain/profile`) with `result_ids` (§2.2.5) samples the raster at the points of the profile (`core/analysis_results.py`). The path `/data/…` names a file in `FRONTEND_DATA_DIR` (default `/frontend/data`, the directory `frontend/data` mounted in the API container) and must stay in its subdirectory `results/`; otherwise the result is skipped. The terrain profile (`profile.js`) asks for the results with `water_level` whose layer is on (`results.shownWaterLevels()`), and switching such a layer on or off redraws an open profile. The water surface is a blue area between the terrain and the water level where the water lies above the DEM; under the chart the legend „Teren” and „Zwierciadło wody — <result title>”, and the readout under the cursor (under the finger on a phone) gives the terrain, the water level and the depth (water level minus DEM). A line that does not cross a result gives an unchanged chart. The raster is made by the publication script of a Hydraulik run from `zsmax` in `sfincs_map.nc`.
 
   `attribution` and `terms_notice` (optional arrays of texts, ADR-083) are the lines the terms of the providers of a result's data require, written by its producer (the SFINCS result of a PMAXTP rainfall: PS, PP, M and RK of `core/attribution.py`). They go to the view's strip while the layer is on (§4.2.0); the API returns them with the result's water (§2.2.5, §2.2.5a), and the point card and the profile hand those to the strip. A value that is not a list of texts is ignored.
 - **Panel width** — handles between the panels (left 260–560 px, right 340–720 px), kept in `localStorage`; the panels can be closed.
 - **Phone (≤ 860 px)** — a full-screen map, a bottom bar (Mapa, Logowanie and, on a public deployment, the small „Regulamin”) instead of the rail, with the top-bar guide/feedback/theme icons still accessible, and panels as sheets that slide up from the bottom (a handle at the top hides them too). The map bar has two rows: „Warstwy” and „Zlewnia” („Sieć” in the option „Sieć zlewni”), then the four modes across the full width (labels may wrap), so nothing lies off a 375 px screen; the options of „Wybierz zlewnię” span the top of the map.
 
-`/instrukcja` uses the same shell (`chrome.css`) and the switch `theme-switch.js`; the admin page `/admin/` is Nogat's `<nogat-admin>` alone, which follows the stored theme through `theme-init.js` (ADR-086). The form „Zgłoś uwagę” is a native `<dialog>` with the text only: under it „Nie wpisuj danych osobowych.” and, with an operator, „Jeśli chcesz odpowiedzi, napisz na <e-mail>”; `feedback.js` sends the view's context with the text. With `GET /api/terms` giving an address, `terms.js` shows the link „Regulamin” (`#terms-link`, new tab) as a small, muted last item of the rail (on phones the last item of the bottom bar) and under the guide's table of contents, and gives the app menu its `terms` attribute, which ends its list with „Regulamin”; no view has a footer or the statement of the service, which opens § 3 of the regulamin (ADR-084, amendment of 2026-11-14).
+`/instrukcja` uses the same shell (`chrome.css`) and the switch `theme-switch.js`; the admin page `/admin/` is Nogat's `<nogat-admin>` alone, which follows the stored theme through `theme-init.js` (ADR-086) and calls the admin API it names, `api="../api/v1/admin/"` (ADR-091). The form „Zgłoś uwagę” is a native `<dialog>` with the text only: under it „Nie wpisuj danych osobowych.” and, with an operator, „Jeśli chcesz odpowiedzi, napisz na <e-mail>”; `feedback.js` sends the view's context with the text. With `GET /api/v1/terms` giving an address, `terms.js` shows the link „Regulamin” (`#terms-link`, new tab) as a small, muted last item of the rail (on phones the last item of the bottom bar) and under the guide's table of contents, and gives the app menu its `terms` attribute, which ends its list with „Regulamin”; no view has a footer or the statement of the service, which opens § 3 of the regulamin (ADR-084, amendment of 2026-11-14).
 
 #### 4.2.1 Map (Leaflet.js)
 
-Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa GUGiK** (key `gugik-ortho`: GUGiK's orthophoto WMTS `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution`, KVP, layer `ORTOFOTOMAPA`, JPEG, matrix set `EPSG:3857` levels 0–19, bounded by the layer's box 13.8–24.4° E, 48.8–55.0° N so that no tile is asked outside Poland; „Ortofotomapa © GUGiK”), **bez podkładu** (no basemap).
+Base maps (`layers.js`, Nogat DEV-15.15, ADR-089): the kit's `<nogat-basemaps>` at the end of the group „Podkłady kartograficzne” lists the entries of `GET /api/v1/basemaps` (§2.2.1c) and „bez podkładu”: by default **OpenFreeMap szary** (vector, the kit's grey style over the TileJSON `https://tiles.openfreemap.org/planet`, names `name:pl` first, colours from the tokens, repainted at a change of theme through `Hydrograf.map.onThemeChange`; glyphs Noto Sans 2.0 from `vendor/openmaptiles-fonts-2.0/`; nothing else from OpenFreeMap), **OSM GUGiK szary (tylko Polska)** (raster, greyed by the kit) and **Ortofotomapa GUGiK** (`gugik-ortho`: GUGiK's orthophoto WMTS `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution`, KVP, layer `ORTOFOTOMAPA`, JPEG, matrix set `EPSG:3857` levels 0–19), both GUGiK entries bounded by Poland's box 13.8–24.4° E, 48.8–55.0° N so that no tile is asked outside it. The kit's `leafletBasemap` (through `js/nogat.js`) draws the chosen entry under the overlays: a raster entry as an `L.tileLayer`, a vector one through MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22, until the map moves to MapLibre (Nogat plan `2026-11-24-hydrograf-maplibre`). The browser keeps the choice (`localStorage` `nogat-basemap`); the map opens on it while it is offered, else on the first default entry of the catalogue. A provider that does not answer (its TileJSON or first tiles) is taken off the map, marked „Podkład nie odpowiada” in the list and said at the top left of the map (`#basemap-notice`: „Podkład nie odpowiada: <label>. Wybierz inny podkład w panelu „Warstwy”.”) until the next choice; nothing switches by itself. The credit is the catalogue's Polish line in Leaflet's attribution corner (12 px, `--text-3`; up to 860 px folded behind „i” at the first drag, `nogat-basemaps.css`), never in the strip.
 
 **Wheel zoom** (`map.js`, `wheelZoomHandler`): Leaflet's scroll-wheel handler (`scrollWheelZoom` is off) with two guards, because the default turned every 40 ms batch of wheel events, however small, into a whole zoom level and went on zooming after the wheel had stopped. An event weaker than half of the strongest event of its gesture is the fading tail of a touchpad, a Magic Mouse or a smooth-scrolling mouse driver and is ignored (a pause of 80 ms or a change of direction starts a new gesture), and wheel input older than 150 ms, an event or a whole batch that waited while the page was busy (e.g. MapLibre redrawing the base map), does not start a zoom step.
 
@@ -1353,8 +1588,8 @@ Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from
 - Attribution: „MZP © Wody Polskie / ISOK (CC BY 4.0)” with links to the Hydroportal and the licence; the CC BY 4.0 licence follows the dataset „Mapa zagrożenia powodziowego (MZP)” on dane.gov.pl (provider: Krajowy Zarząd Gospodarki Wodnej). The ArcGIS REST/WMTS services of these maps return 401; only the WMS is public. Response times vary: usually 0.4–2 s per image, sometimes single images take 10–30 s.
 
 ```javascript
-// map.js, init (abridged): the base layer is set by layers.js (OpenFreeMap by default,
-// L.maplibreGL with the style https://tiles.openfreemap.org/styles/positron)
+// map.js, init (abridged): no base map here; layers.js draws the one the kit's
+// <nogat-basemaps> shows, through the kit's leafletBasemap (ADR-089)
 map = L.map('map', {
     center: [51.9, 19.5],
     zoom: 7,
@@ -1379,9 +1614,12 @@ map.on('click', function (e) {
 
 `app.js` routes the click by `state.clickMode`: `browse`, `select`, `network`, `profile` or `identify`.
 
+**What the map draws, for the browser tests** (`tests/e2e`; Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): `Hydrograf.map.describe()` returns the view (`center` and `bounds` in degrees, `scale`: metres of EPSG:3857 per CSS pixel over the standard pixel of 0.28 mm, as a WMS computes it), the overlays on the map from the bottom up with their opacity as a whole (`dem`, `hazard`, `landcover`, `result:<id>`, `streams`, `preview`, `bdot-lakes`, `hsg`, `bdot-streams`, `depressions`, `sewer`, `watershed`, `main-channel`, `longest-flow-path`, `divide-flow-path`, `outlet`, `network`, `draw`, `profile-line`, `profile-marker`, `identify-marker`; the place of a one-point overlay) and the network's points. A module names the layer of an overlay with `Hydrograf.map.nameOverlay(layer, id)`; the order is the drawn one (the panes, then the order within a pane). The tests read the map only through it, the panels and the requests, so that they hold for the map on MapLibre too.
+
 #### 4.2.2 API Client
 ```javascript
-// api.js (abridged): same-origin URLs through nginx; Accept-Language: pl for Polish problems
+// api.js (abridged): same-origin URLs under /api/v1 through nginx; Accept-Language: pl for
+// Polish problems; a command resolves to its envelope hydrograf-result/1
 function apiFetch(url, options) {
     var opts = Object.assign({}, options);
     var headers = new Headers(opts.headers || {});
@@ -1395,29 +1633,53 @@ async function delineateWatershed(lat, lng, threshold) {
     var cached = _cacheGet(key);
     if (cached) return cached;
 
-    var body = {
-        latitude: lat,
-        longitude: lng,
-    };
-    if (threshold) {
-        body.threshold_m2 = threshold;
-    }
-
-    var url = '/api/delineate-watershed?include_hypsometric_curve=true';
-    const response = await apiFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
+    const params = new URLSearchParams({ latitude: lat, longitude: lng });
+    if (threshold) params.set('threshold_m2', threshold);
+    params.set('include_hypsometric_curve', 'true');
+    const response = await apiFetch('/api/v1/watershed/delineate?' + params.toString());
 
     if (!response.ok) await handleError(response);
-    var data = await response.json();
-    _cacheSet(key, data);
-    return data;
+    var envelope = await response.json();
+    _cacheSet(key, envelope);
+    return envelope;
+}
+
+// A long command runs as a job (nogat-job/1): asked for after JOB_FIRST_POLL_MS (300),
+// then every JOB_POLL_MS (1000)
+async function runJob(command, options, signal) {
+    var url = null;
+    try {
+        if (signal && signal.aborted) throw abortError();
+        const started = await apiFetch('/api/v1/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: command, options: options }),
+        });
+        if (!started.ok) await handleError(started);
+        var job = await started.json();
+        url = '/api/v1/jobs/' + job.id;
+        var wait = JOB_FIRST_POLL_MS;
+        while (job.state === 'queued' || job.state === 'running') {
+            await pause(wait, signal);
+            wait = JOB_POLL_MS;
+            const polled = await apiFetch(url, { signal: signal, cache: 'no-store' });
+            if (!polled.ok) await handleError(polled);
+            job = await polled.json();
+        }
+        const answer = await apiFetch(url + '/result', { signal: signal });
+        if (!answer.ok) await handleError(answer);
+        var envelope = await answer.json();
+        if (envelope.status === 'cancelled') throw abortError();
+        return envelope;
+    } catch (err) {
+        if (!signal || !signal.aborted) throw err;
+        if (url) apiFetch(url + '/cancel', { method: 'POST' }).catch(function () {});
+        throw abortError();
+    }
 }
 ```
 
-`handleError` throws an `Error` with the problem's Polish text (§2.2), its `status` and the `problem` document. `window.Hydrograf.api` holds `getTerrainProfile`, `generateHydrograph`, `getScenarios`, `getLayers`, `delineateWatershed`, `previewWatershed`, `delineateNetwork`, `previewNetwork`, `identifyPoint`, `submitFeedback` and `countDownload`; the profile, the watershed and the point are cached for 5 minutes.
+`handleError` throws an `Error` with the problem's Polish text (§2.2), its `status` and the `problem` document. `window.Hydrograf.api` holds `getTerrainProfile`, `generateHydrograph`, `getScenarios`, `getLayers`, `getThresholds`, `getBasemaps`, `delineateWatershed`, `previewWatershed`, `delineateNetwork`, `previewNetwork`, `identifyPoint`, `submitFeedback`, `countDownload` and `saveFile`. The functions of a command resolve to its envelope (§2.2.0), whose `result` and `notices` the caller reads; `getBasemaps`, `submitFeedback` and `countDownload` call routes outside the catalog. `generateHydrograph` and `delineateNetwork` are `runJob('hydrograph generate', …)` and `runJob('network delineate', …)` (§2.2.0c): an aborted signal cancels the job (`POST /api/v1/jobs/<id>/cancel`, best effort) and rejects with an `AbortError`, as a job that ended cancelled does, so that `hydrograph.js` and `network.js` cancel a job whose watershed or points were replaced or cleared and it stops counting against the client's two jobs. The profile, the watershed and the point are cached for 5 minutes.
 
 #### 4.2.3 Hydrograph Chart
 
@@ -1715,9 +1977,8 @@ http {
     # No log here (Nogat DEV-12.8, ECO-066; ADR-084): the API writes the access log of
     # the pages, the API calls and the failed tiles without the client (api/main.py),
     # and nginx would name the client in every error of a request, at every level,
-    # `crit` included. Static files need no log. Behind the Cloudflare Tunnel the
-    # client's address reaches the API in CF-Connecting-IP, which nginx neither reads
-    # nor logs.
+    # `crit` included. Static files need no log. The client's address reaches the API
+    # only in X-Forwarded-For, which nginx appends to and never logs.
     access_log off;
     error_log /dev/null;
 
@@ -1726,9 +1987,11 @@ http {
     gzip_types text/plain text/css application/json application/geo+json application/javascript text/xml application/xml application/x-protobuf;
 
     # No limit here: the API limits pages and routes per client address and counts them
-    # (api/traffic.py, DEV-15.9, DEV-15.11); nginx's peer is the same for every client
-    # behind the tunnel. X-Real-IP tells the API that peer, so that it believes the
-    # client's address of CF-Connecting-IP only from a private hop.
+    # (api/traffic.py, DEV-15.9, DEV-15.11). Every proxied location sends X-Forwarded-For
+    # with nginx's peer appended ($proxy_add_x_forwarded_for, Nogat AGI-6.9, ADR-091):
+    # behind the Cloudflare Tunnel or Latarnik that peer is the proxy on the host, which
+    # put the client's address before it, and the API takes the right-most address that
+    # is no loopback or private hop. Run alone, the peer is the client itself.
 
     # Docker's DNS, asked again every 10 s: a rebuilt api container gets a new
     # address, which `resolve` follows without a reload (open-source nginx >= 1.27.3;
@@ -1745,30 +2008,42 @@ http {
         listen 80;
         server_name localhost;
 
-        # nginx listens on 80 in the container and does not know the port Docker
-        # publishes (8080:80): relative redirects (e.g. /data -> /data/) keep the
-        # client's origin
+        # nginx w kontenerze nasluchuje na porcie 80 i nie zna zewnetrznego
+        # portu z mapowania Dockera (np. 8080:80 w docker-compose.yml). Przy
+        # domyslnym absolute_redirect on wszystkie przekierowania (np. redirect
+        # katalogowy /data -> /data/) budowalyby bezwzgledny URL z $host
+        # i portem nasluchu (80), gubiac faktyczny port klienta — dzialalo to
+        # przypadkiem za tunelem Cloudflare, bo tam 443 jest portem domyslnym
+        # dla https i znika z adresu, ale psulo sie na LAN z jawnym portem
+        # 8080. Wzgledny Location (bez hosta/portu) dziala poprawnie zawsze,
+        # bo przegladarka doklei biezacy origin sama.
         absolute_redirect off;
 
-        # Security headers
+        # Security headers. img-src and connect-src name the origins of the kit's base
+        # maps (frontend/nogat/nogat-basemaps.json, Nogat DEV-15.15, ADR-089; compared with
+        # it by tests/contract/test_nginx_csp.py) and img-src the flood hazard map's WMS;
+        # the setting `basemaps` narrows the switcher, not these lines. A deployment's copy
+        # or own base map (`basemap_mirrors`, `basemap_extra`) needs its origin in the
+        # deployment's own copy of this file. worker-src blob: is MapLibre 4.7.1's worker.
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org https://mapy.geoportal.gov.pl; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         # HSTS only meaningful over HTTPS — see nginx-ssl.conf.template for TLS config
 
-        # Tile proxy (^~ prevents the regex .pbf match of the data files below)
+        # Tile proxy, the one path below /api/ outside the API /api/v1 (ADR-091; ^~
+        # prevents the regex .pbf match of the data files below)
         location ^~ /api/tiles/ {
             proxy_pass http://api_backend/api/tiles/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
             proxy_read_timeout 15s;
         }
 
         # Admin panel (Nogat DEV-15.13, ADR-086): the page at /admin/, its own files below
-        # it and the admin API under /api/admin/ are the only admin paths, so Cloudflare
-        # Access protects exactly /admin, /admin/* and /api/admin/*. Every answer of the
+        # it and the admin API under /api/v1/admin/ are the only admin paths, so Cloudflare
+        # Access protects exactly /admin, /admin/* and /api/v1/admin/*. Every answer of the
         # panel is no-store; the API sets it on its own answers.
         location = /admin {
             return 308 /admin/;
@@ -1778,20 +2053,21 @@ http {
         location = /admin/index.html {
             proxy_pass http://api_backend;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 30s;
         }
-        # The page's file under CSP 'self', the area map's tiles of GUGiK's grey
-        # OpenStreetMap excepted (a basemap from its provider, which DEV-15.7 allows); its
-        # Cache-Control: no-store comes with the API's answer. add_header here replaces
-        # the server's, so its other security headers are repeated.
+        # The page's file under CSP 'self', but img-src admits the area map's base map,
+        # the first raster entry of the kit's catalogue (GUGiK's grey OpenStreetMap, Nogat
+        # DEV-15.13, DEV-15.15), and data:, the empty image Leaflet gives each tile it
+        # removes; its Cache-Control: no-store comes with the API's answer. add_header here
+        # replaces the server's, so its other security headers are repeated.
         location ^~ /_site/admin/ {
             internal;
             alias /usr/share/nginx/html/admin/;
             add_header X-Content-Type-Options "nosniff" always;
             add_header X-Frame-Options "DENY" always;
             add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         }
         # The page's own scripts and styles (before the general rule of the static files)
         location ~ ^/admin/.+\.(css|js)$ {
@@ -1818,7 +2094,7 @@ http {
         location ~* \.html$ {
             proxy_pass http://api_backend;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 30s;
             error_page 502 504 = @page_file;
         }
@@ -1858,12 +2134,12 @@ http {
         }
 
         # Admin API
-        location /api/admin/ {
+        location /api/v1/admin/ {
             client_max_body_size 50m;
 
-            proxy_pass http://api_backend/api/admin/;
+            proxy_pass http://api_backend/api/v1/admin/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             proxy_read_timeout 30s;
@@ -1877,20 +2153,22 @@ http {
         }
 
         # Admin SSE stream (longer timeout for bootstrap)
-        location = /api/admin/bootstrap/stream {
-            proxy_pass http://api_backend/api/admin/bootstrap/stream;
+        location = /api/v1/admin/bootstrap/stream {
+            proxy_pass http://api_backend/api/v1/admin/bootstrap/stream;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
             proxy_buffering off;
         }
 
-        # API proxy
-        location /api/ {
-            proxy_pass http://api_backend/api/;
+        # The API (ADR-091). The routes of /api/ before it are gone: no location
+        # proxies them, so they reach the static files' rules. A long command runs as a
+        # job, which no proxy timeout cuts.
+        location /api/v1/ {
+            proxy_pass http://api_backend/api/v1/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
 
             # Timeouts
@@ -1903,23 +2181,26 @@ http {
         location /health {
             proxy_pass http://api_backend/health;
             proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
     }
 }
 ```
 
-`X-Real-IP` is nginx's peer, never the client behind the tunnel: the API believes the client's address of `CF-Connecting-IP` only when that peer is a private hop (§2.2.1b). nginx neither reads `CF-Connecting-IP` nor keeps a log (`access_log off`, `error_log /dev/null`): it would name the client in every error of a request, at every level, `crit` included. `docker/nginx-ssl.conf.template` has the same locations and no log either, with the redirect of port 80 to HTTPS, TLS on port 443 and HSTS.
+nginx sends `X-Forwarded-For` with its own peer appended (`$proxy_add_x_forwarded_for`) on every proxied location and no `X-Real-IP`: behind the Cloudflare Tunnel or Latarnik that peer is the proxy on the host, which put the client's address before it, and the API takes the right-most address that is no loopback or private hop (§2.2.1b, Nogat AGI-6.9, ADR-091). nginx neither reads the header nor keeps a log (`access_log off`, `error_log /dev/null`): it would name the client in every error of a request, at every level, `crit` included. The API is `location /api/v1/` (120 s), its admin routes `/api/v1/admin/` (bodies up to 50 MB, 30 s) and `= /api/v1/admin/bootstrap/stream` (the SSE, 3600 s, unbuffered), the map tiles `^~ /api/tiles/` (15 s); no location proxies `/api/` or `/api/admin/`, so an old route reaches the static files' rules (`try_files`, the map page). A hydrograph or a network runs as a job (§2.2.0c), which no proxy timeout cuts. `docker/nginx-ssl.conf.template` has the same locations and no log either, with the redirect of port 80 to HTTPS, TLS on port 443 and HSTS.
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
 - `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'`: no other origin. The libraries are vendored in `frontend/vendor/` (§4.1) and keep their `integrity`, which the browser checks for same-origin files too and `tests/contract/test_frontend_vendor.py` checks against the files, with no page referencing a remote script, stylesheet or font.
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie). The admin page has a CSP of its own (`location ^~ /_site/admin/`): `default-src 'self'` with `img-src 'self' https://mapy.geoportal.gov.pl` for the area map of „Przetwarzanie NMT” (ADR-086).
-- `connect-src`: `https://tiles.openfreemap.org` (style, vector tiles and glyphs of OpenFreeMap, fetched by MapLibre).
+- `img-src`: `data:`, `blob:`, the origins of the kit's base maps, `https://tiles.openfreemap.org` and `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto; Leaflet draws a raster entry as images, MapLibre fetches, so both directives name every entry's origin, Nogat DEV-15.15), and `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie). The admin page has a CSP of its own (`location ^~ /_site/admin/`): `default-src 'self'` with `img-src 'self' data: https://mapy.geoportal.gov.pl` for the area map of „Przetwarzanie NMT” (ADR-086, ADR-089; `data:` is the empty image Leaflet gives a removed tile, Nogat DEV-15.13).
+- `connect-src`: the origins of the kit's base maps, `https://tiles.openfreemap.org` (OpenFreeMap's TileJSON and vector tiles, fetched by MapLibre; no style, sprites or glyphs, which are the kit's and `vendor/openmaptiles-fonts-2.0/`) and `https://mapy.geoportal.gov.pl`.
 - `worker-src blob:`, `child-src blob:` — the Web Worker of MapLibre GL.
+
+The base maps' origins are the catalogue's (`frontend/nogat/nogat-basemaps.json`, ADR-089), whatever the setting `basemaps` allows: nginx serves the pages and sets their headers, while the settings reach only the API. `tests/contract/test_nginx_csp.py` checks that both nginx files name exactly the catalogue's origins in the page's `img-src` (with the MZP's WMS) and `connect-src`, no scheme source but `data:` and `blob:` in `img-src` and none in `connect-src`, and the admin page's `img-src` with only the first raster entry's origin and `data:`. A deployment that serves a copy of a base map (`basemap_mirrors`) or an own base map (`basemap_extra`) names its origin in its own copy of the nginx file.
 
 **Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
 - the HTML pages (`/`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`); the admin page `/admin/` and its scripts with `Cache-Control: no-store` (Nogat DEV-15.13);
 - the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
-- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The vendored libraries get a `?v=` too; their directory names carry the package version.
+- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports, static or dynamic, of the own scripts in `js/` and `admin/` (`js/nogat.js` imports the kit of `nogat/`, `admin/processing.js` the kit's `nogat-basemaps.js`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of the scripts that import it (ADR-082, ADR-089). The vendored libraries get a `?v=` too; their directory names carry the package version.
 
 ---
 
@@ -1950,13 +2231,13 @@ http {
 **Mitigations:**
 - ✅ Parameterised SQL queries (SQLAlchemy `text()` with bound parameters)
 - ✅ Input validation (Pydantic)
-- ✅ Request limit per client address in the API (300 in 60 s, tiles 3,000, the form 5 in 5 min; ADR-084)
+- ✅ Request limit per client address in the API (300 in 60 s, tiles 3,000, the form 5 in 5 min; ADR-084), at most 2 active jobs per client (ADR-091)
 - ✅ CORS with restrictive origins (env var `CORS_ORIGINS`), `allow_credentials=False`
 - ✅ GZip middleware (FastAPI)
 - ✅ Security headers of nginx (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy; HSTS with TLS in nginx)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
 - ✅ Admin API key auth (X-Admin-Key against ADMIN_API_KEY or the file of ADMIN_API_KEY_FILE, read per request; no key, no access: `admin_key_not_configured`; ADR-086)
-- ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin/*` and `/api/admin/*`, the only admin paths (ADR-086)
+- ✅ No user authentication needed: a public service under its regulamin (ADR-084); Cloudflare Access in front of `/admin`, `/admin/*` and `/api/v1/admin/*`, the only admin paths (ADR-086, ADR-091)
 
 ---
 
@@ -1975,7 +2256,7 @@ http {
 │  - Input validation (Pydantic)                          │
 │  - Request limit per client address (api/traffic.py)    │
 │  - CORS (restrictive origins, no credentials)           │
-│  - Admin key (X-Admin-Key) on /api/admin/*              │
+│  - Admin key (X-Admin-Key) on /api/v1/admin/*           │
 │  - GZip compression, the access log without the client  │
 │  - Security headers of nginx (CSP, X-Frame-Options)     │
 └─────────────────────────────────────────────────────────┘
@@ -2014,7 +2295,7 @@ Records of the format `nogat-log/1` (`schemas/nogat/record-1.schema.json`) go to
 
 ### 7.2 Metrics
 
-No metrics are collected: the access log (§7.1) and the daily totals of `stats.jsonl` (§2.2.1b) are the records of the use, and the admin panel's „Stan” (`GET /api/admin/status`) and „Zasoby” (`GET /api/admin/resources`) show the state of the server (§2.2.8).
+No metrics are collected: the access log (§7.1) and the daily totals of `stats.jsonl` (§2.2.1b) are the records of the use, and the admin panel's „Stan” (`GET /api/v1/admin/status`) and „Zasoby” (`GET /api/v1/admin/resources`) show the state of the server (§2.2.8).
 
 ---
 
@@ -2229,11 +2510,12 @@ def effective_rainfall_slow(intensities, cn):
 `backend/tests/` (pytest, configured in `backend/pyproject.toml`):
 - `unit/` — offline tests of the modules, with fixtures and mocked dependencies
 - `integration/` — the routes through FastAPI's `TestClient`, and the database code against PostGIS (marker `db`)
-- `contract/` — the error registry, the message catalogue, the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies and the vendored files
+- `contract/` — the error registry, the message catalogue, the command catalog, its list, the envelopes and the server and job documents against Nogat's schemas (`test_catalog.py`), the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies, the vendored files and the base maps' origins in the CSP of the nginx files (`test_nginx_csp.py`)
 - `performance/` — timing tests of the PostGIS queries (marker `benchmark`, with the database)
+- `e2e/` — the map and the panels in Chromium through Playwright (marker `e2e`): a session fixture runs the synthetic DEM of `tests/fixtures/pipeline_run.py` through the pipeline into a private database and a temporary data root (the DEM's tiles, the streams' tiles of `generate_tiles.py` where tippecanoe is present, the depressions, the sewer, an analysis result of two levels), the API under uvicorn, and `frontend/` by a server of the tests' own that routes as `docker/nginx.conf` and sends its two CSP values; the outside base maps and the WMS are answered from recorded files (`tests/e2e/recorded/`). Without PostGIS or Chromium the tests are skipped, under `CI` they fail
 - `fixtures/` — test data
 
-The markers are `live` (real network services), `db` (PostGIS), `slow` and `benchmark`; the default run and `scripts/gate.sh` leave out `live`, `db` and `benchmark`. The gate runs `ruff format --check`, `ruff check`, `mypy`, one pytest call with coverage (`fail_under = 80`), `scripts/bump_asset_versions.py --check` and the commit checks. The preprocessing pipeline (`scripts/`) is run by hand on real data and is not measured by the coverage.
+The markers are `live` (real network services), `db` (PostGIS), `slow`, `benchmark` and `e2e` (PostGIS and Chromium); the default run and `scripts/gate.sh` leave out `live`, `db`, `benchmark` and `e2e`. The gate runs `ruff format --check`, `ruff check`, `mypy`, one pytest call with coverage (`fail_under = 80`), `scripts/bump_asset_versions.py --check` and the commit checks. The preprocessing pipeline (`scripts/`) is run by hand on real data and is not measured by the coverage.
 
 ---
 
@@ -2243,6 +2525,7 @@ The markers are `live` (real network services), `db` (PostGIS), `slow` and `benc
 - `frontend-assets` — `python3 scripts/bump_asset_versions.py --check`
 - `gate` — `scripts/gate.sh` on `ubuntu-latest` with Python 3.12 (required) and 3.15 (reported, not blocking; it installs `libgdal-dev` first, so that Fiona builds); the commit checks run only on pull requests into `develop` and of `hotfix/*` into `main`
 - `db` — the tests marked `db` (not `benchmark`) against the service `postgis/postgis:16-3.4` after `alembic upgrade head`
+- `e2e` — the tests of `tests/e2e` against the same service, with `gdal-bin`, `python3-gdal` and `tippecanoe` from apt and Playwright's Chromium (`playwright install --with-deps chromium`)
 - `audit` — `pip-audit --strict` over the locked PyPI dependencies (`uv export --locked`), the ecosystem's own packages left out
 
 The actions are pinned by commit SHA and updated by Dependabot (`.github/dependabot.yml`); the required checks are `gate` of Python 3.12 and `db`. No job builds or deploys an image.
@@ -2294,11 +2577,16 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.27
+**Document version:** 2.32
 **Date of the last update:** 2026-11-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.32 (2026-11-25): the release of Hydrograf 0.7.0: §2.2.0, §2.2.0a and §2.2.0b the example `version` 0.7.0; §2.4.7 Hydrolog pinned by its tag `v0.10.0` (0.10.0) of Nogat's release set candidate-16, range `>=0.10.0,<0.11`; the header and the footer 2.32
+- 2.31 (2026-11-25): the API at /api/v1 (ADR-091, Nogat's plan 2026-11-24-latarnik, step HG1): §1.1 `/api/v1/*` and `/api/tiles/*` through nginx; §1.2 ADR-091 and the routes of ADR-034, ADR-050, ADR-082, ADR-086 and ADR-089; §2.1 `api/__init__.py`, `api/catalog.py`, `api/envelope.py`, `api/jobs.py`, `api/endpoints/commands.py`, `jobs.py`, `server.py`, `layers.py` and `precipitation.py`, the operation ids of the catalog and the relative OpenAPI document of `api/errors.py`, `X-Forwarded-For` and `JobSlots` of `api/traffic.py`, the commands of the endpoint modules, `tiles.py` the MVT tiles only, the contract tests of the catalog; §2.2 the base `/api/v1`, the commands and their routes, the envelope `hydrograf-result/1`, `/api/v1/openapi.json` and `command` in the problems (§2.2.0), the catalog (§2.2.0a), `GET /api/v1/server` (§2.2.0b), the jobs (§2.2.0c), `precipitation depth` (§2.2.4a), the delineation and its preview as GET with query parameters, the network and the hydrograph as jobs, the notices of the delineation and of the hydrograph in the envelope, the network's lock 600 s; §2.2.1b the client's address from `X-Forwarded-For`, the analyses counted; §2.2.7 the thresholds as `layers thresholds`; §2.2.8 the prefix `/api/v1/admin`; §2.3 the delineation's GET and envelope, the hydrograph as a job; §2.4.1 and §2.5 the routes; §4.1 `runJob` and the polling of `api.js`, the routes of the modules; §4.2.0 the routes and the envelope's notices; §4.2.2 the client's `delineateWatershed` and `runJob`; §5.2 the nginx file with `/api/v1/` and `X-Forwarded-For`; §6 the admin paths `/api/v1/admin/*` and the job limit; §7.2 the admin routes; §11.1 `test_catalog.py`; the header and the footer 2.31
+- 2.30 (2026-11-25): the charts on Nogat's kit (ADR-090, Nogat's plan `2026-11-24-unified-charts`, step 5): §1 the frontend's box; §4.1 `nogat-chart.*` used by `charts.js` through `nogat.js`, `vendor/chart.js-4.4.7/` removed
+- 2.29 (2026-11-25): the base maps from Nogat's kit 1.3.0 (ADR-089, Nogat's plan `2026-11-24-shared-base-maps`, step 4): §1.2 ADR-089 (ADR-065 amended); §2.1 `api/endpoints/basemaps.py`, `core/basemaps.py`, `KIT_DIR` and the base maps' variables of `core/config.py`, the start refused in `api/main.py`, `kept_blocks` of `core/terms.py`, `tests/contract/test_nginx_csp.py`; §2.2.1b the regulamin's blocks; §2.2.1c `GET /api/basemaps` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra`; §4.1 kit 1.3.0 (`nogat-basemaps`, `nogat-chart`, `nogat-command-form`), `vendor/openmaptiles-fonts-2.0/`, `layers.js`, `nogat.js`, `admin/processing.js`; §4.2.0 the panel „Warstwy”; §4.2.1 the base maps, the excerpt of `map.js`; §5.2 the CSP of nginx with the catalogue's origins and the admin page's `data:`, the versions of a dynamic import; §11.1 the contract tests; the header and the footer 2.29
+- 2.28 (2026-11-25): the browser tests (Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): §2.1 `tests/e2e`; §4.2.1 `Hydrograf.map.describe()` and `nameOverlay()`; §11.1 the marker `e2e`; §11.2 the job `e2e`; the header and the footer 2.28
 - 2.27 (2026-11-25): §2.4.7 Hydrolog pinned by its tag `v0.9.1` (Hydrograf 0.6.1); the header and the footer 2.27
 - 2.26 (2026-11-24): §2.4.7 Hydrolog pinned by its commit `1b25a91` (0.9.1) of Nogat's release set candidate-13; the header and the footer 2.26
 - 2.25 (2026-11-22): the release audit of 0.6.0 against the code: §2.1 `core/_errors.py` the registry of the Nogat standard 1.1; §2.2.1 the example `version` 0.6.0; §2.2.3 the message IDs of Hydrolog's refusals, and no code fence left open after the block; §2.4.7 Hydrolog pinned by its tag `v0.9.0`, the equal-area slope among its tasks; §4.1 the names of the downloads of `rain-export.js` and of the statistics of `nogat-admin.js` (Nogat DEV-19.21); §4.2.0 76 entries keyed by a field, a control or a kind, 68 with a section of the guide, the notices of a value outside the applicability range; the header and the footer 2.25 like this history (the footer said 2.23)

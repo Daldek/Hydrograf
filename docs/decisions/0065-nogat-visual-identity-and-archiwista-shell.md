@@ -7,6 +7,15 @@
 > **Amended by ADR-086 (2026-11-14):** the admin panel is the page `/admin/` on Nogat's kit
 > (`nogat-admin.css`), without Bootstrap and without the shell `css/chrome.css`.
 
+> **Amended by ADR-089 (2026-11-25):** the base maps are the entries of Nogat's kit
+> (`nogat-basemaps.json`, `<nogat-basemaps>`, `GET /api/basemaps`); OpenFreeMap is the kit's
+> grey style over its TileJSON with vendored glyphs, not the provider's Positron, and the
+> default no longer falls back to OSM GUGiK without MapLibre, which is vendored.
+
+> **Amended by ADR-090 (2026-11-25):** the charts are drawn by Nogat's kit
+> (`nogat-chart.js`, `nogat-chart.css`), coloured by classes in the tokens, not by
+> Chart.js repainted at a change of theme; Chart.js is no longer vendored.
+
 **Date:** 2026-11-01
 **Status:** accepted
 

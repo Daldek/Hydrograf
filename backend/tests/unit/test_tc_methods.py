@@ -1,6 +1,6 @@
 """
-Time of concentration of POST /api/generate-hydrograph (Nogat plan
-2026-11-05-official-tc-inputs, D5).
+Time of concentration of ``hydrograph generate`` (Nogat plan
+2026-11-05-official-tc-inputs, D5), run as a job (ADR-091).
 
 Hydrolog computes every method from the inputs its source defines: the endpoint's tc
 is ``WatershedParameters.calculate_tc`` of the morphometry, the CN used and FAA's C or
@@ -20,6 +20,7 @@ from api.main import app
 from core.database import get_db
 from core.precipitation import DesignDepth
 from models.schemas import HydrographRequest
+from tests.job_runner import run_job
 
 POINT = {"latitude": 51.01544, "longitude": 15.88984}
 
@@ -67,8 +68,8 @@ def _post(client: TestClient, morphometry: dict[str, Any], **options: Any):
     }
     depth = DesignDepth(70.0, "idw", ())
     with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
-        return client.post(
-            "/api/generate-hydrograph", json=body, headers={"Accept-Language": "pl"}
+        return run_job(
+            client, "hydrograph generate", body, headers={"Accept-Language": "pl"}
         )
 
 
@@ -95,16 +96,17 @@ class TestTcIsHydrologs:
         expected = WatershedParameters.from_dict(
             {**_morphometry(), **coefficients}
         ).calculate_tc(options["tc_method"])
-        origin = response.json()["handoff"]["provenance"]["runoff"]
-        assert origin["tc_min"] == expected
-        assert response.json()["metadata"]["tc_min"] == round(expected, 1)
+        result = response.json()["result"]
+        assert result["handoff"]["provenance"]["runoff"]["tc_min"] == expected
+        assert result["metadata"]["tc_min"] == round(expected, 1)
 
     def test_a_given_coefficient_another_method_does_not_read_is_ignored(self, client):
         response = _post(client, _morphometry(), tc_method="nrcs", tc_runoff_coeff=0.9)
 
         assert response.status_code == 200, response.text
         expected = WatershedParameters.from_dict(_morphometry()).calculate_tc("nrcs")
-        assert response.json()["handoff"]["provenance"]["runoff"]["tc_min"] == expected
+        runoff = response.json()["result"]["handoff"]["provenance"]["runoff"]
+        assert runoff["tc_min"] == expected
 
 
 class TestMissingInput:

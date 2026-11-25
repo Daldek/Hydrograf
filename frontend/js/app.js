@@ -162,8 +162,9 @@
      * Fill the parameter sections and the key figures with a watershed: the
      * delineated one, or an element of the network (js/network.js).
      * @param {Object} w - a WatershedResponse
+     * @param {Object} source - the response with its provider lines, for the PNGs of the charts
      */
-    function renderParameters(w) {
+    function renderParameters(w, source) {
         var m = w.morphometry || {};
         var o = w.outlet;
 
@@ -224,9 +225,9 @@
                 : '—', 'bdot_coverage'],
         ]);
 
-        // Charts: land cover donut
+        // Charts: land cover and soil groups, one bar per class with its share
         if (w.land_cover_stats && w.land_cover_stats.categories && w.land_cover_stats.categories.length > 0) {
-            Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories);
+            Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories, source);
         } else {
             Hydrograf.charts.destroyChart('chart-landcover');
         }
@@ -235,7 +236,7 @@
         var accHsg = document.getElementById('acc-hsg');
         if (w.hsg_stats && w.hsg_stats.categories && w.hsg_stats.categories.length > 0) {
             if (accHsg) accHsg.classList.remove('d-none');
-            Hydrograf.charts.renderHsgChart('chart-hsg', w.hsg_stats.categories);
+            Hydrograf.charts.renderHsgChart('chart-hsg', w.hsg_stats.categories, source);
         } else {
             if (accHsg) accHsg.classList.add('d-none');
             Hydrograf.charts.destroyChart('chart-hsg');
@@ -246,7 +247,7 @@
             m.elevation_min_m != null && m.elevation_max_m != null) {
             Hydrograf.charts.renderHypsometricChart(
                 'chart-hypsometric', w.hypsometric_curve,
-                m.elevation_min_m, m.elevation_max_m
+                m.elevation_min_m, m.elevation_max_m, source
             );
         } else {
             Hydrograf.charts.destroyChart('chart-hypsometric');
@@ -269,7 +270,7 @@
      * context („Zlewnia … km²”, its outlet).
      */
     function displayParameters(data) {
-        renderParameters(data.watershed);
+        renderParameters(data.watershed, data);
         state.sectionsShowWatershed = true;
         displayParametersContext(data);
     }
@@ -357,9 +358,12 @@
         Hydrograf.map.clearProfileLine();
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
+        showDelineationNotices([]);
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
         state.currentStream = null;
+        // The hydrograph of the cleared watershed: its job is cancelled
+        if (Hydrograf.hydrograph) Hydrograf.hydrograph.cancel();
         showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
         els.results.classList.add('d-none');
@@ -461,10 +465,11 @@
      * zlewnię” (without the hietogram and the hydrograph, which the network view
      * hides); null hides the sections.
      * @param {Object|null} watershed - the element's WatershedResponse
+     * @param {Object} [source] - the network's response with its provider lines
      */
-    function showElementParameters(watershed) {
+    function showElementParameters(watershed, source) {
         if (watershed) {
-            renderParameters(watershed);
+            renderParameters(watershed, source);
             state.sectionsShowWatershed = false;
             els.panel.dataset.element = '';
         } else {
@@ -532,6 +537,8 @@
         setLoading(true);
         state.currentWatershed = null;
         state.currentStream = null;
+        // The hydrograph of the previous watershed: its job is cancelled
+        if (Hydrograf.hydrograph) Hydrograf.hydrograph.cancel();
         showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
 
@@ -542,6 +549,7 @@
         // Clear auto-select banner before new request
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
+        showDelineationNotices([]);
 
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
@@ -550,13 +558,14 @@
 
         Hydrograf.api.previewWatershed(lat, lng, threshold)
             .then(function (preview) {
-                if (isCurrent() && !settled) Hydrograf.map.showDelineatePreview(preview.catchments);
+                if (isCurrent() && !settled) Hydrograf.map.showDelineatePreview(preview.result.catchments);
             })
             .catch(function () { /* no preview; the delineation reports errors */ });
 
         try {
-            var data = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
+            var answer = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
             if (!isCurrent()) return;
+            var data = answer.result;
             settled = true;
             Hydrograf.map.clearDelineatePreview();
 
@@ -575,6 +584,7 @@
                 }
                 if (autoInfo) autoInfo.classList.remove('d-none');
             }
+            showDelineationNotices(answer.notices);
 
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
@@ -655,6 +665,35 @@
             ? 'Hietogram i hydrogram są liczone tylko dla zlewni do 250 km², granicy stosowalności ' +
               'metody SCS-CN; ta zlewnia ma ' + formatValue(watershed.area_km2, 'km²', 2) + '.'
             : '';
+    }
+
+    var NOTICE_ICONS = {
+        warning: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/>' +
+            '<path d="M8 6.5v3M8 11.5v.01"/></svg>',
+        info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/>' +
+            '<path d="M8 7.5v4M8 5v.01"/></svg>',
+    };
+
+    /**
+     * The delineation's notices above the sections: the `notices` of the answer,
+     * worded in Polish by the API (e.g. an outlet more than 500 m from the clicked
+     * point, E7-GAP-04); [] takes them away.
+     */
+    function showDelineationNotices(notices) {
+        var box = document.getElementById('delineation-notices');
+        if (!box) return;
+        box.textContent = '';
+        notices.forEach(function (notice) {
+            var warning = notice.level === 'warning';
+            var p = document.createElement('p');
+            p.className = warning ? 'notice warn' : 'notice';
+            p.innerHTML = warning ? NOTICE_ICONS.warning : NOTICE_ICONS.info;
+            var text = document.createElement('span');
+            text.textContent = notice.message;
+            p.appendChild(text);
+            box.appendChild(p);
+        });
+        box.classList.toggle('d-none', !notices.length);
     }
 
     /**

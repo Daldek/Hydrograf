@@ -1,0 +1,12 @@
+date,year,P [mm],P_flag,P_quality,P_source_flag,attribution,terms_notice
+2024-09-10,2024,0.3,value,0,,"Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+2024-09-11,2024,18.2,value,0,,Dane ČHMÚ zostały przetworzone,
+2024-09-12,2024,19.1,value,0,,,
+2024-09-13,2024,34.6,value,0,,,
+2024-09-14,2024,38.9,value,0,,,
+2024-09-15,2024,28.2,value,0,,,
+2024-09-16,2024,1.4,value,0,,,
+2024-09-17,2024,0.0,no_phenomenon,0,,,
+2024-09-18,2024,0.0,no_phenomenon,0,,,
+2024-09-19,2024,0.0,no_phenomenon,0,,,
+2024-09-20,2024,0.0,no_phenomenon,0,,,

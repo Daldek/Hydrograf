@@ -4,7 +4,7 @@ Unit tests for CR9: cascade threshold boundary vs stats mismatch fix.
 Verifies that when cascade escalation occurs (>300 segments triggers
 coarser threshold), both boundary AND stats use the escalated threshold.
 
-Tests target the unified /api/delineate-watershed endpoint (precomputed mode).
+Tests target the unified GET /api/v1/watershed/delineate route (precomputed mode).
 """
 
 from unittest.mock import MagicMock, patch
@@ -261,9 +261,9 @@ class TestPrecomputedCascadeStats:
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 1000,
@@ -271,7 +271,7 @@ class TestPrecomputedCascadeStats:
             )
 
             assert response.status_code == 200
-            data = response.json()
+            data = response.json()["result"]
 
             # Should be precomputed mode
             assert data["mode"] == "precomputed"
@@ -386,9 +386,9 @@ class TestPrecomputedCascadeStats:
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 1000,
@@ -396,7 +396,7 @@ class TestPrecomputedCascadeStats:
             )
 
             assert response.status_code == 200
-            data = response.json()
+            data = response.json()["result"]
 
             # Should be precomputed mode
             assert data["mode"] == "precomputed"
@@ -470,9 +470,9 @@ class TestPrecomputedCascadeStats:
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 1000,
@@ -607,9 +607,9 @@ class TestWatershedCascadeStats:
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 1000,
@@ -617,7 +617,7 @@ class TestWatershedCascadeStats:
             )
 
             assert response.status_code == 200
-            data = response.json()
+            data = response.json()["result"]
 
             # Should be precomputed mode
             assert data["mode"] == "precomputed"

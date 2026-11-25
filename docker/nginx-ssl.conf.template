@@ -17,7 +17,8 @@ http {
     gzip_types text/plain text/css application/json application/geo+json application/javascript text/xml application/xml application/x-protobuf;
 
     # No limit here: the API limits pages and routes per client address, which nginx
-    # tells it in X-Real-IP (api/traffic.py, DEV-15.9).
+    # appends to X-Forwarded-For on every proxied location (api/traffic.py, DEV-15.9,
+    # ADR-091); a forged address before it is not the right-most, so the API skips it.
 
     # Docker's DNS, asked again every 10 s, so that a rebuilt api container is
     # followed without a reload: see nginx.conf.
@@ -59,23 +60,24 @@ http {
         # wyzej, ktory celowo zmienia schemat i musi byc bezwzgledny.
         absolute_redirect off;
 
-        # Security headers
+        # Security headers; the CSP's origins as in nginx.conf (the kit's base maps, the
+        # flood hazard map's WMS; tests/contract/test_nginx_csp.py)
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org https://mapy.geoportal.gov.pl; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-        # Tile proxy
+        # Tile proxy, the one path below /api/ outside the API /api/v1 (ADR-091)
         location ^~ /api/tiles/ {
             proxy_pass http://api_backend/api/tiles/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 15s;
         }
 
         # Admin panel (Nogat DEV-15.13, ADR-086): see nginx.conf. /admin answers 308; the
-        # page, its own files and /api/admin/ are the only admin paths, each answer
+        # page, its own files and /api/v1/admin/ are the only admin paths, each answer
         # no-store; add_header in these locations repeats the server's security headers.
         location = /admin {
             return 308 /admin/;
@@ -83,18 +85,19 @@ http {
         location = /admin/index.html {
             proxy_pass http://api_backend;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 30s;
         }
-        # CSP 'self' but the area map's GUGiK OSM tiles (a basemap, DEV-15.7); no-store
-        # comes with the API's answer
+        # CSP 'self' but img-src admits the area map's base map (the first raster entry of
+        # the kit's catalogue, DEV-15.13) and Leaflet's data: image of a removed tile;
+        # no-store comes with the API's answer
         location ^~ /_site/admin/ {
             internal;
             alias /usr/share/nginx/html/admin/;
             add_header X-Content-Type-Options "nosniff" always;
             add_header X-Frame-Options "DENY" always;
             add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
             add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         }
         location ~ ^/admin/.+\.(css|js)$ {
@@ -120,7 +123,7 @@ http {
         location ~* \.html$ {
             proxy_pass http://api_backend;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 30s;
             error_page 502 504 = @page_file;
         }
@@ -160,11 +163,14 @@ http {
         }
 
         # Admin API
-        location /api/admin/ {
-            proxy_pass http://api_backend/api/admin/;
+        location /api/v1/admin/ {
+            client_max_body_size 50m;
+
+            proxy_pass http://api_backend/api/v1/admin/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
         }
 
         # Frontend
@@ -175,20 +181,20 @@ http {
         }
 
         # Admin SSE stream (longer timeout for bootstrap)
-        location = /api/admin/bootstrap/stream {
-            proxy_pass http://api_backend/api/admin/bootstrap/stream;
+        location = /api/v1/admin/bootstrap/stream {
+            proxy_pass http://api_backend/api/v1/admin/bootstrap/stream;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
             proxy_buffering off;
         }
 
-        # API proxy
-        location /api/ {
-            proxy_pass http://api_backend/api/;
+        # The API (ADR-091); the routes of /api/ before it are gone (see nginx.conf)
+        location /api/v1/ {
+            proxy_pass http://api_backend/api/v1/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_connect_timeout 30s;
             proxy_send_timeout 30s;
@@ -199,6 +205,7 @@ http {
         location /health {
             proxy_pass http://api_backend/health;
             proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }
     }
 }

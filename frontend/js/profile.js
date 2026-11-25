@@ -3,11 +3,13 @@
  *
  * Terrain profile via manual line drawing on the map.
  * Renders in the profile drawer at the bottom of the map (#profile-drawer).
- * Hover over chart shows corresponding point on the map line.
+ * The chart's readout (a pointer, a finger or the arrow keys over it) shows the
+ * corresponding point on the map line.
  * Analysis results with a water level that are shown on the map add their
  * water surface where the line crosses them (results.js, API result_ids);
  * the provider lines of the water it shows (from the response) go to the view's
- * strip while the drawer is open (attribution.js).
+ * strip while the drawer is open (attribution.js), and every line of the response
+ * under the chart's PNG.
  * Samples off the DEM (API dem_gaps) are gaps of the chart, left out of the
  * elevation range; a line wholly off the DEM gets a message instead.
  */
@@ -27,9 +29,8 @@
      * (error) why there is no profile.
      */
     function showProfileNotice(text, error) {
-        var canvas = document.getElementById('chart-profile-standalone');
-        if (!canvas) return;
-        var container = canvas.parentElement;
+        var chart = document.getElementById('chart-profile-standalone');
+        if (!chart) return;
         clearProfileNotice();
         var note = document.createElement('p');
         note.className = 'notice warn profile-notice';
@@ -37,7 +38,7 @@
         var textSpan = document.createElement('span');
         textSpan.textContent = text;
         note.appendChild(textSpan);
-        container.parentElement.insertBefore(note, container);
+        chart.parentElement.insertBefore(note, chart);
     }
 
     function clearProfileNotice() {
@@ -82,19 +83,22 @@
     }
 
     /**
-     * Handle chart hover — show marker on map at corresponding position.
-     * @param {number} fraction - 0..1 along the line
+     * Handle the chart's readout — show marker on map at corresponding position.
+     * @param {number} fraction - 0..1 along the line: the sample's share of the profile's
+     *     length, as the API measures it in metres
      */
     function onChartHover(fraction) {
         if (!_lineLatLngs || _lineLatLngs.length < 2) return;
 
-        // Compute cumulative distances between vertices
+        // Cumulative lengths of the segments, locally flat: a degree of longitude is
+        // shorter by the cosine of the latitude, so a share of the length is that share
+        // of the line drawn
         var dists = [0];
         for (var i = 1; i < _lineLatLngs.length; i++) {
             var prev = _lineLatLngs[i - 1];
             var cur = _lineLatLngs[i];
             var dlat = cur[0] - prev[0];
-            var dlng = cur[1] - prev[1];
+            var dlng = (cur[1] - prev[1]) * Math.cos((cur[0] + prev[0]) * Math.PI / 360);
             dists.push(dists[i - 1] + Math.sqrt(dlat * dlat + dlng * dlng));
         }
         var totalDist = dists[dists.length - 1];
@@ -118,7 +122,7 @@
     }
 
     /**
-     * Handle chart hover end — remove marker from map.
+     * Handle the readout's end — remove marker from map.
      */
     function onChartHoverEnd() {
         Hydrograf.map.clearProfileHoverMarker();
@@ -163,9 +167,10 @@
         };
         var ids = shown.map(function (r) { return r.id; });
 
-        Hydrograf.api.getTerrainProfile(lineGeojson, 100, ids).then(function (result) {
+        Hydrograf.api.getTerrainProfile(lineGeojson, 100, ids).then(function (answer) {
             // A newer line, a redraw or a closed drawer took its place
             if (request !== _request) return;
+            var result = answer.result;
             // Ensure drawer is visible BEFORE rendering the chart
             var drawer = document.getElementById('profile-drawer');
             if (drawer) drawer.hidden = false;
@@ -184,14 +189,10 @@
                 elevations,
                 onChartHover,
                 onChartHoverEnd,
-                water
+                water,
+                result
             );
             showProviderLines(water.length ? result : null);
-
-            // Resize after render to ensure correct dimensions
-            setTimeout(function () {
-                if (Hydrograf.charts) Hydrograf.charts.resizeChart('chart-profile-standalone');
-            }, 50);
         }).catch(function (err) {
             if (request !== _request) return;
             console.warn('Profile error:', err.message);

@@ -23,13 +23,14 @@
     var els = {};
 
     /**
-     * The qualifiers of a file name (Nogat DEV-19.21): "1h, p = 10%" is "1h_p10", with a
-     * factor "1h_p10_arf0.9" (a decimal point, a comma is not allowed); a custom series "custom".
+     * The qualifiers of a file name of a hydrograph `result` (Nogat DEV-19.21): "1h, p = 10%"
+     * is "1h_p10", with a factor "1h_p10_arf0.9" (a decimal point, a comma is not allowed); a
+     * custom series "custom". The PNGs of the hietogram and the hydrograph share them.
      */
-    function fileStem(c) {
-        var p = c.result.precipitation;
+    function fileStem(result, duration) {
+        var p = result.precipitation;
         if (p.source === 'custom') return 'custom';
-        var stem = c.context.duration + '_p' + String(p.probability_percent);
+        var stem = duration + '_p' + String(p.probability_percent);
         if (p.areal_reduction_factor != null) stem += '_arf' + String(p.areal_reduction_factor);
         return stem;
     }
@@ -57,16 +58,7 @@
     }
 
     function save(name, text, type) {
-        var url = URL.createObjectURL(new Blob([text], { type: type }));
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = name;
-        link.hidden = true;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        Hydrograf.api.countDownload();
+        Hydrograf.api.saveFile(name, new Blob([text], { type: type }));
     }
 
     function csv() {
@@ -77,7 +69,7 @@
         });
         var table = Hydrograf.attribution.csvTable(header, rows, _current.result);
         var text = table.map(function (row) { return row.join(','); }).join('\r\n') + '\r\n';
-        save('hydrograf_hyetograph_' + fileStem(_current) + '.csv', text, 'text/csv');
+        save('hydrograf_hyetograph_' + fileStem(_current.result, _current.context.duration) + '.csv', text, 'text/csv');
     }
 
     function json() {
@@ -106,7 +98,7 @@
             steps: steps(p),
             pmaxtp_points: p.pmaxtp_points || [],
         });
-        save('hydrograf_hyetograph_' + fileStem(_current) + '.json', JSON.stringify(doc, null, 2) + '\n', 'application/json');
+        save('hydrograf_hyetograph_' + fileStem(_current.result, c.duration) + '.json', JSON.stringify(doc, null, 2) + '\n', 'application/json');
     }
 
     function geojson() {
@@ -148,7 +140,7 @@
             },
             features: features,
         });
-        save('hydrograf_pmaxtp-points_' + fileStem(_current) + '.geojson', JSON.stringify(doc) + '\n', 'application/geo+json');
+        save('hydrograf_pmaxtp-points_' + fileStem(_current.result, c.duration) + '.geojson', JSON.stringify(doc) + '\n', 'application/geo+json');
     }
 
     /** A new hietogram of a hydrograph response; context: duration, hietogram, alpha, beta, point, boundary. */
@@ -180,5 +172,6 @@
         init: init,
         show: show,
         clear: clear,
+        stem: fileStem,
     };
 })();

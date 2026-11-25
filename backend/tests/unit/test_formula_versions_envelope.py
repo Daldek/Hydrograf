@@ -26,6 +26,7 @@ from core.formula_versions import (
     formula_versions,
 )
 from core.precipitation import DesignDepth
+from tests.job_runner import run_job
 
 # The steps of a hydrograph that Hydrograf computes itself, outside the command
 HYDROGRAFS_OWN = frozenset(
@@ -102,9 +103,9 @@ def _hydrograph(client: TestClient, **options: Any) -> dict[str, Any]:
     }
     depth = DesignDepth(73.123456789, "idw", ())
     with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
-        response = client.post("/api/generate-hydrograph", json=body)
+        response = run_job(client, "hydrograph generate", body)
     assert response.status_code == 200, response.text
-    result: dict[str, Any] = response.json()
+    result: dict[str, Any] = response.json()["result"]
     return result
 
 

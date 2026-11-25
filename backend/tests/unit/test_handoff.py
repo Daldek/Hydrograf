@@ -1,14 +1,15 @@
 """
 Tests of the hand-off of a watershed to Hydrolog's GUI (nogat-handoff/1, ADR-068).
 
-The hand-offs of POST /api/generate-hydrograph (fast path, PMAXTP lookup patched) and
-of a delineated watershed validate against the vendored envelope and against the
+The hand-offs of the job of `hydrograph generate` (fast path, PMAXTP lookup patched)
+and of a delineated watershed validate against the vendored envelope and against the
 network schema of the pinned Hydrolog, and Hydrolog's `hydrograph generate`, which
 Hydrogram zlewni runs on an opened hand-off, recomputes the payload to the hand-off's
 result: the comparison Hydrolog shows agrees. Nash by Lutz reopens as Lutz: Hydrolog's
 `uh nash` estimates n and K from the watershed handed over to Hydrograf's values.
 """
 
+import csv
 import json
 from importlib.resources import files
 from pathlib import Path
@@ -23,10 +24,20 @@ from jsonschema import Draft202012Validator
 
 from api.endpoints.watershed import _watershed_handoff
 from api.main import app
-from core.attribution import NO_PROVIDER, PMAXTP, ProviderLines
+from core.attribution import (
+    CHMU,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
+    IMGW,
+    IMGW_SOURCE,
+    NO_PROVIDER,
+    PMAXTP,
+    ProviderLines,
+)
 from core.database import get_db
 from core.precipitation import DesignDepth
 from models.schemas import MorphometricParameters, OutletInfo, WatershedResponse
+from tests.job_runner import run_job
 
 _ROOT = Path(__file__).resolve().parents[3]
 ENVELOPE = Draft202012Validator(
@@ -43,6 +54,13 @@ NETWORK = Draft202012Validator(
         .read_text(encoding="utf-8")
     )
 )
+
+# Files of `obserwator series export` of the pinned Obserwator 3.2.1, byte for byte
+# (`--variables P --start 2024-09-10 --end 2024-09-20 --format csv`, 2026-11-25, from a
+# data root of Obserwator 3.1.0): Kamienna Góra, IMGW-PIB station 250160150 of
+# `pl.imgw.meteo_precip_daily`, and Žacléř, ČHMÚ 0-203-0-10102027001 of
+# `cz.chmu.meteo_daily`, the rain of the flood of September 2024
+EXPORTS = Path(__file__).resolve().parents[1] / "fixtures" / "obserwator"
 
 # A PMAXTP depth with more decimals than the response's `precipitation` keeps
 PMAXTP_MM = 73.123456789
@@ -87,7 +105,7 @@ def client():
         app.dependency_overrides.clear()
 
 
-def _post(client: TestClient, **options: Any):
+def _post(client: TestClient, headers: dict[str, str] | None = None, **options: Any):
     body: dict[str, Any] = {
         **POINT,
         "duration": "6h",
@@ -97,13 +115,31 @@ def _post(client: TestClient, **options: Any):
     }
     depth = DesignDepth(PMAXTP_MM, "idw", ())
     with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
-        return client.post("/api/generate-hydrograph", json=body)
+        return run_job(client, "hydrograph generate", body, headers=headers)
+
+
+def _series_of_export(name: str) -> dict[str, Any]:
+    """An own series of a file of `EXPORTS` as the interface sends it.
+
+    The column `P [mm]` day by day and the file's lines unchanged: one per cell of the
+    columns `attribution` and `terms_notice`, a cell holding several joined by „\\n”.
+    """
+    with (EXPORTS / name).open(newline="", encoding="utf-8") as file:
+        rows = list(csv.DictReader(file))
+    return {
+        "timestep_min": 1440,
+        "depths_mm": [float(row["P [mm]"]) for row in rows],
+        **{
+            key: [line for row in rows for line in row[key].split("\n") if line]
+            for key in ("attribution", "terms_notice")
+        },
+    }
 
 
 def _handoff(client: TestClient, **options: Any) -> dict[str, Any]:
     response = _post(client, **options)
     assert response.status_code == 200, response.text
-    handoff: dict[str, Any] = response.json()["handoff"]
+    handoff: dict[str, Any] = response.json()["result"]["handoff"]
     return handoff
 
 
@@ -267,6 +303,14 @@ class TestHydrographHandoff:
             watershed
         ).calculate_tc(options["tc_method"])
 
+    def test_the_result_names_the_command_that_computed_it(self, client):
+        response = _post(client, uh_model="scs", tc_method="kirpich")
+
+        envelope = response.json()
+        assert (
+            envelope["result"]["handoff"]["result"]["command"] == (envelope["command"])
+        )
+
 
 class TestLutzHandoff:
     @pytest.mark.parametrize(
@@ -288,8 +332,9 @@ class TestLutzHandoff:
         )
 
         assert response.status_code == 200, response.text
-        metadata = response.json()["metadata"]
-        doc = response.json()["handoff"]
+        result = response.json()["result"]
+        metadata = result["metadata"]
+        doc = result["handoff"]
         watershed = doc["payload"]["nodes"][0]["watershed"]
         runoff = doc["payload"]["nodes"][0]["runoff"]
         assert (metadata["nash_forest_pct"], metadata["nash_urban_pct"]) == used
@@ -338,7 +383,7 @@ class TestWatershedOrigin:
 
         assert response.status_code == 400
         (error,) = response.json()["errors"]
-        assert error["pointer"] == "/body/morphometry_origin/changed"
+        assert error["pointer"] == "/body/options/morphometry_origin/changed"
 
 
 class TestProviderLines:
@@ -369,7 +414,7 @@ class TestProviderLines:
         response = _post(client, **options)
 
         assert response.status_code == 200, response.text
-        data = response.json()
+        data = response.json()["result"]
         assert (data["attribution"], data["terms_notice"]) == (
             list(lines.attribution),
             list(lines.terms_notice),
@@ -382,6 +427,114 @@ class TestProviderLines:
             list(lines.terms_notice),
         )
         assert _schema_problems(doc) == []
+
+    @pytest.mark.parametrize(
+        ("export", "derived_from", "lines"),
+        [
+            ("kamienna-gora-P-2024-09.csv", "imgw", IMGW),
+            ("zacler-P-2024-09.csv", "chmu", CHMU),
+        ],
+    )
+    def test_a_series_of_obserwators_export_carries_its_providers_lines(
+        self, client, export, derived_from, lines
+    ):
+        series = _series_of_export(export)
+        response = _post(
+            client, custom_precipitation={**series, "derived_from": derived_from}
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()["result"]
+        assert data["precipitation"]["timestep_min"] == 1440
+        # Every line of the file reaches the products (DEV-20.6), the processed
+        # data's lines among them, from core/attribution.py
+        assert set(series["attribution"]) <= set(data["attribution"])
+        assert set(series["terms_notice"]) <= set(data["terms_notice"])
+        assert (data["attribution"], data["terms_notice"]) == (
+            list(lines.attribution),
+            list(lines.terms_notice),
+        )
+        doc = data["handoff"]
+        assert (doc.get("attribution", []), doc.get("terms_notice", [])) == (
+            list(lines.attribution),
+            list(lines.terms_notice),
+        )
+        assert _schema_problems(doc) == []
+
+    def test_series_named_by_its_provider_alone_carries_its_lines(self, client):
+        """A client without the file's lines names the data: the API adds theirs."""
+        series = {
+            "timestep_min": 1440,
+            "depths_mm": [9.5, 70.0],
+            "derived_from": "imgw",
+        }
+        data = _post(client, custom_precipitation=series).json()["result"]
+
+        assert (data["attribution"], data["terms_notice"]) == (
+            list(IMGW.attribution),
+            list(IMGW.terms_notice),
+        )
+
+    def test_cp_as_written_before_eco_071_is_cp(self, client):
+        old_cp = "Dane ČHMÚ zostały przetworzone (agregacja do sum dobowych)"
+        series = {
+            "timestep_min": 1440,
+            "depths_mm": [18.2, 34.6],
+            "derived_from": "chmu",
+            "attribution": [CHMU_SOURCE, old_cp],
+        }
+        data = _post(client, custom_precipitation=series).json()["result"]
+
+        assert data["attribution"] == [CHMU_SOURCE, CHMU_PROCESSED]
+
+    @pytest.mark.parametrize(
+        ("export", "derived_from", "line", "message"),
+        [
+            # ČHMÚ's export said to be of IMGW-PIB's archives
+            ("zacler-P-2024-09.csv", "imgw", CHMU_SOURCE, "IMGW-PIB"),
+            # The file's lines without the data they belong to
+            ("kamienna-gora-P-2024-09.csv", None, IMGW_SOURCE, "bez derived_from"),
+            # IMGW-PIB's archives are no PMAXTP data
+            ("kamienna-gora-P-2024-09.csv", "pmaxtp", IMGW_SOURCE, "PMAXTP"),
+        ],
+    )
+    def test_a_line_the_named_data_do_not_have_is_refused(
+        self, client, export, derived_from, line, message
+    ):
+        series = {**_series_of_export(export), "derived_from": derived_from}
+        response = _post(
+            client, custom_precipitation=series, headers={"Accept-Language": "pl"}
+        )
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["reason"] == "unknown_attribution_line"
+        assert problem["details"]["line"] == line
+        assert message in problem["detail"]
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            # A line the standard retired (ECO-065): the terms are linked as RD
+            {"terms_notice": ["Regulamin: https://danepubliczne.imgw.pl/regulations"]},
+            # S written otherwise than byte for byte
+            {"attribution": [IMGW_SOURCE.replace(" – ", " - ")]},
+            # A text that is no line of any provider
+            {"attribution": ["<b>Źródło: ktokolwiek</b>"]},
+        ],
+        ids=["retired-terms-line", "altered-source", "foreign-text"],
+    )
+    def test_a_line_altered_or_retired_is_refused(self, client, changed):
+        series = {
+            **_series_of_export("kamienna-gora-P-2024-09.csv"),
+            "derived_from": "imgw",
+            **changed,
+        }
+        response = _post(client, custom_precipitation=series)
+
+        assert response.status_code == 400
+        assert response.json()["details"]["reason"] == "unknown_attribution_line"
 
 
 class TestDelineatedWatershedHandoff:
@@ -474,7 +627,7 @@ class TestHydrolog090Storms:
             amc="III",
         )
 
-        body = response.json()
+        body = response.json()["result"]
         versions = body["formula_versions"]
         assert set(versions) == {
             "euler_ii_hyetograph",

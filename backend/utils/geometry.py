@@ -224,6 +224,25 @@ def transform_geometry_pl1992_to_wgs84(geometry: BaseGeometry) -> BaseGeometry:
     return shapely.transform(geometry, transformer.transform, interleaved=False)
 
 
+def transform_geometry_wgs84_to_pl1992(geometry: BaseGeometry) -> BaseGeometry:
+    """
+    Transform any Shapely geometry from WGS84 (longitude, latitude) to PL-1992.
+
+    Parameters
+    ----------
+    geometry : BaseGeometry
+        Geometry in EPSG:4326 (WGS84), coordinates as (lon, lat): a point, line,
+        polygon or multipart one
+
+    Returns
+    -------
+    BaseGeometry
+        The same geometry in EPSG:2180 (PL-1992)
+    """
+    transformer = _get_transformer_wgs84_to_pl1992()
+    return shapely.transform(geometry, transformer.transform, interleaved=False)
+
+
 def transform_polygon_wgs84_to_pl1992(polygon: Polygon) -> Polygon:
     """
     Transform Polygon from WGS84 to PL-1992.
