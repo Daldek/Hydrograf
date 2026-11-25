@@ -1071,12 +1071,12 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=39e8fcca5d92e0f771dd4532e21b2b64d84fff84" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=d65472b5cdb54e0e9810728a5ef4f3350e67fd35" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?tag=v0.9.0" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
-    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=0f8fd3144657a76c785b6bc6156690196c73d01b" },
+    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=2637350d009896d4554b3b252a725c7613897f5d" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "platformdirs", specifier = ">=4.2" },
@@ -1114,7 +1114,7 @@ dev = [
 [[package]]
 name = "hydrolog"
 version = "0.10.0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=39e8fcca5d92e0f771dd4532e21b2b64d84fff84#39e8fcca5d92e0f771dd4532e21b2b64d84fff84" }
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=d65472b5cdb54e0e9810728a5ef4f3350e67fd35#d65472b5cdb54e0e9810728a5ef4f3350e67fd35" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1788,12 +1788,13 @@ wheels = [
 [[package]]
 name = "obserwator"
 version = "3.3.0"
-source = { git = "https://github.com/Daldek/Obserwator.git?rev=0f8fd3144657a76c785b6bc6156690196c73d01b#0f8fd3144657a76c785b6bc6156690196c73d01b" }
+source = { git = "https://github.com/Daldek/Obserwator.git?rev=2637350d009896d4554b3b252a725c7613897f5d#2637350d009896d4554b3b252a725c7613897f5d" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
 [[package]]

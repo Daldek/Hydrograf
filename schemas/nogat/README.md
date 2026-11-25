@@ -35,7 +35,7 @@ ECO-060, with the description and examples of ECO-065: `terms_notice` holds the 
 terms only; its first example records the result of Hydrolog 0.9.0 (57.9 m³/s and
 1 046 737.6 m³, the exact Beta storm and Kirpich's 0.0078). SHA-256
 `10de3e18aafe37d413d19bd849730a2bee2b64603eb5d2c01c992f80c662c62f`. The pinned Hydrolog
-0.10.0 (`39e8fcc`) reads the same copy (the same SHA-256), with `node_provenance`, `attribution` and
+0.10.0 (`d65472b`) reads the same copy (the same SHA-256), with `node_provenance`, `attribution` and
 `terms_notice`:
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
