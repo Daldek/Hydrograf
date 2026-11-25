@@ -1,6 +1,6 @@
 [project]
 name = "hydrograf"
-version = "0.6.1"
+version = "0.7.0"
 description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
@@ -59,10 +59,11 @@ dependencies = [
     # Obserwator, spatial data download of Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and
     # the calculations of Hydrolog. The range is the one the code supports from the
     # producer's release (REL-5.6): Hydrolog 0.9.0 builds Euler II from a depth-duration
-    # curve and gives the equal-area slope; the pin is in `[tool.uv.sources]`.
+    # curve and gives the equal-area slope, and Hydrolog's range is the minor of its 0.10.0
+    # in Nogat's release set candidate-16 (REL-5.2); the pin is in `[tool.uv.sources]`.
     "obserwator>=3.1.0,<4",
     "kartograf>=0.9.0,<0.10",
-    "hydrolog>=0.9.0,<0.10",
+    "hydrolog>=0.10.0,<0.11",
     "requests>=2.31",
     # Process monitoring, utilities, caching
     "psutil>=5.9",
@@ -99,11 +100,11 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The tags of Nogat's release set of the release round of 2026-11-24 (REL-5.3): Kartograf
-# v0.9.0, Obserwator v3.2.1 and Hydrolog v0.9.1.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.2.1" }
+# The tags of Nogat's release set candidate-16 (the release round of 2026-11-25, REL-5.3):
+# Kartograf v0.9.0, which the round keeps, Obserwator v3.3.0 and Hydrolog v0.10.0.
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.3.0" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.9.0" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.9.1" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.10.0" }
 
 [tool.ruff]
 target-version = "py312"
