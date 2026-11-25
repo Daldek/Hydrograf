@@ -320,9 +320,9 @@ COMMANDS: Final[tuple[Command, ...]] = (
                         "schema": "hydrograf-watershed/1",
                         "mode": "precomputed",
                         "watershed": {
-                            "area_km2": 137.03,
+                            "area_km2": 149.78,
                             "hydrograph_available": True,
-                            "morphometry": {"area_km2": 137.03, "cn": 61.2},
+                            "morphometry": {"area_km2": 149.7772, "cn": 61.7},
                         },
                     },
                     "notices": [],
@@ -594,7 +594,10 @@ COMMANDS: Final[tuple[Command, ...]] = (
                     "result": {
                         "schema": "hydrograf-hydrograph/1",
                         "precipitation": {"source": "pmaxtp", "duration_min": 60.0},
-                        "hydrograph": {"time_to_peak_min": 245.0},
+                        "hydrograph": {
+                            "peak_discharge_m3s": 7.866,
+                            "time_to_peak_min": 310.0,
+                        },
                     },
                     "notices": [],
                 },
