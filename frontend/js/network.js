@@ -890,7 +890,7 @@
         var element = findElement(d, id);
         var reach = element ? null : findReach(d, id);
         state.selected = element || reach ? id : null;
-        Hydrograf.app.showElementParameters(element && d.full && state.active ? element.watershed : null);
+        Hydrograf.app.showElementParameters(element && d.full && state.active ? element.watershed : null, d && d.data);
         if (drawn) {
             var layer = element ? drawn.elements[id] && drawn.elements[id].layer : reach ? drawn.reaches[id] : null;
             drawn.selectedLayer = layer || null;

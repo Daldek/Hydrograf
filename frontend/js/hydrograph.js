@@ -365,23 +365,28 @@
             document.getElementById('hietogram-results').classList.remove('d-none');
             document.getElementById('hydrograph-results').classList.remove('d-none');
 
-            // Hietogram and hydrograph: filled line charts, each on its own time range
+            // Hietogram (bars per step) and hydrograph, each on its own time range; their
+            // PNGs are named as the hietogram's files and carry the result's lines
             var precip = result.precipitation;
+            var stem = Hydrograf.rainExport.stem(result, duration);
             if (Hydrograf.customRain) Hydrograf.customRain.noteResult(data, result);
             Hydrograf.charts.renderHietogramChart(
                 'chart-hietogram', precip.times_min,
                 precip.intensities_mm, precip.effective_mm || [],
                 {
                     step: precip.timestep_min,
-                    source: precip.source === 'custom'
+                    origin: precip.source === 'custom'
                         ? 'w\u0142asna seria'
                         : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%' +
                           (precip.interpolation === 'thiessen' ? ', \u015brednia w zlewni' : ', w punkcie'),
+                    file: 'hydrograf_hyetograph_' + stem + '.png',
+                    lines: result,
                 }
             );
             Hydrograf.charts.renderHydrographChart(
                 'chart-hydrograph', result.hydrograph.times_min,
-                result.hydrograph.discharge_m3s
+                result.hydrograph.discharge_m3s,
+                { file: 'hydrograf_hydrograph_' + stem + '.png', lines: result }
             );
 
             // Summary: Qmax | tp | V, each with its (i)

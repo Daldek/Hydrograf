@@ -18,13 +18,14 @@
     <link rel="stylesheet" href="vendor/maplibre-gl-4.7.1/maplibre-gl.css?v=576b085fdd"
           integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V">
 
-    <!-- Nogat design tokens, shell chrome, the kit's app menu, strip and base maps, then the app -->
+    <!-- Nogat design tokens, shell chrome, the kit's app menu, strip, base maps and charts, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="css/chrome.css?v=54f78beb83">
     <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=2c096d0122">
     <link rel="stylesheet" href="nogat/nogat-sources.css?v=983b5441d1">
     <link rel="stylesheet" href="nogat/nogat-basemaps.css?v=65df8e6624">
-    <link rel="stylesheet" href="css/app.css?v=2967f6ffa9">
+    <link rel="stylesheet" href="nogat/nogat-chart.css?v=6499bb3093">
+    <link rel="stylesheet" href="css/app.css?v=b84a7cc671">
 </head>
 <body>
 <div class="shell">
@@ -147,14 +148,17 @@
                         <div class="panel-head">
                             <h2 id="profile-title">Profil terenu</h2>
                             <span class="sub num" id="profile-summary"></span>
+                            <!-- The charts' „PNG” (js/charts.js): the chart as shown with its provider lines -->
+                            <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-profile-standalone" aria-label="Pobierz wykres „Profil terenu” jako PNG" title="Pobierz wykres, jak go widać, jako obraz PNG z liniami źródeł danych" hidden>
+                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                <span class="label">PNG</span>
+                            </button>
                             <button class="btn ghost sm icon" type="button" id="profile-close" aria-label="Zamknij profil" title="Zamknij profil">
                                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
                             </button>
                         </div>
                         <div class="chart">
-                            <div class="chart-container chart-profile">
-                                <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
-                            </div>
+                            <div id="chart-profile-standalone"></div>
                         </div>
                     </section>
 
@@ -273,8 +277,13 @@
                                 <summary><span class="step-num" aria-hidden="true"></span><span class="title">Rzeźba terenu</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
                                 <div class="step-body">
                                     <div class="chart">
-                                        <div class="chart-title">Krzywa hipsometryczna</div>
-                                        <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Krzywa hipsometryczna"></canvas></div>
+                                        <div class="chart-title">Krzywa hipsometryczna
+                                            <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-hypsometric" aria-label="Pobierz wykres „Krzywa hipsometryczna” jako PNG" title="Pobierz wykres, jak go widać, jako obraz PNG z liniami źródeł danych" hidden>
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                PNG
+                                            </button>
+                                        </div>
+                                        <div id="chart-hypsometric"></div>
                                     </div>
                                     <table class="params"><tbody id="params-relief"></tbody></table>
                                 </div>
@@ -290,14 +299,30 @@
                             <details class="step" id="acc-landcover">
                                 <summary><span class="step-num" aria-hidden="true"></span><span class="title">Pokrycie terenu</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
                                 <div class="step-body">
-                                    <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
+                                    <div class="chart">
+                                        <div class="chart-title">Udział form pokrycia terenu
+                                            <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-landcover" aria-label="Pobierz wykres „Udział form pokrycia terenu” jako PNG" title="Pobierz wykres jako obraz PNG z liniami źródeł danych" hidden>
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                PNG
+                                            </button>
+                                        </div>
+                                        <div id="chart-landcover"></div>
+                                    </div>
                                 </div>
                             </details>
 
                             <details class="step d-none" id="acc-hsg">
                                 <summary><span class="step-num" aria-hidden="true"></span><span class="title">Grupy glebowe (HSG)</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
                                 <div class="step-body">
-                                    <div class="chart-container"><canvas id="chart-hsg" role="img" aria-label="Wykres grup glebowych HSG"></canvas></div>
+                                    <div class="chart">
+                                        <div class="chart-title">Udział grup glebowych
+                                            <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-hsg" aria-label="Pobierz wykres „Udział grup glebowych” jako PNG" title="Pobierz wykres jako obraz PNG z liniami źródeł danych" hidden>
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                PNG
+                                            </button>
+                                        </div>
+                                        <div id="chart-hsg"></div>
+                                    </div>
                                 </div>
                             </details>
 
@@ -408,8 +433,13 @@
                                     </p>
                                     <div id="hietogram-results" class="d-none">
                                         <div class="chart">
-                                            <div class="chart-title">Opad</div>
-                                            <div class="chart-container chart-sm"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
+                                            <div class="chart-title">Opad <span class="chart-note"></span>
+                                                <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-hietogram" aria-label="Pobierz wykres „Opad” jako PNG" title="Pobierz wykres, jak go widać, jako obraz PNG z liniami źródeł danych" hidden>
+                                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                    PNG
+                                                </button>
+                                            </div>
+                                            <div id="chart-hietogram"></div>
                                         </div>
                                         <div id="hietogram-balance"></div>
                                         <div id="rain-export" class="rain-export d-none">
@@ -516,8 +546,13 @@
                                             <span>Obliczono na zmienionych danych wejściowych: <span id="adv-notice-list"></span></span>
                                         </p>
                                         <div class="chart">
-                                            <div class="chart-title">Hydrogram odpływu</div>
-                                            <div class="chart-container chart-md"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
+                                            <div class="chart-title">Hydrogram odpływu
+                                                <button class="btn ghost sm chart-png" type="button" data-chart-png="chart-hydrograph" aria-label="Pobierz wykres „Hydrogram odpływu” jako PNG" title="Pobierz wykres, jak go widać, jako obraz PNG z liniami źródeł danych" hidden>
+                                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                    PNG
+                                                </button>
+                                            </div>
+                                            <div id="chart-hydrograph"></div>
                                         </div>
                                     </div>
                                     <div id="hydrograph-info"></div>
@@ -633,27 +668,23 @@
 <script defer src="vendor/maplibre-gl-leaflet-0.0.22/leaflet-maplibre-gl.js?v=59ecd8d2b3"
         integrity="sha384-4CB9Vtol9LN6lGgBCvmPLbUEZwilrqIvPieSRurgAXAB7FVJaLS9n8WyAIA5wjQ+"></script>
 
-<!-- Chart.js 4.4.7 -->
-<script defer src="vendor/chart.js-4.4.7/chart.umd.js?v=2812cb8825"
-        integrity="sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM"></script>
-
 <!-- Leaflet.VectorGrid 1.3.0 (MVT support) -->
 <script defer src="vendor/leaflet.vectorgrid-1.3.0/Leaflet.VectorGrid.bundled.min.js?v=ed1e89e4c9"
         integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"></script>
 
 <!-- Application modules -->
-<script defer src="js/api.js?v=e09f0eec44"></script>
+<script defer src="js/api.js?v=738e7d1b71"></script>
 <script defer src="js/shell.js?v=a6c0a452bb"></script>
 <script defer src="js/map.js?v=5ea393f6ec"></script>
 <script defer src="js/coords.js?v=27329dc5f5"></script>
-<script defer src="js/charts.js?v=2b24ce6ee8"></script>
+<script defer src="js/charts.js?v=69fc1dbdb6"></script>
 <script defer src="js/attribution.js?v=2fb9e7c755"></script>
 <script defer src="js/layers.js?v=e6d09dbcae"></script>
-<script defer src="js/profile.js?v=21311f8e10"></script>
+<script defer src="js/profile.js?v=ac389cc393"></script>
 <script defer src="js/info-texts.js?v=612819bf64"></script>
 <script defer src="js/info.js?v=a985fcf72b"></script>
-<script defer src="js/hydrograph.js?v=4550fafaea"></script>
-<script defer src="js/rain-export.js?v=5fc6dced8e"></script>
+<script defer src="js/hydrograph.js?v=fdd68c0520"></script>
+<script defer src="js/rain-export.js?v=f36622bd37"></script>
 <script defer src="js/advanced.js?v=292cbb391f"></script>
 <script defer src="js/custom-rain.js?v=f4943ec49a"></script>
 <script defer src="js/depressions.js?v=b69d8825c9"></script>
@@ -663,10 +694,10 @@
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=cce6fdfe51"></script>
 <script defer src="js/identify.js?v=5777836b81"></script>
-<script type="module" src="js/nogat.js?v=0ba69742f8"></script>
+<script type="module" src="js/nogat.js?v=5c559ce94f"></script>
 <script defer src="js/handoff.js?v=db5ae404f4"></script>
-<script defer src="js/network.js?v=d067f567ce"></script>
+<script defer src="js/network.js?v=5f5608700c"></script>
 <script defer src="js/terms.js?v=5b87c2c7ae"></script>
-<script defer src="js/app.js?v=a9a605e205"></script>
+<script defer src="js/app.js?v=722ea5e508"></script>
 </body>
 </html>

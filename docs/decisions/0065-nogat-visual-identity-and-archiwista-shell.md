@@ -12,6 +12,10 @@
 > grey style over its TileJSON with vendored glyphs, not the provider's Positron, and the
 > default no longer falls back to OSM GUGiK without MapLibre, which is vendored.
 
+> **Amended by ADR-090 (2026-11-25):** the charts are drawn by Nogat's kit
+> (`nogat-chart.js`, `nogat-chart.css`), coloured by classes in the tokens, not by
+> Chart.js repainted at a change of theme; Chart.js is no longer vendored.
+
 **Date:** 2026-11-01
 **Status:** accepted
 

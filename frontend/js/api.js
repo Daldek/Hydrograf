@@ -357,6 +357,25 @@
         } catch { /* no fetch, or refused synchronously: the count is not essential */ }
     }
 
+    /**
+     * Save a file the interface made (the exports of the hietogram, a chart's PNG) under
+     * `name`, and count it.
+     * @param {string} name - The file name (Nogat DEV-19.21)
+     * @param {Blob} blob - The content
+     */
+    function saveFile(name, blob) {
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        countDownload();
+    }
+
     window.Hydrograf.api = {
         getTerrainProfile: getTerrainProfile,
         generateHydrograph: generateHydrograph,
@@ -370,5 +389,6 @@
         identifyPoint: identifyPoint,
         submitFeedback: submitFeedback,
         countDownload: countDownload,
+        saveFile: saveFile,
     };
 })();

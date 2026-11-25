@@ -70,7 +70,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066, ADR-067 and ADR-079 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085, ADR-086 and ADR-089 | 2026-11-01 |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085, ADR-086, ADR-089 and ADR-090 | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
 | [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 and ADR-087 | 2026-11-02 |
 | [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | amended by ADR-069 | 2026-11-04 |
@@ -95,6 +95,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-087](decisions/0087-a-sheet-missing-at-the-run-resolution-from-a-finer-nmt-of-the-set.md) | A sheet the source lacks at the run's resolution comes from a finer NMT of the set | accepted | 2026-11-15 |
 | [ADR-088](decisions/0088-lutz-jg-at-request-time-and-the-euler-ii-curve-scaled-by-the-areal-reduction-factor.md) | Lutz's Jg measured at request time on the traced flow path; Euler II's PMAXTP curve scaled by the areal reduction factor | proposed | 2026-11-21 |
 | [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit: its catalogue, its switcher, the settings and a static CSP | accepted | 2026-11-25 |
+| [ADR-090](decisions/0090-charts-on-the-nogat-kit.md) | The charts on Nogat's kit: nogat-chart.js instead of Chart.js | accepted | 2026-11-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
