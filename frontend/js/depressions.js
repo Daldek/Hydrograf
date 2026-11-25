@@ -8,8 +8,25 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
-    var depressionsOverlay = null;
-    var depressionsBounds = null;
+    var added = false;
+
+    /** The image on the map, hidden, unless it is there; whether it is. */
+    function addImage(bounds) {
+        return Hydrograf.map.ready.then(function (shown) {
+            if (!shown) return false;
+            if (!added) {
+                Hydrograf.map.showImage('depressions', {
+                    url: '/data/depressions.png',
+                    bounds: bounds,
+                    opacity: 0.7,
+                    attribution: 'Zagłębienia (blue spots)',
+                    shown: false,
+                });
+                added = true;
+            }
+            return true;
+        });
+    }
 
     /**
      * Load depressions overlay from static files.
@@ -21,11 +38,8 @@
                 return res.json();
             })
             .then(function (meta) {
-                depressionsBounds = L.latLngBounds(meta.bounds);
-                depressionsOverlay = Hydrograf.map.nameOverlay(L.imageOverlay('/data/depressions.png', depressionsBounds, {
-                    opacity: 0.7,
-                    attribution: 'Zagłębienia (blue spots)',
-                }), 'depressions');
+                // [[south, west], [north, east]] of the metadata
+                var bounds = [meta.bounds[0][1], meta.bounds[0][0], meta.bounds[1][1], meta.bounds[1][0]];
 
                 // Add to layers panel — "Warstwy podkładowe" group; the depressions
                 // of the NMT put its line into the view's strip while on (DEV §20)
@@ -36,10 +50,10 @@
                         Hydrograf.layers.addOverlayEntry(
                             overlayGroup,
                             'Zagłębienia',
-                            function () { return depressionsOverlay; },
-                            function () { return depressionsBounds; },
-                            function (opacity) {
-                                if (depressionsOverlay) depressionsOverlay.setOpacity(opacity);
+                            {
+                                id: 'depressions',
+                                load: function () { return addImage(bounds); },
+                                bounds: function () { return bounds; },
                             },
                             30,
                             null,

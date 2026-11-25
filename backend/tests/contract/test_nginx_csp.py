@@ -7,8 +7,9 @@ Hydrograf's CSP is nginx's (`docker/nginx.conf`, the same in the TLS variant
 `docker/nginx-ssl.conf.template`), not built by the API from its settings, so the page's
 `img-src` and `connect-src` name the origin of every entry of the kit's catalogue
 `frontend/nogat/nogat-basemaps.json` (the setting `basemaps` narrows the switcher, not
-these lines), `img-src` besides the flood hazard map's WMS, the map's own layer, and no
-directive a remote scheme source or `*`. The admin page's policy admits in `img-src`
+these lines) and of the flood hazard map's WMS, the map's own layer, whose tiles
+MapLibre fetches, and no directive a remote scheme source or `*`; MapLibre's worker is
+a file of the site (`worker-src 'self'`). The admin page's policy admits in `img-src`
 and `connect-src` only the origin of the first raster entry, the one its area map
 draws without a switcher, and its worker the site's own file.
 """
@@ -67,7 +68,7 @@ def test_the_page_names_the_origins_of_every_base_map_of_the_catalogue(name):
     origins = {entry["origin"] for entry in CATALOGUE}
 
     assert _remote(page["img-src"]) == origins | MAP_LAYERS
-    assert _remote(page["connect-src"]) == origins
+    assert _remote(page["connect-src"]) == origins | MAP_LAYERS
 
 
 @pytest.mark.parametrize("name", CONFIGURATIONS)
@@ -76,6 +77,8 @@ def test_no_directive_of_the_page_holds_a_remote_scheme_source(name):
 
     assert _schemes(page["img-src"]) == {"data:", "blob:"}
     assert _schemes(page["connect-src"]) == set()
+    assert page["worker-src"] == ["'self'"]
+    assert "child-src" not in page
 
 
 @pytest.mark.parametrize("name", CONFIGURATIONS)

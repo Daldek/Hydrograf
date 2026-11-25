@@ -10,8 +10,8 @@ requests the page sends, the layers panel, the map's legend and
   wody.isok.gov.pl, and the hint „Przybliż mapę — … 1:50 000.” shows in the layer's
   row and in its legend, „Głębokość wody [m] — MZP, p = 1 %” with its four depth
   classes. ``test_hazard_map_zoomed_out_past_1_50000_asks_nothing`` turns it on at
-  the data extent and zooms out past 1:50 000: today the first view farther out is
-  asked for, a defect, marked as such (see its docstring).
+  the data extent and zooms out past 1:50 000: the first view farther out asks
+  nothing either.
 * "at and above it requests with a 512 px box in EPSG:3857":
   ``test_hazard_map_from_1_50000_asks_512px_boxes_in_epsg3857`` reads the GetMap
   requests at the data extent and one step closer (keys in any case): WMS 1.3.0,
@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
-import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e.browser import (
@@ -228,22 +227,12 @@ def test_hazard_map_on_farther_than_1_50000_asks_nothing_and_hints(tab: Tab) -> 
     assert _mzp_asked(tab, mark) == []
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason=(
-        "defect: with the hazard map on, a zoom-out click past 1:50 000 asks the "
-        "service for the new view (Leaflet's WMS layer loads the target level on "
-        "zoomanim before layers.js sync() removes it on zoomend); left to the move "
-        "to MapLibre (Nogat's plan 2026-11-24-hydrograf-maplibre, step 2), not fixed "
-        "in Leaflet"
-    ),
-)
 def test_hazard_map_zoomed_out_past_1_50000_asks_nothing(tab: Tab) -> None:
     """Zoomed out from the data extent, the view past 1:50 000 asks nothing.
 
-    Today the first view farther out is asked for: at 1:68 247 two GetMap
-    requests whose box side over 512 px is that view's metres per pixel.
+    On Leaflet the first view farther out was asked for (its WMS layer loaded the
+    target level as the zoom animation began, before layers.js took it off at the
+    zoom's end); on MapLibre the layer's first zoom keeps it off the map there.
     """
     page = tab.page
     open_map(tab)

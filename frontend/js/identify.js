@@ -48,7 +48,7 @@
     var _request = 0;      // number of the latest request; older answers are dropped
     var _point = null;     // { lat, lng } of the open card
     var _inputs = '';      // threshold and shown results the open card was read with
-    var _marker = null;
+    var _marker = false;   // the marker is on the map (overlay `identify-marker`)
 
     // ===== Formatting =====
 
@@ -332,32 +332,26 @@
     }
 
     function placeMarker(lat, lng) {
-        var map = Hydrograf.map._getMap();
-        if (_marker) {
-            _marker.setLatLng([lat, lng]);
-        } else {
-            // Not interactive: a click on it identifies the point under it
-            _marker = Hydrograf.map.nameOverlay(
-                L.circleMarker([lat, lng], Object.assign({ interactive: false }, markerStyle())), 'identify-marker'
-            ).addTo(map);
-        }
+        // Not a target of clicks: a click on it identifies the point under it
+        Hydrograf.map.showPoint('identify-marker', [lng, lat], markerStyle);
+        _marker = true;
     }
 
     /** Pan the map when the card covers the marker (the bottom sheet on phones). */
     function keepMarkerVisible() {
-        var map = Hydrograf.map._getMap();
-        if (!_marker || els.card.hidden) return;
-        var point = map.latLngToContainerPoint(_marker.getLatLng());
-        var mapBox = map.getContainer().getBoundingClientRect();
+        if (!_marker || !_point || els.card.hidden) return;
+        var point = Hydrograf.map.containerPoint([_point.lng, _point.lat]);
+        var mapBox = Hydrograf.map.containerRect();
+        if (!point || !mapBox) return;
         var card = els.card.getBoundingClientRect();
         var x = mapBox.left + point.x;
         var y = mapBox.top + point.y;
         var margin = 24;
         if (x < card.left - margin || x > card.right + margin || y < card.top - margin || y > card.bottom + margin) return;
         if (card.top - mapBox.top > mapBox.height / 3) {
-            map.panBy([0, y - card.top + margin]);
+            Hydrograf.map.panBy(0, y - card.top + margin);
         } else {
-            map.panBy([x - card.left + margin, 0]);
+            Hydrograf.map.panBy(x - card.left + margin, 0);
         }
     }
 
@@ -418,8 +412,8 @@
             els.body.innerHTML = '';
         }
         if (_marker) {
-            Hydrograf.map._getMap().removeLayer(_marker);
-            _marker = null;
+            Hydrograf.map.removeOverlay('identify-marker');
+            _marker = false;
         }
     }
 
@@ -434,10 +428,9 @@
             body: document.getElementById('identify-body'),
         };
         document.getElementById('identify-close').addEventListener('click', close);
-        Hydrograf.map._getMap().on('layeradd layerremove', refreshIfInputsChanged);
-        Hydrograf.map.onThemeChange(function () {
-            if (_marker) _marker.setStyle(markerStyle());
-        });
+        // Another threshold of the flow lines, a result turned on or off
+        window.addEventListener('hydrograf:streams', refreshIfInputsChanged);
+        window.addEventListener('hydrograf:results', refreshIfInputsChanged);
     }
 
     window.Hydrograf.identify = {

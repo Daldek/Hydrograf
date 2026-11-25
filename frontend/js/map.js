@@ -1,46 +1,56 @@
 /**
- * Hydrograf Map module.
+ * Hydrograf Map module: the one owner of the map's library (Nogat's plan
+ * 2026-11-24-hydrograf-maplibre, M12).
  *
- * Manages Leaflet map, watershed polygon, outlet marker,
- * drawing mode, and profile line.
+ * MapLibre GL JS 6.14.0 (vendor/maplibre-gl-6.14.0/) draws the map. Its ES module is
+ * loaded by import() from this classic script, so the map comes later than the page's
+ * scripts: init() returns Hydrograf.map.ready, a promise that resolves to true once the
+ * map is drawn and to false when it cannot be (no WebGL 2, M13); it never rejects. The
+ * other modules ask Hydrograf.map for what they show (overlays by id, their opacity
+ * and extent, points, legends, the view); none of them touches the library.
+ *
+ * The map's setup, its slots, its tooltip and its drawing (M3, M4, M9, M10) are
+ * functions here free of Hydrograf's other modules, so that a map shell of Nogat's kit
+ * can lift them (the plan's open question 7).
  */
 (function () {
     'use strict';
 
     window.Hydrograf = window.Hydrograf || {};
 
+    // MapLibre's module; it starts its worker from maplibre-gl-worker.mjs beside it
+    var LIBRARY = 'vendor/maplibre-gl-6.14.0/maplibre-gl.mjs';
+    // The names of the base map's grey style: Noto Sans 2.0 of openmaptiles/fonts, vendored
+    var GLYPHS = 'vendor/openmaptiles-fonts-2.0/{fontstack}/{range}.pbf';
+    var NO_WEBGL = 'Mapa wymaga przeglądarki z WebGL 2.';
+    var NO_MAP = 'Nie udało się wczytać mapy. Odśwież stronę.';
+    // Up to this width the map's credit folds at the first drag (Nogat DEV-15.15)
+    var PHONE = '(max-width: 860px)';
+    // The view before the data's extent is known; the map's closest zoom. MapLibre's
+    // world is 512 px wide: every zoom is one less than Leaflet's for the same scale
+    var START = { center: [19.5, 51.9], zoom: 6 };
+    var MAX_ZOOM = 21;
+    var FIT_PADDING_PX = 20;
+    // A zoom farther than this from the view is jumped to, not animated
+    var ANIMATED_ZOOMS = 4;
+    var FIT_DURATION_MS = 250;
+
+    var maplibregl = null;
     var map = null;
-    var demLayer = null;
-    var demBounds = null;
-    // Metadata of the rendered DEM (dem_tiles.json or dem.json): elevation and colour range
-    var demMeta = null;
-    var streamsLayer = null;
-    var currentThreshold = null;
-    var streamTooltip = null;
-    var outletMarker = null;
+    var clickCallback = null;
+    var resolveReady = null;
+    var ready = new Promise(function (resolve) { resolveReady = resolve; });
 
-    // Drawing state
-    var drawMode = false;
-    var drawVertices = [];
-    var drawMarkers = [];
-    var drawPolyline = null;
-    var drawCallback = null;
-
-    // Profile line
-    var profileLine = null;
-
-    // BDOT10k vector layers (lakes + streams)
-    var bdotLakesLayer = null;
-    var bdotStreamsLayer = null;
-    var hsgLayer = null;
-    var landCoverLayer = null;
+    /** An address of the site as MapLibre asks for it: absolute, its {z} braces kept. */
+    function absolute(path) {
+        return new URL(path, document.baseURI).href.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+    }
 
     // ===== Theme: overlay colours from tokens.css =====
     //
-    // Leaflet writes colours into SVG attributes, where var() does not work,
-    // so the tokens are read with getComputedStyle. A theme change (data-theme
-    // attribute or the OS scheme) drops the cached colours and runs every
-    // restyler registered with onThemeChange().
+    // MapLibre paints with colours, not with var(), so the tokens are read with
+    // getComputedStyle. A theme change (data-theme attribute or the OS scheme) drops
+    // the cached colours and runs every restyler registered with onThemeChange().
 
     var palette = null;
     var restylers = [];
@@ -69,6 +79,10 @@
         return 'rgb(' + [0, 1, 2].map(function (i) {
             return Math.round(ca[i] * weight + cb[i] * (1 - weight));
         }).join(', ') + ')';
+    }
+
+    function rgbText(values) {
+        return 'rgb(' + values.map(Math.round).join(', ') + ')';
     }
 
     /** Token colours of the current theme, cached until the theme changes. */
@@ -105,208 +119,562 @@
     });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
 
-    // ===== Mouse-wheel zoom =====
+    // ===== The order of the layers (M4) =====
     //
-    // Leaflet's scroll-wheel zoom turns every 40 ms batch of wheel events into
-    // at least one whole zoom level (zoomSnap 1), however small the batch.
-    // Touchpads, the Magic Mouse and smooth-scrolling mouse drivers go on
-    // sending a fading tail of small events after the fingers or the wheel
-    // stop, so each batch of the tail zoomed one more level; and while the
-    // vector base map draws the new zoom, wheel input and the zoom timer wait
-    // and run after the wheel has stopped. This handler starts a zoom step
-    // only on fresh input: events weaker than WHEEL_TAIL_RATIO of the
-    // gesture's strongest are its tail, and input older than WHEEL_STALE_MS
-    // (an event or a whole batch) is dropped.
+    // Empty layers name the slots of the map's groups, from the bottom up: the base map
+    // (the kit's maplibreBasemap), the DEM, the flood hazard map, the land cover, the
+    // results of analyses, the streams, the delineation preview, the overlays of the
+    // layers panel, the watershed, the network and the drawing. A layer of a group goes
+    // in under its group's slot, above the groups below; within a group the overlays
+    // keep the order of OVERLAY_ORDER (results among themselves the order they came
+    // in). The network's points and labels are DOM markers over the canvas.
 
-    var WHEEL_STALE_MS = 150;        // older wheel input does not start a zoom step
-    var WHEEL_GESTURE_GAP_MS = 80;   // a longer pause between events starts a new gesture
-    var WHEEL_TAIL_RATIO = 0.5;      // share of the gesture's strongest event below which events are its tail
+    var GROUPS = ['basemap', 'dem', 'hazard', 'landcover', 'results', 'streams', 'preview',
+        'overlays', 'watershed', 'network', 'drawing'];
+    var OVERLAY_ORDER = [
+        ['dem', 'dem'],
+        ['hazard', 'hazard'],
+        ['landcover', 'landcover'],
+        ['result', 'results'],
+        ['streams', 'streams'],
+        ['preview', 'preview'],
+        ['bdot-lakes', 'overlays'],
+        ['hsg', 'overlays'],
+        ['bdot-streams', 'overlays'],
+        ['depressions', 'overlays'],
+        ['sewer', 'overlays'],
+        ['watershed', 'watershed'],
+        ['main-channel', 'watershed'],
+        ['longest-flow-path', 'watershed'],
+        ['divide-flow-path', 'watershed'],
+        ['outlet', 'watershed'],
+        ['network', 'network'],
+        ['draw', 'drawing'],
+        ['profile-line', 'drawing'],
+        ['profile-marker', 'drawing'],
+        ['identify-marker', 'drawing'],
+    ];
 
-    /** Time of a wheel event on the performance.now() clock; a foreign clock counts as now. */
-    function wheelEventTime(e) {
-        var age = performance.now() - e.timeStamp;
-        return performance.now() - (age >= 0 && age < 10000 ? age : 0);
+    function slot(group) { return 'slot:' + group; }
+
+    /** The rank and group of an overlay id ('result:<id>' ranks as 'result'). */
+    function placeOf(id) {
+        var kind = id.split(':')[0];
+        for (var i = 0; i < OVERLAY_ORDER.length; i++) {
+            if (OVERLAY_ORDER[i][0] === kind) return { rank: i, group: OVERLAY_ORDER[i][1] };
+        }
+        throw new Error('Unknown overlay ' + id);
     }
 
-    /** Leaflet's scroll-wheel zoom without the tail of a gesture and without late input. */
-    function wheelZoomHandler() {
-        var Base = L.Map.ScrollWheelZoom;
-        return Base.extend({
-            _onWheelScroll: function (e) {
-                var delta = L.DomEvent.getWheelDelta(e);
-                if (delta) {
-                    var t = wheelEventTime(e);
-                    var size = Math.abs(delta);
-                    var g = this._gesture;
-                    if (performance.now() - t > WHEEL_STALE_MS) {
-                        L.DomEvent.stop(e);
-                        return;
-                    }
-                    if (!g || t - g.last > WHEEL_GESTURE_GAP_MS || (delta > 0) !== g.zoomIn) {
-                        g = this._gesture = { zoomIn: delta > 0, peak: size, last: t };
-                    }
-                    g.last = t;
-                    if (size < g.peak * WHEEL_TAIL_RATIO) {
-                        L.DomEvent.stop(e);
-                        return;
-                    }
-                    g.peak = Math.max(g.peak, size);
-                    this._lastInput = t;
-                }
-                Base.prototype._onWheelScroll.call(this, e);
-            },
+    /** The map's style before any overlay: its background and the empty slots. */
+    function emptyStyle() {
+        return {
+            version: 8,
+            glyphs: absolute(GLYPHS),
+            sources: {},
+            layers: [{ id: 'background', type: 'background', paint: { 'background-color': token('--surface-2') } }]
+                .concat(GROUPS.map(function (group) {
+                    return { id: slot(group), type: 'background', layout: { visibility: 'none' } };
+                })),
+        };
+    }
 
-            _performZoom: function () {
-                // The timer ran late (the page was busy): the wheel has stopped meanwhile
-                if (performance.now() - this._lastInput > WHEEL_STALE_MS) {
-                    this._delta = 0;
-                    this._startTime = null;
-                    return;
-                }
-                Base.prototype._performZoom.call(this);
-            },
+    // ===== Overlays =====
+    //
+    // An overlay is what the map shows under one id (describe()): its sources and style
+    // layers, shown or hidden as one, with one opacity that multiplies the opacities of
+    // its paint (the layers panel's slider). A layer's paint is a function, read again
+    // after a change of theme.
+
+    var OPACITY = {
+        'fill-opacity': true,
+        'line-opacity': true,
+        'circle-opacity': true,
+        'circle-stroke-opacity': true,
+        'raster-opacity': true,
+    };
+    var overlays = {};      // id → { id, rank, group, sources, layers, opacity, shown, … }
+    var layerOverlay = {};  // style layer id → overlay id
+
+    function scaled(value, factor) {
+        if (factor === 1) return value;
+        return typeof value === 'number' ? value * factor : ['*', value, factor];
+    }
+
+    /** A layer's paint with the opacities multiplied by its overlay's; `only` the opacities. */
+    function paintOf(o, layer, only) {
+        var own = layer.paint();
+        var paint = {};
+        Object.keys(own).forEach(function (name) {
+            if (OPACITY[name]) paint[name] = scaled(own[name], o.opacity);
+            else if (!only) paint[name] = own[name];
         });
+        return paint;
+    }
+
+    /** The style layer before which a layer of overlay `o` goes. */
+    function beneath(o) {
+        var order = map.getLayersOrder();
+        for (var i = 0; i < order.length; i++) {
+            var other = overlays[layerOverlay[order[i]]];
+            if (other && other !== o && other.group === o.group && other.rank > o.rank) return order[i];
+        }
+        return slot(o.group);
     }
 
     /**
-     * Initialize the Leaflet map.
-     * The base map is not added here: layers.js draws the one its switcher shows.
+     * Put an overlay on the map in place of one of the same id.
+     * @param {Object} spec - `id`; `sources` {id: MapLibre source}; `layers`, each a
+     *     MapLibre layer whose `paint` is a function of no argument; `opacity` (1),
+     *     `shown` (true), `bounds` [west, south, east, north], `point` [lng, lat] of an
+     *     overlay of one point, `tooltip` (properties, feature) → {text|html, at} or null.
+     * @returns {?Object} The overlay; null without a map.
      */
-    function init(onClickCallback) {
-        map = L.map('map', {
-            center: [51.9, 19.5],
-            zoom: 7,
-            zoomControl: false,
-            scrollWheelZoom: false,     // replaced by wheelZoomHandler()
+    function addOverlay(spec) {
+        if (!map) return null;
+        removeOverlay(spec.id);
+        var place = placeOf(spec.id);
+        var o = {
+            id: spec.id,
+            rank: place.rank,
+            group: place.group,
+            sources: Object.keys(spec.sources || {}),
+            layers: [],
+            opacity: spec.opacity === undefined ? 1 : spec.opacity,
+            shown: spec.shown !== false,
+            bounds: spec.bounds || null,
+            point: spec.point || null,
+            tooltip: spec.tooltip || null,
+        };
+        o.sources.forEach(function (id) { map.addSource(id, spec.sources[id]); });
+        overlays[o.id] = o;
+        var before = beneath(o);
+        spec.layers.forEach(function (layer) {
+            var entry = { id: layer.id, paint: layer.paint, filter: layer.filter || null,
+                minzoom: layer.minzoom, maxzoom: layer.maxzoom };
+            var style = { id: layer.id, type: layer.type, paint: paintOf(o, entry, false),
+                layout: Object.assign({}, layer.layout, { visibility: o.shown ? 'visible' : 'none' }) };
+            ['source', 'source-layer', 'filter', 'minzoom', 'maxzoom'].forEach(function (key) {
+                if (layer[key] !== undefined && layer[key] !== null) style[key] = layer[key];
+            });
+            map.addLayer(style, before);
+            layerOverlay[layer.id] = o.id;
+            o.layers.push(entry);
         });
-        map.addHandler('wheelZoom', wheelZoomHandler());
-        map.wheelZoom.enable();
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
-        // Cursor coordinates, bottom left: added first, so the legends stack above it
-        Hydrograf.coords.addReadout(map);
+        return o;
+    }
 
-        // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Mapa zagrożenia powodziowego → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
-        map.createPane('demPane');
-        map.getPane('demPane').style.zIndex = 250;
-        map.createPane('hazardPane');
-        map.getPane('hazardPane').style.zIndex = 255;
-        map.createPane('landcoverPane');
-        map.getPane('landcoverPane').style.zIndex = 260;
-        map.createPane('resultsPane');
-        map.getPane('resultsPane').style.zIndex = 300;
-        map.createPane('streamsPane');
-        map.getPane('streamsPane').style.zIndex = 350;
-        map.createPane('previewPane');
-        map.getPane('previewPane').style.zIndex = 390;
+    function removeOverlay(id) {
+        var o = overlays[id];
+        if (!o || !map) return;
+        o.layers.forEach(function (layer) {
+            if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+            delete layerOverlay[layer.id];
+        });
+        o.sources.forEach(function (source) {
+            if (map.getSource(source)) map.removeSource(source);
+        });
+        delete overlays[id];
+        if (tip.overlay === id) hideTooltip();
+    }
 
-        // Load overlays
-        loadDemOverlay();
+    /** Whether the overlay is on the map and shown (at any zoom). */
+    function hasOverlay(id) {
+        var o = overlays[id];
+        return !!(o && o.shown);
+    }
 
-        map.on('click', function (e) {
-            // Drawing mode: add vertex
-            if (drawMode) {
-                addDrawVertex(e.latlng);
+    function setOverlayShown(id, shown) {
+        var o = overlays[id];
+        if (!o || !map || o.shown === shown) return;
+        o.shown = shown;
+        o.layers.forEach(function (layer) {
+            map.setLayoutProperty(layer.id, 'visibility', shown ? 'visible' : 'none');
+        });
+        if (!shown && tip.overlay === id) hideTooltip();
+    }
+
+    /** The opacity of an overlay as a whole, 0..1: its paint's opacities times it. */
+    function setOverlayOpacity(id, opacity) {
+        var o = overlays[id];
+        if (!o || !map) return;
+        o.opacity = opacity;
+        applyPaint(o, true);
+    }
+
+    /** Set an overlay's paint again: its opacities (`only`) or all of it (theme). */
+    function applyPaint(o, only) {
+        o.layers.forEach(function (layer) {
+            var paint = paintOf(o, layer, only);
+            Object.keys(paint).forEach(function (name) {
+                map.setPaintProperty(layer.id, name, paint[name]);
+            });
+        });
+    }
+
+    /** Show only the features of an overlay that pass `filter` (null: all of them). */
+    function setOverlayFilter(id, filter) {
+        var o = overlays[id];
+        if (!o || !map) return;
+        o.layers.forEach(function (layer) {
+            var own = layer.filter;
+            map.setFilter(layer.id, filter && own ? ['all', own, filter] : filter || own);
+        });
+    }
+
+    function overlayBounds(id) {
+        var o = overlays[id];
+        return o ? o.bounds : null;
+    }
+
+    function drawnAt(layer, zoom) {
+        return (layer.minzoom === undefined || zoom >= layer.minzoom) &&
+            (layer.maxzoom === undefined || zoom < layer.maxzoom);
+    }
+
+    /**
+     * Whether the view's zoom lies within the zoom range of the overlay's layers, shown
+     * or not; false before the overlay exists.
+     */
+    function withinZoom(id) {
+        var o = overlays[id];
+        if (!o || !map) return false;
+        var zoom = map.getZoom();
+        return o.layers.some(function (layer) { return drawnAt(layer, zoom); });
+    }
+
+    /** The scale (its denominator) from which the overlay is drawn; null when at every scale. */
+    function firstScale(id) {
+        var o = overlays[id];
+        if (!o) return null;
+        var first = Math.min.apply(null, o.layers.map(function (layer) {
+            return layer.minzoom === undefined ? 0 : layer.minzoom;
+        }));
+        return first > 0 ? scaleAt(first) : null;
+    }
+
+    // ===== GeoJSON overlays (M8) =====
+    //
+    // Hydrograf's style of a path (Leaflet's options: color, weight, opacity, fillColor,
+    // fillOpacity, dashArray in pixels, lineCap, radius of a point) stays its description
+    // of a path, which the legends' swatches read; pathPaint() turns it into the paint of
+    // a fill, line or circle layer. A value may be a MapLibre expression of the feature's
+    // properties.
+
+    var GEOMETRY = {
+        fill: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
+        line: ['match', ['geometry-type'], ['LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'], true, false],
+        circle: ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+    };
+
+    function resolved(style) {
+        return typeof style === 'function' ? style() : style;
+    }
+
+    /** Whether a style fills its polygons (Leaflet's `fill`, a fill colour and opacity). */
+    function fills(style) {
+        return style.fill !== false && style.fillOpacity !== 0 && style.fillColor !== 'none';
+    }
+
+    /** A dash pattern in pixels („12,8”) as MapLibre's, in line widths. */
+    function dashes(style) {
+        var weight = style.weight === undefined ? 3 : style.weight;
+        return String(style.dashArray).split(/[\s,]+/).filter(Boolean).map(function (value) {
+            return parseFloat(value) / weight;
+        });
+    }
+
+    /** The paint of one shape of a path style. */
+    function pathPaint(shape, style) {
+        var color = style.color;
+        var fillColor = style.fillColor || color;
+        var weight = style.weight === undefined ? 3 : style.weight;
+        var opacity = style.opacity === undefined ? 1 : style.opacity;
+        var fillOpacity = style.fillOpacity === undefined ? 0.2 : style.fillOpacity;
+        if (shape === 'fill') return { 'fill-color': fillColor, 'fill-opacity': fillOpacity };
+        if (shape === 'circle') {
+            // Leaflet strokes a circle across its radius, MapLibre outside it
+            return {
+                'circle-radius': Math.max(style.radius - weight / 2, 0),
+                'circle-color': fillColor,
+                'circle-opacity': fillOpacity,
+                'circle-stroke-color': color,
+                'circle-stroke-width': weight,
+                'circle-stroke-opacity': opacity,
+            };
+        }
+        var paint = { 'line-color': color, 'line-width': weight, 'line-opacity': opacity };
+        if (style.dashArray) paint['line-dasharray'] = dashes(style);
+        return paint;
+    }
+
+    /** Which geometries the GeoJSON holds: {polygon, line, point}. */
+    function geometryKinds(data) {
+        var kinds = { polygon: false, line: false, point: false };
+        eachGeometry(data, function (geometry) {
+            if (/Polygon$/.test(geometry.type)) kinds.polygon = true;
+            else if (/LineString$/.test(geometry.type)) kinds.line = true;
+            else if (/Point$/.test(geometry.type)) kinds.point = true;
+        });
+        return kinds;
+    }
+
+    function eachGeometry(data, fn) {
+        if (!data) return;
+        if (data.type === 'FeatureCollection') {
+            data.features.forEach(function (feature) { eachGeometry(feature, fn); });
+        } else if (data.type === 'Feature') {
+            eachGeometry(data.geometry, fn);
+        } else if (data.type === 'GeometryCollection') {
+            data.geometries.forEach(function (geometry) { eachGeometry(geometry, fn); });
+        } else if (data.coordinates) {
+            fn(data);
+        }
+    }
+
+    /** [west, south, east, north] of a GeoJSON's positions (Archiwista's geometryBounds); null when empty. */
+    function geojsonBounds(data) {
+        var box = null;
+        function walk(coordinates) {
+            if (typeof coordinates[0] === 'number') {
+                var lng = coordinates[0];
+                var lat = coordinates[1];
+                if (!box) box = [lng, lat, lng, lat];
+                box = [Math.min(box[0], lng), Math.min(box[1], lat), Math.max(box[2], lng), Math.max(box[3], lat)];
                 return;
             }
-
-            if (onClickCallback) {
-                onClickCallback(e.latlng.lat, e.latlng.lng);
-            }
-        });
-
-        map.on('dblclick', function (e) {
-            if (drawMode) {
-                L.DomEvent.stopPropagation(e);
-                L.DomEvent.preventDefault(e);
-                finishDrawing();
-            }
-        });
-
-        // Keyboard shortcuts for drawing mode
-        document.addEventListener('keydown', function (e) {
-            if (!drawMode) return;
-            if (e.key === 'Escape') {
-                cancelDrawing();
-            } else if (e.key === 'Backspace') {
-                e.preventDefault();
-                undoLastVertex();
-            }
-        });
-
-        // On-screen drawing controls: phones have no Esc/Backspace and no reliable dblclick.
-        // Absent in an index.html cached from before they existed; drawing still works then.
-        var drawTools = document.getElementById('draw-tools');
-        if (drawTools) {
-            document.getElementById('draw-undo').addEventListener('click', undoLastVertex);
-            document.getElementById('draw-finish').addEventListener('click', finishDrawing);
-            document.getElementById('draw-cancel').addEventListener('click', cancelDrawing);
+            coordinates.forEach(walk);
         }
+        eachGeometry(data, function (geometry) { walk(geometry.coordinates); });
+        return box;
+    }
 
-        // The shell resizes panels around the map; Leaflet must re-measure.
-        window.addEventListener('hydrograf:layout', function () {
-            map.invalidateSize();
+    /** The place of a GeoJSON of one point, else null. */
+    function onlyPoint(data) {
+        var points = [];
+        var other = false;
+        eachGeometry(data, function (geometry) {
+            if (geometry.type === 'Point') points.push(geometry.coordinates);
+            else other = true;
         });
+        return !other && points.length === 1 ? [points[0][0], points[0][1]] : null;
+    }
+
+    /**
+     * Show a GeoJSON overlay: one source, and for each part of its style the fill, line
+     * or circle layers of the geometries the data holds.
+     * @param {string} id - The overlay.
+     * @param {Object} data - GeoJSON.
+     * @param {Object} options - `style` (a path style or a function returning one) or
+     *     `parts` [{style, filter, shapes}], `tooltip`, `opacity`, `shown`.
+     */
+    function showGeojson(id, data, options) {
+        if (!map) return null;
+        var kinds = geometryKinds(data);
+        var source = 'source:' + id;
+        var parts = options.parts || [{ style: options.style }];
+        var layers = [];
+        parts.forEach(function (part, i) {
+            var style = resolved(part.style);
+            var shapes = part.shapes || (style.radius !== undefined ? ['circle'] : ['fill', 'line']);
+            shapes.forEach(function (shape) {
+                if (shape === 'fill' && (!kinds.polygon || !fills(style))) return;
+                if (shape === 'line' && (!(kinds.line || kinds.polygon) || style.stroke === false)) return;
+                if (shape === 'circle' && !kinds.point && !part.shapes) return;
+                layers.push({
+                    id: id + ':' + i + ':' + shape,
+                    type: shape,
+                    source: source,
+                    filter: part.filter ? ['all', GEOMETRY[shape], part.filter] : GEOMETRY[shape],
+                    layout: shape === 'line'
+                        ? { 'line-cap': style.lineCap || 'round', 'line-join': style.lineJoin || 'round' }
+                        : {},
+                    paint: function () { return pathPaint(shape, resolved(part.style)); },
+                });
+            });
+        });
+        var sources = {};
+        sources[source] = { type: 'geojson', data: data };
+        return addOverlay({
+            id: id,
+            sources: sources,
+            layers: layers,
+            opacity: options.opacity,
+            shown: options.shown,
+            bounds: geojsonBounds(data),
+            point: onlyPoint(data),
+            tooltip: options.tooltip,
+        });
+    }
+
+    /** New data of a GeoJSON overlay, its layers kept. */
+    function setGeojson(id, data) {
+        var o = overlays[id];
+        if (!o || !map) return;
+        map.getSource('source:' + id).setData(data);
+        o.bounds = geojsonBounds(data);
+        o.point = onlyPoint(data);
+    }
+
+    function pointFeature(lngLat, properties) {
+        return { type: 'Feature', properties: properties || {}, geometry: { type: 'Point', coordinates: lngLat } };
+    }
+
+    /**
+     * Show a point (identify's marker, the profile's readout) or move the one shown.
+     * @param {string} id - The overlay.
+     * @param {number[]} lngLat - [longitude, latitude].
+     * @param {Object|function} style - A path style with a `radius`.
+     */
+    function showPoint(id, lngLat, style) {
+        if (overlays[id]) {
+            setGeojson(id, pointFeature(lngLat));
+            return;
+        }
+        showGeojson(id, pointFeature(lngLat), { style: style });
+    }
+
+    // ===== Raster and image overlays (M6) =====
+
+    /**
+     * Show tiles of images: the DEM's, a result's, the flood hazard map's WMS.
+     * @param {string} id - The overlay.
+     * @param {Object} options - `tiles` [template], `tileSize`, `bounds` [w, s, e, n],
+     *     `minzoom` and `maxzoom` of the tiles, `layerMinzoom` (the map's first zoom),
+     *     `opacity`, `attribution`, `shown`; `floorLevel`: the tiles of the whole level
+     *     at or below the zoom, as a vector source's, not of the nearest, so that a zoom
+     *     in asks the new level only for the view it ends at.
+     */
+    function showRaster(id, options) {
+        var source = { type: 'raster', tiles: options.tiles, tileSize: options.tileSize || 256 };
+        if (options.bounds) source.bounds = options.bounds;
+        if (options.minzoom !== undefined) source.minzoom = options.minzoom;
+        if (options.maxzoom !== undefined) source.maxzoom = options.maxzoom;
+        if (options.attribution) source.attribution = options.attribution;
+        var o = rasterOverlay(id, source, options);
+        if (o && options.floorLevel) map.getSource('source:' + id).roundZoom = false;
+        return o;
+    }
+
+    /**
+     * Show one image over the box [west, south, east, north] (the DEM's PNG, the
+     * depressions'). The style's image source has no `attribution`; the map's credit reads
+     * the source's all the same, so it is set once the source is there.
+     */
+    function showImage(id, options) {
+        var b = options.bounds;
+        var o = rasterOverlay(id, {
+            type: 'image',
+            url: absolute(options.url),
+            coordinates: [[b[0], b[3]], [b[2], b[3]], [b[2], b[1]], [b[0], b[1]]],
+        }, options);
+        if (o && options.attribution) map.getSource('source:' + id).attribution = options.attribution;
+        return o;
+    }
+
+    function rasterOverlay(id, source, options) {
+        var sources = {};
+        sources['source:' + id] = source;
+        return addOverlay({
+            id: id,
+            sources: sources,
+            layers: [{
+                id: id + ':raster',
+                type: 'raster',
+                source: 'source:' + id,
+                minzoom: options.layerMinzoom,
+                paint: function () { return { 'raster-opacity': 1 }; },
+            }],
+            opacity: options.opacity,
+            shown: options.shown,
+            bounds: options.bounds || null,
+        });
+    }
+
+    /** New tile templates of a raster overlay (the flood hazard map's probability switch). */
+    function setTiles(id, tiles) {
+        if (!overlays[id] || !map) return;
+        map.getSource('source:' + id).setTiles(tiles);
     }
 
     // ===== DEM Overlay =====
 
+    var demBounds = null;
+    // Metadata of the rendered DEM (dem_tiles.json or dem.json): elevation and colour range
+    var demMeta = null;
+    var demLoad = null;
+
+    /** [west, south, east, north] of the metadata's [[south, west], [north, east]]. */
+    function metaBox(bounds) {
+        return [bounds[0][1], bounds[0][0], bounds[1][1], bounds[1][0]];
+    }
+
+    function readJson(url) {
+        return fetch(url, { cache: 'no-cache' }).then(function (res) {
+            if (!res.ok) throw new Error(url + ': ' + res.status);
+            return res.json();
+        });
+    }
+
+    /** The DEM's tiles, else its one image: added hidden, the view fitted to its extent. */
     function loadDemOverlay() {
-        // Try tiled DEM first, fall back to single PNG overlay
-        fetch('/data/dem_tiles.json', { cache: 'no-cache' })
-            .then(function (res) {
-                if (!res.ok) throw new Error('tiles not found');
-                return res.json();
-            })
+        demLoad = readJson('/data/dem_tiles.json')
             .then(function (meta) {
-                demBounds = L.latLngBounds(meta.bounds);
                 demMeta = meta;
-                var tileUrl = '/data/dem_tiles/{z}/{x}/{y}.png';
-                if (meta.generated_at) tileUrl += '?v=' + meta.generated_at;
-                demLayer = nameOverlay(L.tileLayer(tileUrl, {
-                    minZoom: meta.min_zoom || 8,
-                    maxZoom: 22,
-                    maxNativeZoom: meta.max_zoom || 18,
+                demBounds = metaBox(meta.bounds);
+                var tiles = '/data/dem_tiles/{z}/{x}/{y}.png';
+                if (meta.generated_at) tiles += '?v=' + meta.generated_at;
+                var first = meta.min_zoom || 8;
+                showRaster('dem', {
+                    tiles: [absolute(tiles)],
+                    tileSize: 256,
                     bounds: demBounds,
+                    minzoom: first,
+                    maxzoom: meta.max_zoom || 18,
+                    // A tile level is the map's zoom plus one: 256-px tiles in a 512-px world
+                    layerMinzoom: first - 1,
                     opacity: 0.7,
-                    pane: 'demPane',
                     attribution: 'NMT &copy; GUGiK',
-                    errorTileUrl: '',
-                }), 'dem');
-                if (map) map.fitBounds(demBounds, { padding: [20, 20] });
+                    shown: false,
+                });
+                fitToBounds(demBounds);
+                return true;
             })
             .catch(function () {
-                // Fallback: single PNG overlay
-                fetch('/data/dem.json', { cache: 'no-cache' })
-                    .then(function (res) {
-                        if (!res.ok) throw new Error('DEM metadata not found');
-                        return res.json();
-                    })
-                    .then(function (meta) {
-                        demBounds = L.latLngBounds(meta.bounds);
-                        demMeta = meta;
-                        var demUrl = '/data/dem.png';
-                        if (meta.generated_at) demUrl += '?v=' + meta.generated_at;
-                        demLayer = nameOverlay(L.imageOverlay(demUrl, demBounds, {
-                            opacity: 0.7,
-                            pane: 'demPane',
-                            attribution: 'NMT &copy; GUGiK',
-                        }), 'dem');
-                        if (map) map.fitBounds(demBounds, { padding: [20, 20] });
-                    })
-                    .catch(function (err) {
-                        console.warn('DEM overlay not available:', err.message);
+                return readJson('/data/dem.json').then(function (meta) {
+                    demMeta = meta;
+                    demBounds = metaBox(meta.bounds);
+                    var url = '/data/dem.png';
+                    if (meta.generated_at) url += '?v=' + meta.generated_at;
+                    showImage('dem', {
+                        url: url,
+                        bounds: demBounds,
+                        opacity: 0.7,
+                        attribution: 'NMT &copy; GUGiK',
+                        shown: false,
                     });
+                    fitToBounds(demBounds);
+                    return true;
+                });
+            })
+            .catch(function (err) {
+                console.warn('DEM overlay not available:', err.message);
+                return false;
             });
+        return demLoad;
     }
 
-    function getDemLayer() { return demLayer; }
-    function getDemBounds() { return demBounds; }
-    function setDemOpacity(opacity) {
-        if (demLayer) demLayer.setOpacity(opacity);
+    /** Whether the DEM is on the map, once its metadata answered (the layers panel's row). */
+    function loadDem() {
+        return demLoad || ready.then(function () { return demLoad || false; });
     }
+
+    function getDemBounds() { return demBounds; }
 
     // ===== Streams Vector (MVT) =====
+
+    // The log10 of a stream's upstream area, 0.0001 km² and less as 0.0001 km²
+    var LOG_AREA = ['log10', ['max', ['to-number', ['get', 'upstream_area_km2']], 0.0001]];
 
     /**
      * Position of a stream on the log10 upstream-area scale:
@@ -322,153 +690,229 @@
     function flowAccColor(area_km2) {
         var ramp = colors().streamRamp;
         var t = flowAccT(area_km2);
-        return 'rgb(' + [0, 1, 2].map(function (i) {
-            return Math.round(ramp[0][i] * (1 - t) + ramp[1][i] * t);
-        }).join(', ') + ')';
+        return rgbText([0, 1, 2].map(function (i) { return ramp[0][i] * (1 - t) + ramp[1][i] * t; }));
     }
 
-    /** Stream width: 0.5px (tiny streams) → 4px (large rivers). */
-    function flowAccWidth(area_km2) {
-        return 0.5 + flowAccT(area_km2) * 3.5;
+    var currentThreshold = null;
+
+    /** The streams' tiles of a threshold: pre-generated where generate_tiles.py wrote them, else the API's. */
+    function streamsTiles(threshold) {
+        var meta = window.Hydrograf._tilesMeta;
+        if (meta && meta.format === 'pbf' && meta.thresholds && meta.thresholds.indexOf(threshold) !== -1) {
+            return absolute('/tiles/streams_' + threshold + '/{z}/{x}/{y}.pbf');
+        }
+        return absolute('/api/tiles/streams/{z}/{x}/{y}.pbf?threshold=' + threshold);
+    }
+
+    /** The first zoom of a threshold's streams (tiles_metadata.json), 0 without the metadata. */
+    function streamsMinZoom(threshold) {
+        var meta = window.Hydrograf._tilesMeta || {};
+        if (!meta.min_zoom) return 0;
+        var zooms = meta.threshold_min_zoom || {};
+        return zooms[String(threshold)] || meta.min_zoom;
+    }
+
+    /** The streams' extent from the tiles' metadata, else none. */
+    function tilesBounds() {
+        var meta = window.Hydrograf._tilesMeta || {};
+        return meta.bounds && meta.bounds.length === 4 ? meta.bounds.slice() : null;
+    }
+
+    function streamsTooltip(props) {
+        return {
+            html: '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?') + '<br>' +
+                '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
+                '<b>Długość:</b> ' + (props.length_m ? (props.length_m / 1000).toFixed(2) + ' km' : '?'),
+        };
     }
 
     /**
-     * Get tile URL for a given layer and threshold.
-     * Uses pre-generated PMTiles if available, falls back to API.
+     * The streams of a threshold (m²) on the map: an overlay of the threshold's tiles and
+     * first zoom, made anew for each threshold with the shown state and opacity it had.
+     * A new source, not `setTiles`: MapLibre drops a vector source's new tiles when a layer
+     * of it changes before they load, and keeps drawing the old ones. A change of threshold
+     * fires `hydrograf:streams` on window (js/network.js and js/identify.js ask again).
      */
-    function getTileUrl(layer, threshold) {
-        // Check for pre-generated tiles metadata
-        var meta = window.Hydrograf._tilesMeta;
-        if (meta && meta.thresholds && meta.thresholds.indexOf(threshold) !== -1) {
-            if (meta.format === 'pbf') {
-                return '/tiles/' + layer + '_' + threshold + '/{z}/{x}/{y}.pbf';
-            }
-            if (meta.format === 'pmtiles') {
-                return '/tiles/' + layer + '_' + threshold + '.pmtiles';
-            }
-        }
-        // Fallback: dynamic PostGIS MVT
-        return '/api/tiles/' + layer + '/{z}/{x}/{y}.pbf?threshold=' + threshold;
-    }
-
-    function loadStreamsVector(threshold) {
-        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
-        if (streamsLayer && map.hasLayer(streamsLayer)) {
-            map.removeLayer(streamsLayer);
-        }
-        currentThreshold = threshold || currentThreshold;
-
-        // Limit requests to the data: outside its bounds and below its first
-        // zoom no tile exists and each request would answer 404.
-        var meta = window.Hydrograf._tilesMeta || {};
-        var extent = {};
-        if (meta.bounds && meta.bounds.length === 4) {
-            extent.bounds = L.latLngBounds(
-                [meta.bounds[1], meta.bounds[0]],
-                [meta.bounds[3], meta.bounds[2]]
-            );
-        }
-        if (meta.min_zoom) {
-            var zooms = meta.threshold_min_zoom || {};
-            extent.minZoom = zooms[String(currentThreshold)] || meta.min_zoom;
-        }
-
-        streamsLayer = nameOverlay(L.vectorGrid.protobuf(
-            getTileUrl('streams', currentThreshold),
-            L.extend({
-                pane: 'streamsPane',
-                vectorTileLayerStyles: {
-                    streams: function (properties) {
-                        var area = properties.upstream_area_km2 || 0.0001;
-                        return {
-                            weight: flowAccWidth(area),
-                            color: flowAccColor(area),
-                            opacity: 0.9,
-                        };
-                    }
-                },
-                interactive: true,
-                maxNativeZoom: 18,
+    function setStreamsThreshold(threshold) {
+        var changed = threshold !== currentThreshold;
+        currentThreshold = threshold;
+        var drawn = overlays.streams;
+        if (map && (!drawn || changed)) {
+            var meta = window.Hydrograf._tilesMeta || {};
+            var source = {
+                type: 'vector',
+                tiles: [streamsTiles(threshold)],
+                minzoom: meta.min_zoom || 0,
+                maxzoom: 18,
                 attribution: 'Linie spływu (flow acc)',
-            }, extent)
-        ), 'streams');
-
-        // Re-fire click to map so click mode routing works on stream features
-        streamsLayer.on('click', function (e) {
-            L.DomEvent.stopPropagation(e);
-            map.fire('click', { latlng: e.latlng });
-        });
-
-        // Stream info via hover tooltip (not click popup)
-        streamsLayer.on('mouseover', function (e) {
-            if (streamTooltip) { map.removeLayer(streamTooltip); streamTooltip = null; }
-            var props = e.layer.properties;
-            var content =
-                '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?') + '<br>' +
-                '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
-                '<b>Długość:</b> ' + (props.length_m ? (props.length_m / 1000).toFixed(2) + ' km' : '?');
-            streamTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
-                .setLatLng(e.latlng)
-                .setContent(content)
-                .addTo(map);
-        });
-        streamsLayer.on('mouseout', function () {
-            if (streamTooltip) {
-                map.removeLayer(streamTooltip);
-                streamTooltip = null;
-            }
-        });
-
-        return streamsLayer;
+            };
+            var bounds = tilesBounds();
+            if (bounds) source.bounds = bounds;
+            addOverlay({
+                id: 'streams',
+                sources: { 'source:streams': source },
+                layers: [{
+                    id: 'streams:line',
+                    type: 'line',
+                    source: 'source:streams',
+                    'source-layer': 'streams',
+                    minzoom: streamsMinZoom(threshold),
+                    layout: { 'line-cap': 'round', 'line-join': 'round' },
+                    paint: function () {
+                        var ramp = colors().streamRamp;
+                        return {
+                            'line-color': ['interpolate', ['linear'], LOG_AREA,
+                                -4, rgbText(ramp[0]), 1.3, rgbText(ramp[1])],
+                            // 0.5 px for tiny streams, 4 px for large rivers
+                            'line-width': ['interpolate', ['linear'], LOG_AREA, -4, 0.5, 1.3, 4],
+                            'line-opacity': 0.9,
+                        };
+                    },
+                }],
+                shown: drawn ? drawn.shown : false,
+                opacity: drawn ? drawn.opacity : 1,
+                tooltip: streamsTooltip,
+            });
+        }
+        if (changed) window.dispatchEvent(new CustomEvent('hydrograf:streams', { detail: { threshold: threshold } }));
     }
-
-    function getStreamsLayer() { return streamsLayer; }
 
     function getStreamsThreshold() { return currentThreshold; }
 
     /**
      * Data extent from the vector tiles metadata (bounds as [W, S, E, N]),
      * falling back to the DEM extent.
-     * @returns {L.LatLngBounds|null}
      */
     function getDataBounds() {
-        var meta = window.Hydrograf._tilesMeta || {};
-        if (meta.bounds && meta.bounds.length === 4) {
-            return L.latLngBounds(
-                [meta.bounds[1], meta.bounds[0]],
-                [meta.bounds[3], meta.bounds[2]]
-            );
-        }
-        return demBounds;
+        return tilesBounds() || demBounds;
     }
 
-    /**
-     * Fit the map to the given bounds; ignores missing or invalid bounds.
-     * @param {L.LatLngBounds|null} bounds
-     */
-    function fitToBounds(bounds) {
-        if (map && bounds && bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [20, 20] });
-        }
+    // ===== Land cover and sewer (MVT) =====
+
+    // Land cover classes in legend order, labels for the map legend
+    var LANDCOVER_LEGEND = [
+        ['las', 'Las'],
+        ['łąka', 'Łąka'],
+        ['grunt_orny', 'Grunt orny'],
+        ['zabudowa_mieszkaniowa', 'Zabudowa mieszk.'],
+        ['zabudowa_przemysłowa', 'Zabudowa przem.'],
+        ['droga', 'Droga'],
+        ['woda', 'Woda'],
+        ['inny', 'Inny'],
+    ];
+
+    /** Land cover class colour, shared with the land cover chart (charts.js palette). */
+    function landCoverColor(category) {
+        var memo = colors().landCover;
+        if (!(category in memo)) memo[category] = Hydrograf.charts.landCoverColor(category);
+        return memo[category];
     }
 
-    function setStreamsOpacity(opacity) {
-        if (streamsLayer) streamsLayer.setOpacity(opacity);
+    /** Land cover from the API's tiles (BDOT10k), from today's 1:2 183 915 on. */
+    function loadLandCover() {
+        return ready.then(function (shown) {
+            if (shown && !overlays.landcover) addLandCover();
+            return shown;
+        });
+    }
+
+    function addLandCover() {
+        addOverlay({
+            id: 'landcover',
+            sources: {
+                'source:landcover': {
+                    type: 'vector',
+                    tiles: [absolute('/api/tiles/landcover/{z}/{x}/{y}.pbf')],
+                    minzoom: 7,
+                    maxzoom: 18,
+                    attribution: 'Pokrycie terenu (BDOT10k)',
+                },
+            },
+            layers: [{
+                id: 'landcover:fill',
+                type: 'fill',
+                source: 'source:landcover',
+                'source-layer': 'landcover',
+                minzoom: 7,
+                paint: function () {
+                    var match = ['match', ['get', 'category']];
+                    LANDCOVER_LEGEND.forEach(function (entry) {
+                        if (entry[0] !== 'inny') match.push(entry[0], landCoverColor(entry[0]));
+                    });
+                    match.push(landCoverColor('inny'));
+                    return { 'fill-color': match, 'fill-opacity': 0.6 };
+                },
+            }],
+            shown: false,
+        });
+    }
+
+    /** The storm sewer from the API's tiles (lines and nodes by kind), from today's 1:545 979 on. */
+    function loadSewer() {
+        return ready.then(function (shown) {
+            if (shown && !overlays.sewer) addSewer();
+            return shown;
+        });
+    }
+
+    function addSewer() {
+        addOverlay({
+            id: 'sewer',
+            sources: {
+                'source:sewer': {
+                    type: 'vector',
+                    tiles: [absolute('/api/tiles/sewer/{z}/{x}/{y}.pbf')],
+                    minzoom: 9,
+                    maxzoom: 20,
+                },
+            },
+            layers: [{
+                id: 'sewer:lines',
+                type: 'line',
+                source: 'source:sewer',
+                'source-layer': 'sewer_lines',
+                minzoom: 9,
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: function () {
+                    return { 'line-color': token('--text-2'), 'line-width': 2, 'line-opacity': 0.8 };
+                },
+            }, {
+                id: 'sewer:nodes',
+                type: 'circle',
+                source: 'source:sewer',
+                'source-layer': 'sewer_nodes',
+                minzoom: 9,
+                paint: function () {
+                    return pathPaint('circle', {
+                        radius: 4,
+                        weight: 1,
+                        color: token('--surface'),
+                        opacity: 1,
+                        fillColor: ['match', ['get', 'node_type'],
+                            'inlet', token('--info'), 'outlet', token('--bad'), token('--text-3')],
+                        fillOpacity: 0.9,
+                    });
+                },
+            }],
+            shown: false,
+        });
     }
 
     // ===== Selection boundary =====
 
-    var selectionBoundaryLayer = null;
+    /** Delineated catchment: tool colour outline with a light fill of the same colour. */
+    function watershedStyle() {
+        var c = colors();
+        return { color: c.tool, weight: 2.5, opacity: 1, fillColor: c.tool, fillOpacity: 0.12 };
+    }
 
     /**
      * Show upstream catchment boundary polygon.
      */
     function showSelectionBoundary(geojsonFeature) {
-        clearSelectionBoundary();
-        selectionBoundaryLayer = nameOverlay(L.geoJSON(geojsonFeature, {
-            style: watershedStyle(),
-        }), 'watershed').addTo(map);
-        map.fitBounds(selectionBoundaryLayer.getBounds(), { padding: [20, 20] });
+        if (!map) return;
+        showGeojson('watershed', geojsonFeature, { style: watershedStyle });
+        fitToBounds(overlayBounds('watershed'));
         updateWatershedLegend();
     }
 
@@ -476,25 +920,24 @@
      * Clear selection boundary layer.
      */
     function clearSelectionBoundary() {
-        if (selectionBoundaryLayer) {
-            map.removeLayer(selectionBoundaryLayer);
-            selectionBoundaryLayer = null;
-            updateWatershedLegend();
-        }
+        if (!overlays.watershed) return;
+        removeOverlay('watershed');
+        updateWatershedLegend();
     }
 
     // ===== Delineation preview =====
     //
-    // While the server merges the boundary, the sub-catchments it merges fill
-    // the network up from the outlet (`watershed preview`, GET /api/v1/watershed/preview,
-    // one feature per BFS depth). The map first moves to the watershed, as
-    // paths added during a zoom animation are drawn out of place; then depth
-    // d appears at d / maxDepth of PREVIEW_DURATION_MS, as many levels per
-    // frame as are due, and the preview pane pulses (app.css) until
+    // While the server merges the boundary, the sub-catchments it merges fill the network
+    // up from the outlet (`watershed preview`, GET /api/v1/watershed/preview, one feature
+    // per BFS depth). The map first moves to the watershed; then depth d appears at
+    // d / maxDepth of PREVIEW_DURATION_MS, as many levels per frame as are due (a filter
+    // of the source by depth), and the preview's opacity pulses until
     // clearDelineatePreview(). Reduced motion: all levels at once, no pulse.
 
     var PREVIEW_DURATION_MS = 500;
-    var preview = null; // { levels: L.GeoJSON, shown: L.LayerGroup, onMoveEnd, frame }
+    var PULSE_MS = 1600;
+    var PULSE_LOW = 0.6;
+    var preview = null; // { frame, onMoveEnd }
 
     /** Preview: the watershed's tool colour, thinner and fainter than the result. */
     function previewStyle() {
@@ -509,59 +952,85 @@
      */
     function showDelineatePreview(collection) {
         clearDelineatePreview();
-        var levels = L.geoJSON(collection, { pane: 'previewPane', style: previewStyle, interactive: false });
-        var layers = levels.getLayers();
-        if (!layers.length) return;
+        var features = (collection && collection.features) || [];
+        if (!map || !features.length) return;
 
-        var maxDepth = layers[layers.length - 1].feature.properties.depth;
+        var maxDepth = features[features.length - 1].properties.depth;
         var instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var next = 0;
         var start = null;
-        var current = {
-            levels: levels,
-            shown: nameOverlay(L.layerGroup(), 'preview').addTo(map),
-            onMoveEnd: null,
-            frame: null,
-        };
+        var current = { frame: null, onMoveEnd: null };
         preview = current;
+        showGeojson('preview', collection, { style: previewStyle });
+        setOverlayFilter('preview', ['<', ['get', 'depth'], 0]);
 
         function step(now) {
             if (start === null) start = now;
-            var reached = instant ? Infinity : (now - start) / PREVIEW_DURATION_MS * maxDepth;
-            while (next < layers.length && layers[next].feature.properties.depth <= reached) {
-                current.shown.addLayer(layers[next]);
-                next += 1;
-            }
-            if (next < layers.length) {
+            var reached = instant ? maxDepth : Math.min(maxDepth, (now - start) / PREVIEW_DURATION_MS * maxDepth);
+            setOverlayFilter('preview', ['<=', ['get', 'depth'], reached]);
+            if (reached < maxDepth) {
                 current.frame = requestAnimationFrame(step);
+            } else if (!instant) {
+                start = null;
+                current.frame = requestAnimationFrame(pulse);
             } else {
                 current.frame = null;
-                map.getPane('previewPane').classList.add('waiting');
             }
         }
 
-        // fitBounds always ends in moveend: at once when the view stays
-        // or jumps, after the animation when it pans or zooms.
+        // The opacity eases from 1 to PULSE_LOW and back, as the CSS pulse of a pane did
+        function pulse(now) {
+            if (start === null) start = now;
+            var phase = ((now - start) % PULSE_MS) / PULSE_MS;
+            setOverlayOpacity('preview', 1 - (1 - PULSE_LOW) * (1 - Math.cos(2 * Math.PI * phase)) / 2);
+            current.frame = requestAnimationFrame(pulse);
+        }
+
         current.onMoveEnd = function () {
-            map.off('moveend', current.onMoveEnd);
             current.onMoveEnd = null;
             current.frame = requestAnimationFrame(step);
         };
-        map.on('moveend', current.onMoveEnd);
-        map.fitBounds(levels.getBounds(), { padding: [20, 20] });
+        fitView(overlayBounds('preview'), {}, function () {
+            if (current.onMoveEnd) current.onMoveEnd();
+        });
     }
 
     /** Remove the preview and stop its animation. */
     function clearDelineatePreview() {
         if (!preview) return;
-        if (preview.onMoveEnd) map.off('moveend', preview.onMoveEnd);
+        preview.onMoveEnd = null;
         if (preview.frame !== null) cancelAnimationFrame(preview.frame);
-        map.removeLayer(preview.shown);
-        map.getPane('previewPane').classList.remove('waiting');
+        removeOverlay('preview');
         preview = null;
     }
 
-    // ===== Legends =====
+    // ===== Legends (M11: controls of the map's bottom left) =====
+
+    /**
+     * Put an element in a corner of the map as a control (a legend, the coordinates).
+     * MapLibre, like Leaflet, puts a later bottom control above the earlier ones.
+     * @returns {?Object} {element, remove()}; null without a map.
+     */
+    function addControl(element, corner) {
+        if (!map) return null;
+        element.classList.add('maplibregl-ctrl');
+        var control = {
+            onAdd: function () { return element; },
+            onRemove: function () { element.remove(); },
+        };
+        map.addControl(control, corner || 'bottom-left');
+        return {
+            element: element,
+            remove: function () { if (map) map.removeControl(control); },
+        };
+    }
+
+    /** A legend box of HTML in the bottom left; null without a map. */
+    function legendControl(className, html) {
+        var div = document.createElement('div');
+        div.className = className;
+        div.innerHTML = html;
+        return addControl(div, 'bottom-left');
+    }
 
     var streamsLegend = null;
 
@@ -573,19 +1042,12 @@
     }
 
     function createStreamsLegend() {
-        if (streamsLegend) return;
-        streamsLegend = L.control({ position: 'bottomleft' });
-        streamsLegend.onAdd = function () {
-            var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML = streamsLegendHtml();
-            return div;
-        };
-        streamsLegend.addTo(map);
+        if (!streamsLegend) streamsLegend = legendControl('layer-legend', streamsLegendHtml());
     }
 
     function removeStreamsLegend() {
         if (streamsLegend) {
-            map.removeControl(streamsLegend);
+            streamsLegend.remove();
             streamsLegend = null;
         }
     }
@@ -634,18 +1096,12 @@
         if (demLegend || !demMeta) return;
         var keys = ['color_min_m', 'color_max_m', 'elevation_min_m', 'elevation_max_m'];
         if (!keys.every(function (k) { return typeof demMeta[k] === 'number'; })) return;
-        demLegend = L.control({ position: 'bottomleft' });
-        demLegend.onAdd = function () {
-            var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML = demLegendHtml(demMeta);
-            return div;
-        };
-        demLegend.addTo(map);
+        demLegend = legendControl('layer-legend', demLegendHtml(demMeta));
     }
 
     function removeDemLegend() {
         if (demLegend) {
-            map.removeControl(demLegend);
+            demLegend.remove();
             demLegend = null;
         }
     }
@@ -661,30 +1117,38 @@
     }
 
     function createHsgLegend() {
-        if (hsgLegend) return;
-        hsgLegend = L.control({ position: 'bottomleft' });
-        hsgLegend.onAdd = function () {
-            var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML = hsgLegendHtml();
-            return div;
-        };
-        hsgLegend.addTo(map);
+        if (!hsgLegend) hsgLegend = legendControl('layer-legend', hsgLegendHtml());
     }
 
     function removeHsgLegend() {
         if (hsgLegend) {
-            map.removeControl(hsgLegend);
+            hsgLegend.remove();
             hsgLegend = null;
         }
     }
 
-    // ===== Watershed display =====
+    var landCoverLegend = null;
 
-    /** Delineated catchment: tool colour outline with a light fill of the same colour. */
-    function watershedStyle() {
-        var c = colors();
-        return { color: c.tool, weight: 2.5, opacity: 1, fillColor: c.tool, fillOpacity: 0.12 };
+    function landCoverLegendHtml() {
+        return '<div class="layer-legend-title">Pokrycie terenu</div>' +
+            LANDCOVER_LEGEND.map(function (entry) {
+                return '<div class="legend-item"><span class="legend-swatch" style="background:' +
+                    landCoverColor(entry[0]) + ';"></span> ' + entry[1] + '</div>';
+            }).join('');
     }
+
+    function createLandCoverLegend() {
+        if (!landCoverLegend) landCoverLegend = legendControl('layer-legend', landCoverLegendHtml());
+    }
+
+    function removeLandCoverLegend() {
+        if (landCoverLegend) {
+            landCoverLegend.remove();
+            landCoverLegend = null;
+        }
+    }
+
+    // ===== Watershed display =====
 
     /** Outlet: tool colour ring on the surface colour. */
     function outletStyle() {
@@ -693,26 +1157,30 @@
     }
 
     function showOutlet(lat, lng, elevation) {
-        if (outletMarker) map.removeLayer(outletMarker);
-        outletMarker = nameOverlay(L.circleMarker([lat, lng], outletStyle()), 'outlet').addTo(map);
+        if (!map) return;
+        var text = 'Ujście: ' + elevation.toFixed(1) + ' m n.p.m.';
+        showGeojson('outlet', pointFeature([lng, lat]), {
+            style: outletStyle,
+            shown: !watershedHidden,
+            tooltip: function () { return { text: text, at: [lng, lat] }; },
+        });
         updateWatershedLegend();
-        outletMarker.bindTooltip(
-            'Ujście: ' + elevation.toFixed(1) + ' m n.p.m.',
-            { permanent: false, direction: 'top' }
-        );
     }
 
     function clearWatershed() {
-        if (outletMarker) { map.removeLayer(outletMarker); outletMarker = null; }
-        clearLongestFlowPath();
-        clearDivideFlowPath();
-        clearMainChannel();
+        removeOverlay('outlet');
+        removeOverlay('main-channel');
+        removeOverlay('longest-flow-path');
+        removeOverlay('divide-flow-path');
+        mainChannelKinds = { real: false, dem: false };
         updateWatershedLegend();
     }
 
     // ===== Main channel display =====
 
-    var mainChannelLayer = null;
+    // The kinds of segment of the main channel shown: BDOT10k-matched (`real`) and the rest (`dem`)
+    var mainChannelKinds = { real: false, dem: false };
+    var IS_REAL_STREAM = ['to-boolean', ['get', 'is_real_stream']];
 
     /**
      * Main channel style: BDOT-matched segments (is_real_stream) in full
@@ -735,29 +1203,37 @@
      */
     function showMainChannel(geojson) {
         clearMainChannel();
-        if (!geojson) return;
-        mainChannelLayer = nameOverlay(L.geoJSON(geojson, {
-            style: mainChannelStyle,
-            interactive: false,
-        }), 'main-channel').addTo(map);
+        if (!geojson || !map) return;
+        var features = geojson.type === 'FeatureCollection' ? geojson.features
+            : [geojson.type === 'Feature' ? geojson : { type: 'Feature', properties: {}, geometry: geojson }];
+        mainChannelKinds = { real: false, dem: false };
+        features.forEach(function (feature) {
+            mainChannelKinds[feature.properties && feature.properties.is_real_stream ? 'real' : 'dem'] = true;
+        });
+        showGeojson('main-channel', { type: 'FeatureCollection', features: features }, {
+            shown: !watershedHidden,
+            parts: [{
+                filter: ['!', IS_REAL_STREAM],
+                style: function () { return mainChannelStyle({ properties: { is_real_stream: false } }); },
+            }, {
+                filter: IS_REAL_STREAM,
+                style: function () { return mainChannelStyle({ properties: { is_real_stream: true } }); },
+            }],
+        });
         updateWatershedLegend();
     }
 
     function clearMainChannel() {
-        if (mainChannelLayer) {
-            map.removeLayer(mainChannelLayer);
-            mainChannelLayer = null;
-            updateWatershedLegend();
-        }
+        if (!overlays['main-channel']) return;
+        removeOverlay('main-channel');
+        mainChannelKinds = { real: false, dem: false };
+        updateWatershedLegend();
     }
 
     // ===== Flow paths: the longest one and the one from the watershed boundary =====
     //
     // Both in the warning colour; long dashes and round dots tell them apart,
     // also where they run along the same cells (the dots are drawn on top).
-
-    var longestFlowPathLayer = null;
-    var divideFlowPathLayer = null;
 
     function longestFlowPathStyle() {
         return { color: colors().warn, weight: 2.5, opacity: 0.9, dashArray: '12,8' };
@@ -767,41 +1243,18 @@
         return { color: colors().warn, weight: 4, opacity: 0.9, dashArray: '0.1,8', lineCap: 'round' };
     }
 
-    function showLongestFlowPath(geojson) {
-        clearLongestFlowPath();
-        if (!geojson) return;
-        longestFlowPathLayer = nameOverlay(L.geoJSON(geojson, {
-            style: longestFlowPathStyle(),
-            interactive: false,
-        }), 'longest-flow-path').addTo(map);
-        if (divideFlowPathLayer) divideFlowPathLayer.bringToFront();
+    function showFlowPath(id, geojson, style) {
+        removeOverlay(id);
+        if (geojson && map) showGeojson(id, geojson, { style: style, shown: !watershedHidden });
         updateWatershedLegend();
     }
 
-    function clearLongestFlowPath() {
-        if (longestFlowPathLayer) {
-            map.removeLayer(longestFlowPathLayer);
-            longestFlowPathLayer = null;
-            updateWatershedLegend();
-        }
+    function showLongestFlowPath(geojson) {
+        showFlowPath('longest-flow-path', geojson, longestFlowPathStyle);
     }
 
     function showDivideFlowPath(geojson) {
-        clearDivideFlowPath();
-        if (!geojson) return;
-        divideFlowPathLayer = nameOverlay(L.geoJSON(geojson, {
-            style: divideFlowPathStyle(),
-            interactive: false,
-        }), 'divide-flow-path').addTo(map);
-        updateWatershedLegend();
-    }
-
-    function clearDivideFlowPath() {
-        if (divideFlowPathLayer) {
-            map.removeLayer(divideFlowPathLayer);
-            divideFlowPathLayer = null;
-            updateWatershedLegend();
-        }
+        showFlowPath('divide-flow-path', geojson, divideFlowPathStyle);
     }
 
     // ===== Watershed legend =====
@@ -809,6 +1262,7 @@
     // While a watershed is shown, a legend lists the parts of it on the map,
     // each with a swatch in the style of its layer.
 
+    var WATERSHED_PARTS = ['watershed', 'outlet', 'main-channel', 'longest-flow-path', 'divide-flow-path'];
     var watershedLegend = null;
     // The option „Sieć zlewni” takes the watershed off the map (setWatershedShown)
     var watershedHidden = false;
@@ -817,11 +1271,11 @@
         return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     }
 
-    /** SVG swatch of a Leaflet path style: a line, an area (`area`) or a circle marker (`point`). */
+    /** SVG swatch of a path style: a line, an area (`area`) or a circle marker (`point`). */
     function pathSwatch(style, shape) {
         var attrs = ' stroke="' + escapeAttr(style.color) + '" stroke-width="' + style.weight + '"' +
             ' stroke-opacity="' + style.opacity + '"' +
-            // Leaflet's default caps and joins are round
+            // Leaflet's default caps and joins are round, as the map's lines
             ' stroke-linecap="' + (style.lineCap || 'round') + '" stroke-linejoin="round"' +
             (style.dashArray ? ' stroke-dasharray="' + style.dashArray + '"' : '');
         var fill = ' fill="' + escapeAttr(style.fillColor) + '" fill-opacity="' + style.fillOpacity + '"';
@@ -837,37 +1291,22 @@
             body + '</svg>';
     }
 
-    /** Main channel segments on the map: BDOT10k-matched (`real`) and the rest (`dem`). */
-    function mainChannelKinds() {
-        var kinds = { real: false, dem: false };
-        if (mainChannelLayer) {
-            mainChannelLayer.eachLayer(function (layer) {
-                var props = layer.feature && layer.feature.properties;
-                kinds[props && props.is_real_stream ? 'real' : 'dem'] = true;
-            });
-        }
-        return kinds;
-    }
-
     function watershedLegendRows() {
         var rows = [];
-        if (selectionBoundaryLayer) {
-            rows.push([pathSwatch(watershedStyle(), 'area'), 'Granica zlewni']);
-        }
-        if (outletMarker) rows.push([pathSwatch(outletStyle(), 'point'), 'Ujście']);
-        var channel = mainChannelKinds();
-        if (channel.real) {
+        if (overlays.watershed) rows.push([pathSwatch(watershedStyle(), 'area'), 'Granica zlewni']);
+        if (overlays.outlet) rows.push([pathSwatch(outletStyle(), 'point'), 'Ujście']);
+        if (overlays['main-channel'] && mainChannelKinds.real) {
             rows.push([pathSwatch(mainChannelStyle({ properties: { is_real_stream: true } })),
                 'Ciek główny (BDOT10k)']);
         }
-        if (channel.dem) {
+        if (overlays['main-channel'] && mainChannelKinds.dem) {
             rows.push([pathSwatch(mainChannelStyle({ properties: { is_real_stream: false } })),
                 'Ciek główny (z NMT)']);
         }
-        if (longestFlowPathLayer) {
+        if (overlays['longest-flow-path']) {
             rows.push([pathSwatch(longestFlowPathStyle()), 'Najdłuższa droga spływu']);
         }
-        if (divideFlowPathLayer) {
+        if (overlays['divide-flow-path']) {
             rows.push([pathSwatch(divideFlowPathStyle()), 'Najdłuższa droga spływu od granicy zlewni']);
         }
         return rows;
@@ -879,19 +1318,13 @@
         var rows = watershedHidden ? [] : watershedLegendRows();
         if (!rows.length) {
             if (watershedLegend) {
-                map.removeControl(watershedLegend);
+                watershedLegend.remove();
                 watershedLegend = null;
             }
             return;
         }
-        if (!watershedLegend) {
-            watershedLegend = L.control({ position: 'bottomleft' });
-            watershedLegend.onAdd = function () {
-                return L.DomUtil.create('div', 'layer-legend watershed-legend');
-            };
-            watershedLegend.addTo(map);
-        }
-        watershedLegend.getContainer().innerHTML = '<div class="layer-legend-title">Zlewnia</div>' +
+        if (!watershedLegend) watershedLegend = legendControl('layer-legend watershed-legend', '');
+        watershedLegend.element.innerHTML = '<div class="layer-legend-title">Zlewnia</div>' +
             rows.map(function (row) {
                 return '<div class="legend-item">' + row[0] + '<span>' + row[1] + '</span></div>';
             }).join('');
@@ -905,13 +1338,7 @@
     function setWatershedShown(shown) {
         if (!map) return;
         watershedHidden = !shown;
-        [selectionBoundaryLayer, outletMarker, mainChannelLayer,
-         longestFlowPathLayer, divideFlowPathLayer].forEach(function (layer) {
-            if (!layer) return;
-            if (shown && !map.hasLayer(layer)) layer.addTo(map);
-            if (!shown && map.hasLayer(layer)) map.removeLayer(layer);
-        });
-        if (shown && divideFlowPathLayer) divideFlowPathLayer.bringToFront();
+        WATERSHED_PARTS.forEach(function (id) { setOverlayShown(id, shown); });
         updateWatershedLegend();
     }
 
@@ -922,7 +1349,7 @@
     }
 
     function profileLineStyle() {
-        return { color: colors().accent, weight: 3, opacity: 0.9, dashArray: null };
+        return { color: colors().accent, weight: 3, opacity: 0.9 };
     }
 
     /** Vertex and chart-hover markers: accent dot with a surface ring. */
@@ -931,11 +1358,21 @@
         return { radius: radius, color: c.surface, weight: 2, opacity: 1, fillColor: c.accent, fillOpacity: 1 };
     }
 
-    // ===== Drawing mode (polyline for terrain profile) =====
+    // ===== Drawing mode (polyline for terrain profile, M10) =====
+    //
+    // A click or tap adds a vertex, a double click or a tap within FINISH_TAP_PX of the
+    // last vertex ends the line, Esc cancels and Backspace takes the last vertex back
+    // (the three buttons of #draw-tools do the same on phones); double-click zoom is off
+    // meanwhile. The vertices and the line so far are the overlay `draw`, the line drawn
+    // the overlay `profile-line`.
 
     // A tap or click this close to the last vertex ends the line instead of adding a
     // vertex: the second tap of a double tap never lands on the exact same spot.
     var FINISH_TAP_PX = 20;
+
+    var drawMode = false;
+    var drawVertices = [];  // [lng, lat]
+    var drawCallback = null;
 
     function setDrawUi(active) {
         var banner = document.getElementById('draw-instructions');
@@ -960,49 +1397,61 @@
         document.getElementById('draw-finish').disabled = n < 2;
     }
 
+    function lineFeature(vertices) {
+        return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: vertices } };
+    }
+
+    /** The vertices placed and the line through them, as the overlay `draw`. */
+    function showDrawn() {
+        if (!drawVertices.length) {
+            removeOverlay('draw');
+            return;
+        }
+        var features = drawVertices.map(function (v) { return pointFeature(v); });
+        if (drawVertices.length > 1) features.unshift(lineFeature(drawVertices));
+        var data = { type: 'FeatureCollection', features: features };
+        if (overlays.draw) {
+            setGeojson('draw', data);
+            return;
+        }
+        showGeojson('draw', data, {
+            parts: [{ style: drawLineStyle, shapes: ['line'] }, { style: function () { return pointStyle(5); }, shapes: ['circle'] }],
+        });
+    }
+
+    function setDrawing(active) {
+        drawMode = active;
+        if (!map) return;
+        map.getContainer().classList.toggle('is-drawing', active);
+        if (active) map.doubleClickZoom.disable();
+        else map.doubleClickZoom.enable();
+    }
+
     function startDrawing(onComplete) {
-        drawMode = true;
         drawVertices = [];
-        drawMarkers = [];
-        drawPolyline = null;
         drawCallback = onComplete;
-        map.getContainer().style.cursor = 'crosshair';
-        // Disable double-click zoom during drawing
-        map.doubleClickZoom.disable();
+        setDrawing(true);
         setDrawUi(true);
     }
 
-    function addDrawVertex(latlng) {
+    function addDrawVertex(lngLat) {
         if (drawVertices.length > 0) {
-            var last = drawVertices[drawVertices.length - 1];
-            var gap = map.latLngToContainerPoint(latlng).distanceTo(map.latLngToContainerPoint(last));
-            if (gap <= FINISH_TAP_PX) {
+            var last = map.project(drawVertices[drawVertices.length - 1]);
+            var at = map.project(lngLat);
+            if (Math.hypot(at.x - last.x, at.y - last.y) <= FINISH_TAP_PX) {
                 if (drawVertices.length >= 2) finishDrawing();
                 return;
             }
         }
-        drawVertices.push(latlng);
-
-        var marker = nameOverlay(L.circleMarker(latlng, pointStyle(5)), 'draw').addTo(map);
-        drawMarkers.push(marker);
-
-        // Update polyline
-        if (drawPolyline) map.removeLayer(drawPolyline);
-        if (drawVertices.length > 1) {
-            drawPolyline = nameOverlay(L.polyline(drawVertices, drawLineStyle()), 'draw').addTo(map);
-        }
+        drawVertices.push([lngLat.lng, lngLat.lat]);
+        showDrawn();
         updateDrawCount();
     }
 
     function undoLastVertex() {
         if (!drawMode || drawVertices.length === 0) return;
         drawVertices.pop();
-        var lastMarker = drawMarkers.pop();
-        if (lastMarker) map.removeLayer(lastMarker);
-        if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
-        if (drawVertices.length > 1) {
-            drawPolyline = nameOverlay(L.polyline(drawVertices, drawLineStyle()), 'draw').addTo(map);
-        }
+        showDrawn();
         updateDrawCount();
     }
 
@@ -1012,39 +1461,26 @@
             return;
         }
 
-        var coords = drawVertices.map(function (ll) { return [ll.lat, ll.lng]; });
-        drawMode = false;
-        map.getContainer().style.cursor = '';
-        map.doubleClickZoom.enable();
+        var coords = drawVertices.map(function (v) { return [v[1], v[0]]; });
+        var line = lineFeature(drawVertices);
+        setDrawing(false);
         setDrawUi(false);
-
-        // Clean up markers
-        drawMarkers.forEach(function (m) { map.removeLayer(m); });
-        drawMarkers = [];
-
-        // Keep the polyline as profile line
-        if (drawPolyline) {
-            if (profileLine) map.removeLayer(profileLine);
-            profileLine = nameOverlay(drawPolyline, 'profile-line');
-            profileLine.setStyle(profileLineStyle());
-            drawPolyline = null;
-        }
+        drawVertices = [];
+        removeOverlay('draw');
+        // The line drawn stays as the profile line
+        showGeojson('profile-line', line, { style: profileLineStyle });
 
         if (drawCallback) drawCallback(coords);
     }
 
     function cancelDrawing() {
-        drawMode = false;
-        map.getContainer().style.cursor = '';
-        map.doubleClickZoom.enable();
+        setDrawing(false);
         setDrawUi(false);
-        drawMarkers.forEach(function (m) { map.removeLayer(m); });
-        drawMarkers = [];
-        if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
         drawVertices = [];
         drawCallback = null;
+        removeOverlay('draw');
         // Clear profile line from previous completed drawing
-        if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
+        removeOverlay('profile-line');
     }
 
     function isDrawing() { return drawMode; }
@@ -1052,109 +1488,72 @@
     // ===== Profile line display =====
 
     function clearProfileLine() {
-        if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
+        removeOverlay('profile-line');
     }
 
     // Profile hover marker (shows position on line when hovering over chart)
-    var profileHoverMarker = null;
-
     function showProfileHoverMarker(lat, lng) {
-        if (profileHoverMarker) {
-            profileHoverMarker.setLatLng([lat, lng]);
-        } else {
-            profileHoverMarker = nameOverlay(L.circleMarker([lat, lng], pointStyle(6)), 'profile-marker').addTo(map);
-        }
+        if (!map) return;
+        showPoint('profile-marker', [lng, lat], function () { return pointStyle(6); });
     }
 
     function clearProfileHoverMarker() {
-        if (profileHoverMarker) {
-            map.removeLayer(profileHoverMarker);
-            profileHoverMarker = null;
-        }
+        removeOverlay('profile-marker');
     }
 
     // ===== BDOT10k vector layers (lakes + streams) =====
 
+    var geojsonLoads = {};
+
+    /**
+     * A GeoJSON overlay of the data directory, fetched once and added hidden.
+     * @returns {Promise<boolean>} Whether it is on the map.
+     */
+    function loadGeojsonOverlay(id, url, options) {
+        if (!geojsonLoads[id]) {
+            geojsonLoads[id] = ready.then(function (shown) {
+                if (!shown) return false;
+                return fetch(url).then(function (res) {
+                    if (!res.ok) throw new Error(url + ': ' + res.status);
+                    return res.json();
+                }).then(function (geojson) {
+                    showGeojson(id, geojson, Object.assign({ shown: false }, options));
+                    return true;
+                });
+            }).catch(function (err) {
+                console.warn(id + ' not available:', err.message);
+                geojsonLoads[id] = null;
+                return false;
+            });
+        }
+        return geojsonLoads[id];
+    }
+
     function loadBdotLakes() {
-        return fetch('/data/bdot_lakes.geojson')
-            .then(function (res) {
-                if (!res.ok) throw new Error('No BDOT lakes data');
-                return res.json();
-            })
-            .then(function (geojson) {
+        return loadGeojsonOverlay('bdot-lakes', '/data/bdot_lakes.geojson', {
+            style: function () {
                 var info = colors().info;
-                bdotLakesLayer = nameOverlay(L.geoJSON(geojson, {
-                    style: {
-                        color: info,
-                        weight: 1,
-                        fillColor: info,
-                        fillOpacity: 0.4,
-                    },
-                }), 'bdot-lakes');
-                return bdotLakesLayer;
-            })
-            .catch(function (err) { console.warn('BDOT lakes not available:', err.message); return null; });
+                return { color: info, weight: 1, opacity: 1, fillColor: info, fillOpacity: 0.4 };
+            },
+        });
     }
 
-    function getBdotLakesLayer() { return bdotLakesLayer; }
+    var SOURCE_LAYER = ['get', 'source_layer'];
 
-    function setBdotLakesOpacity(opacity) {
-        if (bdotLakesLayer) {
-            pathOpacity['bdot-lakes'] = opacity;
-            if (opacity === 0) {
-                bdotLakesLayer.setStyle({
-                    weight: 0,
-                    fillOpacity: 0,
-                    opacity: 0,
-                });
-            } else {
-                bdotLakesLayer.setStyle({
-                    weight: 1,
-                    fillOpacity: opacity * 0.4,
-                    opacity: opacity,
-                });
-            }
-        }
-    }
-
-    /** BDOT10k streams: rivers (SWRS) and canals (SWKN) in --info, ditches softer. */
-    function bdotStreamColor(feature) {
-        var src = feature.properties.source_layer || '';
-        var c = colors();
-        return (src === 'OT_SWRS_L' || src === 'OT_SWKN_L') ? c.info : c.infoSoft;
-    }
-
+    /** BDOT10k streams: rivers (SWRS) and canals (SWKN) in --info, ditches softer and dashed. */
     function loadBdotStreams() {
-        return fetch('/data/bdot_streams.geojson')
-            .then(function (res) {
-                if (!res.ok) throw new Error('No BDOT streams data');
-                return res.json();
-            })
-            .then(function (geojson) {
-                bdotStreamsLayer = nameOverlay(L.geoJSON(geojson, {
-                    style: function (feature) {
-                        var src = feature.properties.source_layer || '';
-                        var color = bdotStreamColor(feature);
-                        if (src === 'OT_SWRS_L') {
-                            return { color: color, weight: 2, opacity: 0.8 };
-                        } else if (src === 'OT_SWKN_L') {
-                            return { color: color, weight: 1.5, opacity: 0.7, dashArray: '6,3' };
-                        }
-                        return { color: color, weight: 1, opacity: 0.6, dashArray: '4,4' };
-                    },
-                }), 'bdot-streams');
-                return bdotStreamsLayer;
-            })
-            .catch(function (err) { console.warn('BDOT streams not available:', err.message); return null; });
-    }
-
-    function getBdotStreamsLayer() { return bdotStreamsLayer; }
-
-    function setBdotStreamsOpacity(opacity) {
-        if (bdotStreamsLayer) {
-            pathOpacity['bdot-streams'] = opacity;
-            bdotStreamsLayer.setStyle({ opacity: opacity });
-        }
+        return loadGeojsonOverlay('bdot-streams', '/data/bdot_streams.geojson', {
+            parts: [{
+                filter: ['!', ['match', SOURCE_LAYER, ['OT_SWRS_L', 'OT_SWKN_L'], true, false]],
+                style: function () { return { color: colors().infoSoft, weight: 1, opacity: 0.6, dashArray: '4,4' }; },
+            }, {
+                filter: ['==', SOURCE_LAYER, 'OT_SWKN_L'],
+                style: function () { return { color: colors().info, weight: 1.5, opacity: 0.7, dashArray: '6,3' }; },
+            }, {
+                filter: ['==', SOURCE_LAYER, 'OT_SWRS_L'],
+                style: function () { return { color: colors().info, weight: 2, opacity: 0.8 }; },
+            }],
+        });
     }
 
     // ===== HSG soil layer =====
@@ -1166,138 +1565,294 @@
         return memo[group];
     }
 
-    function hsgFeatureColor(feature) {
-        return hsgColor(feature.properties.hsg_group || 'B');
+    /** The colour of a feature's group: B where it names none, as the chart counts it. */
+    function hsgFeatureColor() {
+        var group = ['get', 'hsg_group'];
+        return ['case', ['!', ['to-boolean', group]], hsgColor('B'),
+            ['match', group, 'A', hsgColor('A'), 'B', hsgColor('B'), 'C', hsgColor('C'), 'D', hsgColor('D'),
+                hsgColor('')]];
     }
 
     function loadHsgLayer() {
-        return fetch('/data/soil_hsg.geojson')
-            .then(function (res) {
-                if (!res.ok) throw new Error('No HSG data');
-                return res.json();
-            })
-            .then(function (geojson) {
-                hsgLayer = nameOverlay(L.geoJSON(geojson, {
-                    style: function (feature) {
-                        var color = hsgFeatureColor(feature);
-                        return {
-                            color: color,
-                            weight: 0.5,
-                            fillColor: color,
-                            fillOpacity: 0.35,
-                        };
-                    },
-                }), 'hsg');
-                return hsgLayer;
-            })
-            .catch(function (err) { console.warn('HSG layer not available:', err.message); return null; });
+        return loadGeojsonOverlay('hsg', '/data/soil_hsg.geojson', {
+            style: function () {
+                var color = hsgFeatureColor();
+                return { color: color, weight: 0.5, opacity: 1, fillColor: color, fillOpacity: 0.35 };
+            },
+        });
     }
 
-    function getHsgLayer() { return hsgLayer; }
+    // ===== Pointer (M9) =====
+    //
+    // A click goes to the mode of js/app.js, or adds a vertex while drawing; a click on a
+    // marker (a network point or label) is the marker's alone. A pointer over a feature of
+    // an overlay with a tooltip (a stream, the outlet, a junction of the network) shows
+    // one tooltip, a popup without a close button.
 
-    function setHsgOpacity(opacity) {
-        if (hsgLayer) {
-            pathOpacity.hsg = opacity;
-            if (opacity === 0) {
-                hsgLayer.setStyle({ weight: 0, fillOpacity: 0, opacity: 0 });
-            } else {
-                hsgLayer.setStyle({ weight: 0.5, fillOpacity: opacity * 0.35, opacity: opacity });
-            }
+    var tip = { popup: null, overlay: null };
+
+    function hideTooltip() {
+        if (tip.popup) tip.popup.remove();
+        tip.overlay = null;
+    }
+
+    function tooltipLayers() {
+        var ids = [];
+        Object.keys(overlays).forEach(function (id) {
+            var o = overlays[id];
+            if (!o.tooltip || !o.shown) return;
+            o.layers.forEach(function (layer) { ids.push(layer.id); });
+        });
+        return ids;
+    }
+
+    function onHover(e) {
+        var layers = tooltipLayers();
+        var feature = layers.length ? map.queryRenderedFeatures(e.point, { layers: layers })[0] : null;
+        var id = feature && layerOverlay[feature.layer.id];
+        var shown = id ? overlays[id].tooltip(feature.properties || {}, feature) : null;
+        if (!shown) {
+            hideTooltip();
+            return;
         }
-    }
-
-    // ===== Land Cover (MVT) =====
-
-    // Land cover classes in legend order, labels for the map legend
-    var LANDCOVER_LEGEND = [
-        ['las', 'Las'],
-        ['łąka', 'Łąka'],
-        ['grunt_orny', 'Grunt orny'],
-        ['zabudowa_mieszkaniowa', 'Zabudowa mieszk.'],
-        ['zabudowa_przemysłowa', 'Zabudowa przem.'],
-        ['droga', 'Droga'],
-        ['woda', 'Woda'],
-        ['inny', 'Inny'],
-    ];
-
-    /** Land cover class colour, shared with the land cover chart (charts.js palette). */
-    function landCoverColor(category) {
-        var memo = colors().landCover;
-        if (!(category in memo)) memo[category] = Hydrograf.charts.landCoverColor(category);
-        return memo[category];
-    }
-
-    function loadLandCoverVector() {
-        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
-        if (landCoverLayer && map.hasLayer(landCoverLayer)) {
-            map.removeLayer(landCoverLayer);
+        if (!tip.popup) {
+            tip.popup = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                focusAfterOpen: false,
+                anchor: 'bottom',
+                offset: 10,
+                maxWidth: 'none',
+                className: 'map-tooltip',
+            });
         }
-
-        landCoverLayer = nameOverlay(L.vectorGrid.protobuf(
-            '/api/tiles/landcover/{z}/{x}/{y}.pbf',
-            {
-                pane: 'landcoverPane',
-                vectorTileLayerStyles: {
-                    landcover: function (properties) {
-                        var color = landCoverColor(properties.category || 'inny');
-                        return {
-                            fill: true,
-                            fillColor: color,
-                            fillOpacity: 0.6,
-                            stroke: false,
-                            weight: 0,
-                        };
-                    }
-                },
-                interactive: false,
-                minZoom: 8,
-                maxZoom: 18,
-                maxNativeZoom: 18,
-                attribution: 'Pokrycie terenu (BDOT10k)',
-            }
-        ), 'landcover');
-
-        return landCoverLayer;
+        if (shown.html !== undefined) tip.popup.setHTML(shown.html);
+        else tip.popup.setText(shown.text);
+        tip.popup.setLngLat(shown.at || e.lngLat);
+        if (!tip.popup.isOpen()) tip.popup.addTo(map);
+        tip.overlay = id;
     }
 
-    function getLandCoverLayer() { return landCoverLayer; }
-
-    function setLandCoverOpacity(opacity) {
-        if (landCoverLayer) landCoverLayer.setOpacity(opacity);
+    /** Whether a map event began on a marker's element. */
+    function onMarker(e) {
+        var target = e.originalEvent && e.originalEvent.target;
+        return !!(target && target.closest && target.closest('.maplibregl-marker'));
     }
 
-    var landCoverLegend = null;
+    // ===== Markers: the network's points and labels =====
 
-    function landCoverLegendHtml() {
-        return '<div class="layer-legend-title">Pokrycie terenu</div>' +
-            LANDCOVER_LEGEND.map(function (entry) {
-                return '<div class="legend-item"><span class="legend-swatch" style="background:' +
-                    landCoverColor(entry[0]) + ';"></span> ' + entry[1] + '</div>';
-            }).join('');
-    }
+    // A dragged point this close to the map's edge pans the map (open question 5)
+    var EDGE_PX = 20;
+    var EDGE_STEP_PX = 10;
+    var markers = [];   // every marker made, shown or not
 
-    function createLandCoverLegend() {
-        if (landCoverLegend) return;
-        landCoverLegend = L.control({ position: 'bottomleft' });
-        landCoverLegend.onAdd = function () {
-            var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML = landCoverLegendHtml();
-            return div;
+    /**
+     * A DOM marker over the map whose element the caller owns.
+     * @param {number[]} lngLat - [longitude, latitude].
+     * @param {Object} options - `element`, `draggable`, `point` (a point of the network,
+     *     listed by describe() as `id` with the element's title), `id`, `onClick`,
+     *     `onDragStart`, `onDragEnd(lngLat)`.
+     * @returns {?Object} The handle: show(), hide(), remove(), setLngLat(lngLat),
+     *     getLngLat(), setDraggable(on), `id`, `element`; null without a map.
+     */
+    function addMarker(lngLat, options) {
+        if (!map) return null;
+        var element = options.element;
+        var marker = new maplibregl.Marker({ element: element, anchor: 'center', draggable: !!options.draggable })
+            .setLngLat(lngLat);
+        var handle = {
+            id: options.id,
+            element: element,
+            point: !!options.point,
+            shown: false,
+            show: function () {
+                if (!handle.shown && map) marker.addTo(map);
+                handle.shown = true;
+            },
+            hide: function () {
+                marker.remove();
+                handle.shown = false;
+            },
+            remove: function () {
+                handle.hide();
+                markers = markers.filter(function (m) { return m !== handle; });
+            },
+            setLngLat: function (to) { marker.setLngLat(to); },
+            getLngLat: function () {
+                var at = marker.getLngLat();
+                return [at.lng, at.lat];
+            },
+            setDraggable: function (on) { marker.setDraggable(on); },
         };
-        landCoverLegend.addTo(map);
+        if (options.onClick) {
+            element.addEventListener('click', function (event) {
+                event.stopPropagation();
+                options.onClick();
+            });
+        }
+        var panning = null;
+        function edgePan() {
+            var container = map.getContainer();
+            var at = map.project(marker.getLngLat());
+            var dx = at.x < EDGE_PX ? -EDGE_STEP_PX : at.x > container.clientWidth - EDGE_PX ? EDGE_STEP_PX : 0;
+            var dy = at.y < EDGE_PX ? -EDGE_STEP_PX : at.y > container.clientHeight - EDGE_PX ? EDGE_STEP_PX : 0;
+            if (!dx && !dy) {
+                panning = null;
+                return;
+            }
+            // The point stays under the pointer while the map moves under it
+            map.panBy([dx, dy], { animate: false });
+            marker.setLngLat(map.unproject(at));
+            panning = requestAnimationFrame(edgePan);
+        }
+        marker.on('dragstart', function () {
+            if (options.onDragStart) options.onDragStart();
+        });
+        marker.on('drag', function () {
+            if (panning === null) edgePan();
+        });
+        marker.on('dragend', function () {
+            if (panning !== null) cancelAnimationFrame(panning);
+            panning = null;
+            if (options.onDragEnd) options.onDragEnd(handle.getLngLat());
+        });
+        markers.push(handle);
+        return handle;
     }
 
-    function removeLandCoverLegend() {
-        if (landCoverLegend) {
-            map.removeControl(landCoverLegend);
-            landCoverLegend = null;
-        }
+    /** A point of the network: a draggable marker, described by describe() (M9). */
+    function addPoint(lngLat, options) {
+        return addMarker(lngLat, Object.assign({}, options, { point: true }));
+    }
+
+    /** A label of the network that selects on a click or a key and keeps keyboard focus. */
+    function addLabel(lngLat, options) {
+        var element = options.element;
+        element.tabIndex = 0;
+        element.setAttribute('role', 'button');
+        element.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            options.onClick();
+        });
+        return addMarker(lngLat, options);
     }
 
     // ===== Utilities =====
 
     function setLoadingCursor(loading) {
-        if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
+        if (map) map.getContainer().classList.toggle('is-loading', loading);
+    }
+
+    /**
+     * Fit the view to [west, south, east, north] at a whole zoom level, as the map's fits
+     * have always been: raster tiles show at the scale they were drawn for and the flood
+     * hazard map's boxes at the view's. `done` runs once the view stays.
+     */
+    function fitView(box, options, done) {
+        if (!map || !box) return false;
+        var camera = map.cameraForBounds([[box[0], box[1]], [box[2], box[3]]], {
+            padding: options.padding === undefined ? FIT_PADDING_PX : options.padding,
+            maxZoom: options.maxZoom === undefined ? MAX_ZOOM : options.maxZoom,
+        });
+        if (!camera) return false;
+        var zoom = Math.floor(Math.round(camera.zoom * 100) / 100);
+        zoom = Math.max(map.getMinZoom(), Math.min(zoom, map.getMaxZoom()));
+        var center = map.getCenter();
+        var target = { center: camera.center, zoom: zoom };
+        var still = zoom === map.getZoom() && map.project(camera.center).dist(map.project(center)) < 0.5;
+        if (done) {
+            if (still) done();
+            else map.once('moveend', function () { done(); });
+        }
+        if (still) return true;
+        if (Math.abs(zoom - map.getZoom()) > ANIMATED_ZOOMS) map.jumpTo(target);
+        else map.easeTo(Object.assign(target, { duration: FIT_DURATION_MS }));
+        return true;
+    }
+
+    /**
+     * Fit the map to [west, south, east, north]; ignores missing or invalid bounds.
+     * `options`: `padding` in pixels (20), `maxZoom`.
+     */
+    function fitToBounds(box, options) {
+        if (!box || !(box[0] <= box[2] && box[1] <= box[3])) return;
+        fitView(box, options || {});
+    }
+
+    /** The view for a report (js/feedback.js): centre and MapLibre's zoom; null without a map. */
+    function view() {
+        if (!map) return null;
+        var center = map.getCenter();
+        return { center: { lat: center.lat, lng: center.lng }, zoom: map.getZoom() };
+    }
+
+    /** The container's pixel of a place, from the map's top left; null without a map. */
+    function containerPoint(lngLat) {
+        if (!map) return null;
+        var at = map.project(lngLat);
+        return { x: at.x, y: at.y };
+    }
+
+    function containerRect() {
+        return map ? map.getContainer().getBoundingClientRect() : null;
+    }
+
+    /** Move the view by pixels (x right, y down). */
+    function panBy(dx, dy) {
+        if (map) map.panBy([dx, dy]);
+    }
+
+    /** Call `fn` after every change of the view's zoom. */
+    function onZoomEnd(fn) {
+        ready.then(function (shown) { if (shown) map.on('zoomend', fn); });
+    }
+
+    /** Call `fn(lat, lng)` as the pointer moves over the map. */
+    function onPointerMove(fn) {
+        ready.then(function (shown) {
+            if (!shown) return;
+            map.on('mousemove', function (e) { fn(e.lngLat.lat, e.lngLat.lng); });
+        });
+    }
+
+    // ===== Base maps of Nogat's kit (DEV-15.15, ADR-089) =====
+    //
+    // The kit draws the chosen entry under the slot of the base map, `removeMaplibreBasemap`
+    // takes it off and `repaintMaplibreBasemap` repaints its grey style after a change of
+    // theme (js/nogat.js hands them on). Each waits for the map, in the order called.
+
+    function basemapKit() {
+        return (window.Hydrograf.nogat && window.Hydrograf.nogat.basemaps) || null;
+    }
+
+    /**
+     * Draw a base map entry; `options.onFailure(id)` when its provider fails.
+     * @returns {Promise} Settled once drawn; rejected when it fails or another replaces it.
+     */
+    function showBasemap(entry, options) {
+        return ready.then(function (shown) {
+            var kit = basemapKit();
+            if (!shown || !kit) return null;
+            return kit.maplibre(entry, {
+                map: map,
+                locale: 'pl',
+                before: slot('basemap'),
+                onFailure: options.onFailure,
+            });
+        });
+    }
+
+    function removeBasemap() {
+        return ready.then(function (shown) {
+            var kit = basemapKit();
+            if (shown && kit) kit.remove(map);
+        });
+    }
+
+    function repaintBasemap() {
+        var kit = basemapKit();
+        if (map && kit) kit.repaint(map);
     }
 
     // ===== What the map draws (the browser tests of tests/e2e) =====
@@ -1305,65 +1860,19 @@
     // describe() reads what the map draws the same way whatever library draws it
     // (Nogat's plan 2026-11-24-hydrograf-maplibre, step 1): the overlays from the
     // bottom up with their opacity, the network's point markers and the view in
-    // degrees and as a scale. A module names the layer of an overlay with
-    // nameOverlay(); a layer without a name is not described.
+    // degrees and as a scale. An overlay is listed while it is shown and the view's zoom
+    // lies within its layers' zoom range.
 
     // The scale as a WMS server computes it: metres of EPSG:3857 per CSS pixel over
-    // OGC's standard rendering pixel of 0.28 mm
+    // OGC's standard rendering pixel of 0.28 mm; MapLibre's world is 512 px wide
     var EQUATOR_M = 40075016.68557849;
+    var WORLD_PX = 512;
     var STANDARD_PIXEL_M = 0.00028;
 
-    // The opacity the layers panel gave an overlay drawn as paths, whose sliders set
-    // the paths' own opacities; 1 until a slider moves
-    var pathOpacity = {};
-
-    /**
-     * Name the layer of an overlay for describe(): e.g. 'dem', 'hazard' or
-     * 'result:<id>'; a marker named so is a point of the network.
-     * @returns {L.Layer} The layer.
-     */
-    function nameOverlay(layer, id) {
-        layer.options.hydrografOverlay = id;
-        return layer;
+    /** The scale's denominator of a zoom. */
+    function scaleAt(zoom) {
+        return EQUATOR_M / (WORLD_PX * Math.pow(2, zoom)) / STANDARD_PIXEL_M;
     }
-
-    /** The elements that draw a layer: its container, image, path or icon, or its children's. */
-    function drawnElements(layer) {
-        if (typeof layer.getLayers === 'function') {
-            return layer.getLayers().reduce(function (all, child) {
-                return all.concat(drawnElements(child));
-            }, []);
-        }
-        var element = typeof layer.getContainer === 'function' ? layer.getContainer()
-            : typeof layer.getElement === 'function' ? layer.getElement() : null;
-        return element ? [element] : [];
-    }
-
-    function paneZIndex(element) {
-        var pane = element.closest('.leaflet-pane:not(.leaflet-map-pane)');
-        return pane ? parseInt(getComputedStyle(pane).zIndex, 10) || 0 : 0;
-    }
-
-    /** Whether element a is drawn below element b: a lower pane, or earlier in the same one. */
-    function drawnBelow(a, b) {
-        var za = paneZIndex(a);
-        var zb = paneZIndex(b);
-        if (za !== zb) return za < zb;
-        return a !== b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    }
-
-    /** An overlay's opacity as a whole: a tile layer's or image's, else what the panel gave its paths. */
-    function overlayOpacity(id, layer) {
-        if (layer instanceof L.GridLayer) {
-            var container = layer.getContainer();
-            return container && container.style.opacity !== ''
-                ? parseFloat(container.style.opacity) : layer.options.opacity;
-        }
-        if (layer instanceof L.ImageOverlay) return layer.options.opacity;
-        return id in pathOpacity ? pathOpacity[id] : 1;
-    }
-
-    function lngLat(latlng) { return [latlng.lng, latlng.lat]; }
 
     /**
      * What the map draws.
@@ -1374,109 +1883,257 @@
      */
     function describe() {
         if (!map) return null;
-        var found = {};
-        var points = [];
-        map.eachLayer(function (layer) {
-            var id = layer.options && layer.options.hydrografOverlay;
-            if (!id) return;
-            if (layer instanceof L.Marker) {
-                var icon = layer.getElement();
-                points.push({ id: layer.options.alt, title: icon ? icon.title : '', lngLat: lngLat(layer.getLatLng()) });
-                return;
-            }
-            var elements = drawnElements(layer);
-            if (!elements.length) return;
-            var entry = found[id];
-            if (!entry) {
-                entry = found[id] = { id: id, opacity: overlayOpacity(id, layer), layers: [], elements: [] };
-            }
-            entry.layers.push(layer);
-            entry.elements = entry.elements.concat(elements);
-        });
-        var overlays = Object.keys(found).map(function (id) {
-            var entry = found[id];
-            entry.bottom = entry.elements.reduce(function (low, element) {
-                return drawnBelow(element, low) ? element : low;
-            });
-            return entry;
-        });
-        overlays.sort(function (a, b) {
-            if (a.bottom === b.bottom) return 0;
-            return drawnBelow(a.bottom, b.bottom) ? -1 : 1;
+        var zoom = map.getZoom();
+        var listed = {};
+        var shown = [];
+        map.getLayersOrder().forEach(function (layerId) {
+            var id = layerOverlay[layerId];
+            var o = id && overlays[id];
+            if (!o || listed[id] || !o.shown) return;
+            var layer = o.layers.filter(function (l) { return l.id === layerId; })[0];
+            if (!drawnAt(layer, zoom)) return;
+            listed[id] = true;
+            shown.push(o);
         });
         var center = map.getCenter();
         var bounds = map.getBounds();
         return {
-            center: lngLat(center),
+            center: [center.lng, center.lat],
             bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-            scale: EQUATOR_M / map.options.crs.scale(map.getZoom()) / STANDARD_PIXEL_M,
-            overlays: overlays.map(function (entry) {
-                var overlay = { id: entry.id, opacity: entry.opacity };
-                var only = entry.layers.length === 1 ? entry.layers[0] : null;
-                if (only instanceof L.CircleMarker) overlay.lngLat = lngLat(only.getLatLng());
+            scale: scaleAt(zoom),
+            overlays: shown.map(function (o) {
+                var overlay = { id: o.id, opacity: o.opacity };
+                if (o.point) overlay.lngLat = o.point.slice();
                 return overlay;
             }),
-            points: points,
+            points: markers.filter(function (m) { return m.point && m.shown; }).map(function (m) {
+                return { id: m.id, title: m.element.title, lngLat: m.getLngLat() };
+            }),
         };
     }
 
-    // ===== Theme change: restyle every live overlay =====
+    // ===== Theme change: restyle every overlay =====
 
     onThemeChange(function () {
         if (!map) return;
-        var c = colors();
-        if (selectionBoundaryLayer) selectionBoundaryLayer.setStyle(watershedStyle());
-        if (preview) preview.levels.setStyle(previewStyle);
-        if (outletMarker) outletMarker.setStyle(outletStyle());
-        if (mainChannelLayer) mainChannelLayer.setStyle(mainChannelStyle);
-        if (longestFlowPathLayer) longestFlowPathLayer.setStyle(longestFlowPathStyle());
-        if (divideFlowPathLayer) divideFlowPathLayer.setStyle(divideFlowPathStyle());
-        drawMarkers.forEach(function (m) { m.setStyle(pointStyle(5)); });
-        if (drawPolyline) drawPolyline.setStyle(drawLineStyle());
-        if (profileLine) profileLine.setStyle(profileLineStyle());
-        if (profileHoverMarker) profileHoverMarker.setStyle(pointStyle(6));
-        // Colours only: the opacity set from the layers panel stays
-        if (bdotLakesLayer) bdotLakesLayer.setStyle({ color: c.info, fillColor: c.info });
-        if (bdotStreamsLayer) {
-            bdotStreamsLayer.setStyle(function (f) { return { color: bdotStreamColor(f) }; });
-        }
-        if (hsgLayer) {
-            hsgLayer.setStyle(function (f) {
-                var color = hsgFeatureColor(f);
-                return { color: color, fillColor: color };
-            });
-        }
-        // Vector tiles take their style when drawn: redraw the visible ones
-        if (streamsLayer && map.hasLayer(streamsLayer)) streamsLayer.redraw();
-        if (landCoverLayer && map.hasLayer(landCoverLayer)) landCoverLayer.redraw();
-        if (streamsLegend) streamsLegend.getContainer().innerHTML = streamsLegendHtml();
-        if (hsgLegend) hsgLegend.getContainer().innerHTML = hsgLegendHtml();
-        if (landCoverLegend) landCoverLegend.getContainer().innerHTML = landCoverLegendHtml();
+        map.setPaintProperty('background', 'background-color', token('--surface-2'));
+        Object.keys(overlays).forEach(function (id) { applyPaint(overlays[id], false); });
+        if (streamsLegend) streamsLegend.element.innerHTML = streamsLegendHtml();
+        if (hsgLegend) hsgLegend.element.innerHTML = hsgLegendHtml();
+        if (landCoverLegend) landCoverLegend.element.innerHTML = landCoverLegendHtml();
         updateWatershedLegend();
     });
 
+    // ===== The map (M3) and its absence (M13) =====
+
+    /** The map's area says why there is no map; the panels go on without it. */
+    function unavailable(container, message, error) {
+        console.warn('The map is not drawn:', error && error.message ? error.message : error);
+        var note = document.createElement('p');
+        note.className = 'map-unavailable';
+        note.setAttribute('role', 'status');
+        note.textContent = message;
+        container.replaceChildren(note);
+        resolveReady(false);
+    }
+
+    /** MapLibre's words of its controls, in Polish. */
+    function locale() {
+        var kit = basemapKit();
+        return {
+            'Map.Title': 'Mapa',
+            'NavigationControl.ZoomIn': 'Przybliż',
+            'NavigationControl.ZoomOut': 'Oddal',
+            'AttributionControl.ToggleAttribution': kit && kit.texts ? kit.texts.credit : 'Pokaż lub ukryj źródła',
+        };
+    }
+
+    /**
+     * Keep MapLibre's credit to what the map draws: once no source has a credit left, its
+     * control only hides (`maplibregl-attrib-empty`) and keeps the words it showed last,
+     * those of a base map that failed or was taken off. The control's own listeners come
+     * first, added with it by the map.
+     */
+    function clearHiddenCredit(created) {
+        var credit = created.getContainer().querySelector('.maplibregl-ctrl-attrib');
+        var words = credit && credit.querySelector('.maplibregl-ctrl-attrib-inner');
+        if (!words) return;
+        function clear() {
+            if (credit.classList.contains('maplibregl-attrib-empty')) words.replaceChildren();
+        }
+        created.on('sourcedata', clear);
+        created.on('styledata', clear);
+    }
+
+    /** A map without rotation or pitch on #map; throws without WebGL 2. */
+    function create(container) {
+        var created = new maplibregl.Map({
+            container: container,
+            style: emptyStyle(),
+            center: START.center,
+            zoom: START.zoom,
+            maxZoom: MAX_ZOOM,
+            dragRotate: false,
+            pitchWithRotate: false,
+            touchPitch: false,
+            maxPitch: 0,
+            // The catalogue's credit in the map's corner; on a phone folded at the first drag
+            attributionControl: { compact: window.matchMedia(PHONE).matches },
+            locale: locale(),
+        });
+        created.touchZoomRotate.disableRotation();
+        created.keyboard.disableRotation();
+        clearHiddenCredit(created);
+        // With a listener MapLibre logs nothing itself: a tile that does not load (a
+        // missing DEM tile at the data's edge, a provider's failure the kit reports)
+        // leaves the map as it is; anything else is a fault of this page
+        created.on('error', function (event) {
+            if (!event.sourceId && !event.tile) console.warn(event.error);
+        });
+        return created;
+    }
+
+    /** The map's controls and events, once its style has loaded. */
+    function configure() {
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+        // Cursor coordinates, bottom left: added first, so the legends stack above it
+        if (Hydrograf.coords) Hydrograf.coords.addReadout();
+
+        map.on('click', function (e) {
+            if (onMarker(e)) return;
+            // Drawing mode: add vertex
+            if (drawMode) {
+                addDrawVertex(e.lngLat);
+                return;
+            }
+            if (clickCallback) clickCallback(e.lngLat.lat, e.lngLat.lng);
+        });
+
+        map.on('dblclick', function (e) {
+            if (drawMode) {
+                e.preventDefault();
+                finishDrawing();
+            }
+        });
+
+        map.on('mousemove', onHover);
+        map.on('mouseout', hideTooltip);
+
+        loadDemOverlay();
+    }
+
+    /**
+     * Draw the map on #map. A click on the map calls `onClickCallback(lat, lng)`.
+     * The base map is not added here: layers.js draws the one its switcher shows.
+     * @returns {Promise<boolean>} Hydrograf.map.ready.
+     */
+    function init(onClickCallback) {
+        clickCallback = onClickCallback;
+        var container = document.getElementById('map');
+
+        // Keyboard shortcuts for drawing mode
+        document.addEventListener('keydown', function (e) {
+            if (!drawMode) return;
+            if (e.key === 'Escape') {
+                cancelDrawing();
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                undoLastVertex();
+            }
+        });
+
+        // On-screen drawing controls: phones have no Esc/Backspace and no reliable dblclick.
+        // Absent in an index.html cached from before they existed; drawing still works then.
+        var drawTools = document.getElementById('draw-tools');
+        if (drawTools) {
+            document.getElementById('draw-undo').addEventListener('click', undoLastVertex);
+            document.getElementById('draw-finish').addEventListener('click', finishDrawing);
+            document.getElementById('draw-cancel').addEventListener('click', cancelDrawing);
+        }
+
+        // The shell resizes panels around the map; the map must re-measure.
+        window.addEventListener('hydrograf:layout', function () {
+            if (map) map.resize();
+        });
+
+        import(absolute(LIBRARY)).then(function (library) {
+            maplibregl = library;
+            var created;
+            try {
+                created = create(container);
+            } catch (error) {
+                unavailable(container, error instanceof library.GPUInitializationError ? NO_WEBGL : NO_MAP, error);
+                return;
+            }
+            created.once('load', function () {
+                map = created;
+                configure();
+                resolveReady(true);
+            });
+        }).catch(function (error) {
+            unavailable(container, NO_MAP, error);
+        });
+        return ready;
+    }
+
     window.Hydrograf.map = {
         init: init,
-        _getMap: function () { return map; },
-        // What the map draws, for the browser tests; the name of an overlay's layer
+        // Resolves to true once the map is drawn, to false without one (M13); never rejects
+        ready: ready,
+        // What the map draws, for the browser tests
         describe: describe,
-        nameOverlay: nameOverlay,
         // Theme: token colours for overlays and charts drawn by other modules
         token: token,
         rgb: rgb,
         mix: mix,
         onThemeChange: onThemeChange,
-        // Legend swatch in the style of a Leaflet path (the network's legend, js/network.js)
+        // Legend swatch in the style of a path (the network's legend, js/network.js)
         pathSwatch: pathSwatch,
-        getDemLayer: getDemLayer,
-        getDemBounds: getDemBounds,
-        getDataBounds: getDataBounds,
+        // Overlays by id (describe()): shown, opacity, extent, filter
+        hasOverlay: hasOverlay,
+        withinZoom: withinZoom,
+        firstScale: firstScale,
+        setOverlayShown: setOverlayShown,
+        setOverlayOpacity: setOverlayOpacity,
+        setOverlayFilter: setOverlayFilter,
+        overlayBounds: overlayBounds,
+        removeOverlay: removeOverlay,
+        showGeojson: showGeojson,
+        setGeojson: setGeojson,
+        showPoint: showPoint,
+        showRaster: showRaster,
+        showImage: showImage,
+        setTiles: setTiles,
+        geojsonBounds: geojsonBounds,
+        // Markers and controls
+        addPoint: addPoint,
+        addLabel: addLabel,
+        addControl: addControl,
+        // The view
         fitToBounds: fitToBounds,
-        setDemOpacity: setDemOpacity,
-        getStreamsLayer: getStreamsLayer,
+        getDataBounds: getDataBounds,
+        getDemBounds: getDemBounds,
+        view: view,
+        containerPoint: containerPoint,
+        containerRect: containerRect,
+        panBy: panBy,
+        onZoomEnd: onZoomEnd,
+        onPointerMove: onPointerMove,
+        setLoadingCursor: setLoadingCursor,
+        // Base maps of Nogat's kit
+        showBasemap: showBasemap,
+        removeBasemap: removeBasemap,
+        repaintBasemap: repaintBasemap,
+        // DEM, streams and the overlays of the layers panel
+        loadDem: loadDem,
+        setStreamsThreshold: setStreamsThreshold,
         getStreamsThreshold: getStreamsThreshold,
-        loadStreamsVector: loadStreamsVector,
-        setStreamsOpacity: setStreamsOpacity,
+        loadLandCover: loadLandCover,
+        loadSewer: loadSewer,
+        loadBdotLakes: loadBdotLakes,
+        loadBdotStreams: loadBdotStreams,
+        loadHsgLayer: loadHsgLayer,
+        // Watershed
         showSelectionBoundary: showSelectionBoundary,
         clearSelectionBoundary: clearSelectionBoundary,
         showDelineatePreview: showDelineatePreview,
@@ -1484,8 +2141,9 @@
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
         showMainChannel: showMainChannel,
+        showLongestFlowPath: showLongestFlowPath,
+        showDivideFlowPath: showDivideFlowPath,
         setWatershedShown: setWatershedShown,
-        setLoadingCursor: setLoadingCursor,
         // Drawing
         startDrawing: startDrawing,
         cancelDrawing: cancelDrawing,
@@ -1494,25 +2152,6 @@
         clearProfileLine: clearProfileLine,
         showProfileHoverMarker: showProfileHoverMarker,
         clearProfileHoverMarker: clearProfileHoverMarker,
-        // BDOT10k vectors
-        loadBdotLakes: loadBdotLakes,
-        getBdotLakesLayer: getBdotLakesLayer,
-        setBdotLakesOpacity: setBdotLakesOpacity,
-        loadBdotStreams: loadBdotStreams,
-        getBdotStreamsLayer: getBdotStreamsLayer,
-        setBdotStreamsOpacity: setBdotStreamsOpacity,
-        // HSG soil
-        loadHsgLayer: loadHsgLayer,
-        getHsgLayer: getHsgLayer,
-        setHsgOpacity: setHsgOpacity,
-        // Land Cover (MVT)
-        loadLandCoverVector: loadLandCoverVector,
-        getLandCoverLayer: getLandCoverLayer,
-        setLandCoverOpacity: setLandCoverOpacity,
-        // Longest flow path (from divide)
-        showLongestFlowPath: showLongestFlowPath,
-        // Divide flow path (from watershed boundary)
-        showDivideFlowPath: showDivideFlowPath,
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,

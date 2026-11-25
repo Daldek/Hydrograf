@@ -87,14 +87,11 @@
     var previewTimer = null;    // the pause before the next preview request
     var previewAbort = null;    // AbortController of the preview request on its way
     var runAbort = null;        // AbortController of the job of the characteristics on its way
-    var markers = null;         // L.LayerGroup of the point markers
-    var drawn = null;           // the layers of the network shown: { data, full, group, labels, … }
-    var legend = null;          // L.Control of the map legend
+    var drawn = null;           // the network shown: { data, full, labelOf, … } (overlay `network`)
+    var legend = null;          // the map's legend (a control of Hydrograf.map)
     var els = {};
 
     // ===== Small helpers =====
-
-    function map() { return Hydrograf.map._getMap(); }
 
     function token(name) { return Hydrograf.map.token(name); }
 
@@ -279,64 +276,48 @@
         return text;
     }
 
-    function markerIcon(p) {
-        var classes = ['net-marker'];
-        if (p === state.outlet) classes.push('is-outlet');
-        if (state.bad[p.id]) classes.push('is-bad');
-        if (p.snap && p.snap.at_node) classes.push('at-node');
-        if (insideUnit(p)) classes.push('inside-unit');
-        return L.divIcon({
-            className: classes.join(' '),
-            // The ids are the client's own `P<n>` or the network's `J<n>`/`P<n>`, never typed text
-            html: '<span>' + p.id + '</span>',
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-        });
-    }
-
-    /** A new icon only when its marks or its id change: replacing it ends a drag under way. */
+    /** The marker's element: its marks as classes, its id, its title. */
     function refreshMarker(p) {
-        var icon = markerIcon(p);
-        var key = icon.options.className + ' ' + p.id;
-        if (key !== p.iconKey) {
-            p.iconKey = key;
-            p.marker.options.alt = p.id;
-            p.marker.setIcon(icon);
-        }
-        var node = p.marker.getElement();
-        if (node) node.title = markerTitle(p);
+        if (!p.marker) return;
+        var node = p.marker.element;
+        node.classList.toggle('is-outlet', p === state.outlet);
+        node.classList.toggle('is-bad', !!state.bad[p.id]);
+        node.classList.toggle('at-node', !!(p.snap && p.snap.at_node));
+        node.classList.toggle('inside-unit', insideUnit(p));
+        // The ids are the client's own `P<n>` or the network's `J<n>`/`P<n>`, never typed text
+        node.firstChild.textContent = p.id;
+        node.title = markerTitle(p);
+        p.marker.id = p.id;
     }
 
     function addMarker(p) {
-        var icon = markerIcon(p);
-        p.iconKey = icon.options.className + ' ' + p.id;
-        p.marker = Hydrograf.map.nameOverlay(L.marker([p.lat, p.lng], {
-            icon: icon,
+        var node = el('div', 'net-marker');
+        node.appendChild(el('span'));
+        // A click on a point is the point's: the map places no second point there
+        p.marker = Hydrograf.map.addPoint([p.lng, p.lat], {
+            element: node,
+            id: p.id,
             draggable: !state.loading,
-            autoPan: true,
-            title: markerTitle(p),
-            alt: p.id,
-            riseOnHover: true,
-        }), 'network-point');
-        // A click on a point is the point's: Leaflet hands the map a click no layer
-        // listens to, and the map would place a second point there
-        p.marker.on('click', L.DomEvent.stopPropagation);
-        // An answer to the places before the drag would move the marker under the pointer
-        p.marker.on('dragstart', cancelPreview);
-        p.marker.on('dragend', function () {
-            var at = p.marker.getLatLng();
-            p.lat = at.lat;
-            p.lng = at.lng;
-            changed(p);
+            // An answer to the places before the drag would move the marker under the pointer
+            onDragStart: cancelPreview,
+            onDragEnd: function (lngLat) {
+                p.lng = lngLat[0];
+                p.lat = lngLat[1];
+                changed(p);
+            },
         });
-        markers.addLayer(p.marker);
+        if (!p.marker) return;
+        refreshMarker(p);
+        if (state.active) p.marker.show();
+    }
+
+    function removeMarker(p) {
+        if (p.marker) p.marker.remove();
     }
 
     function setDraggable(on) {
         allPoints().forEach(function (p) {
-            if (!p.marker.dragging) return;
-            if (on) p.marker.dragging.enable();
-            else p.marker.dragging.disable();
+            if (p.marker) p.marker.setDraggable(on);
         });
     }
 
@@ -364,7 +345,7 @@
             p.id = sp.node;
             p.lat = sp.latitude;
             p.lng = sp.longitude;
-            p.marker.setLatLng([p.lat, p.lng]);
+            if (p.marker) p.marker.setLngLat([p.lng, p.lat]);
         });
         state.points.sort(byId);
     }
@@ -400,7 +381,7 @@
 
     function removePoint(p) {
         if (state.loading) return;
-        markers.removeLayer(p.marker);
+        removeMarker(p);
         if (p === state.outlet) state.outlet = null;
         else state.points = state.points.filter(function (q) { return q !== p; });
         buildPoints();
@@ -413,7 +394,7 @@
         if (!p || state.loading) return;
         p.lat = place.latitude;
         p.lng = place.longitude;
-        p.marker.setLatLng([p.lat, p.lng]);
+        if (p.marker) p.marker.setLngLat([p.lng, p.lat]);
         changed(p);
     }
 
@@ -537,8 +518,8 @@
             // The fallback of the characteristics: the preview of the places they snapped to
             if (!state.previewPending) schedulePreview();
             render();
-            if (state.result && state.active && drawn && drawn.boundary) {
-                map().fitBounds(drawn.boundary.getBounds(), { padding: [20, 20] });
+            if (state.result && state.active && drawn && drawn.full) {
+                Hydrograf.map.fitToBounds(Hydrograf.map.geojsonBounds(drawn.data.boundary_geojson));
             }
         });
     }
@@ -571,7 +552,7 @@
     function clear() {
         cancelPreview();
         cancelRun();
-        allPoints().forEach(function (p) { markers.removeLayer(p.marker); });
+        allPoints().forEach(removeMarker);
         state.outlet = null;
         state.points = [];
         state.result = null;
@@ -668,28 +649,21 @@
         return [y, x];
     }
 
-    function labelIcon(id, kind) {
-        var classes = 'net-label ' + kind + (state.selected === id ? ' is-selected' : '');
-        return L.divIcon({ className: classes, html: '<span>' + id + '</span>', iconSize: null });
-    }
-
     /** A label that selects its element or reach: a click on it places no point. */
-    function addLabel(id, kind, latlng, title) {
-        var label = L.marker(latlng, {
-            icon: labelIcon(id, kind),
-            pane: 'networkLabelPane',
-            title: title,
-            alt: id,
-            keyboard: true,
+    function addLabel(id, kind, lngLat, title) {
+        var node = el('div', 'net-label ' + kind);
+        node.appendChild(el('span', null, id));
+        node.title = title;
+        var label = Hydrograf.map.addLabel(lngLat, {
+            element: node,
+            onClick: function () { toggleSelect(id); },
         });
-        label.on('click', function () { toggleSelect(id); });
-        drawn.labels.addLayer(label);
-        drawn.labelOf[id] = { marker: label, kind: kind };
+        if (!label) return;
+        drawn.labelOf[id] = { marker: label, element: node };
     }
 
     function midpoint(coords) {
-        var c = coords[Math.floor(coords.length / 2)];
-        return [c[1], c[0]];
+        return coords[Math.floor(coords.length / 2)];
     }
 
     /** An element's outline: the characteristics carry it in its watershed, the preview may have none. */
@@ -701,106 +675,159 @@
         return s.watershed ? (s.watershed.morphometry || {}).area_km2 : s.area_km2;
     }
 
+    function feature(geometry, properties) {
+        return { type: 'Feature', properties: properties, geometry: geometry };
+    }
+
+    /** The geometry of a GeoJSON feature or geometry. */
+    function geometryOf(geojson) {
+        return geojson && geojson.type === 'Feature' ? geojson.geometry : geojson;
+    }
+
+    /**
+     * The network as one GeoJSON: the elements (`kind`, `approximate`), the whole catchment
+     * of the characteristics, the reaches and the junctions (their tooltip's `text`); the
+     * selected element or reach is `selected`.
+     */
+    function networkData() {
+        var data = drawn.data;
+        var features = [];
+        data.subcatchments.forEach(function (s) {
+            var boundary = elementBoundary(s);
+            if (!boundary || !boundary.geometry) return;
+            features.push(feature(boundary.geometry, {
+                role: 'element',
+                id: s.id,
+                kind: s.kind,
+                approximate: !drawn.full && !!s.outline_approximate,
+                selected: state.selected === s.id,
+            }));
+        });
+        if (drawn.full && data.boundary_geojson) {
+            features.push(feature(geometryOf(data.boundary_geojson), { role: 'boundary' }));
+        }
+        data.reaches.forEach(function (r) {
+            if (!r.geojson || !r.geojson.geometry) return;
+            features.push(feature(r.geojson.geometry, { role: 'reach', id: r.id, selected: state.selected === r.id }));
+        });
+        data.junctions.forEach(function (j) {
+            features.push(feature({ type: 'Point', coordinates: [j.longitude, j.latitude] }, {
+                role: 'junction',
+                text: j.id + ' · ' + junctionText(j),
+            }));
+        });
+        return { type: 'FeatureCollection', features: features };
+    }
+
+    var ROLE = ['get', 'role'];
+    var SELECTED = ['to-boolean', ['get', 'selected']];
+    var APPROXIMATE = ['to-boolean', ['get', 'approximate']];
+
+    /** An element's colour by its kind, as a style expression. */
+    function kindExpression() {
+        return ['match', ['get', 'kind'],
+            'headwater', kindColor('headwater'), 'intermediate', kindColor('intermediate'), token('--text-2')];
+    }
+
+    /** elementStyle() of every kind at once, for the map. */
+    function elementsStyle(selected, approximate) {
+        var style = elementStyle(KINDS[0], selected, approximate);
+        var color = kindExpression();
+        style.color = color;
+        style.fillColor = color;
+        return style;
+    }
+
+    function role(name, extra) {
+        return extra ? ['all', ['==', ROLE, name], extra] : ['==', ROLE, name];
+    }
+
+    /**
+     * The parts of the network's overlay, bottom up: the elements, the approximate
+     * outlines over the others, the whole catchment, the reaches, the selected element
+     * or reach, the junctions.
+     */
+    var NETWORK_PARTS = [
+        { filter: role('element', ['all', ['!', APPROXIMATE], ['!', SELECTED]]),
+            style: function () { return elementsStyle(false, false); } },
+        { filter: role('element', ['all', APPROXIMATE, ['!', SELECTED]]),
+            style: function () { return elementsStyle(false, true); } },
+        { filter: role('boundary'), style: boundaryStyle, shapes: ['line'] },
+        { filter: role('reach', ['!', SELECTED]), style: function () { return reachStyle(false); }, shapes: ['line'] },
+        { filter: role('element', ['all', ['!', APPROXIMATE], SELECTED]),
+            style: function () { return elementsStyle(true, false); } },
+        { filter: role('element', ['all', APPROXIMATE, SELECTED]),
+            style: function () { return elementsStyle(true, true); } },
+        { filter: role('reach', SELECTED), style: function () { return reachStyle(true); }, shapes: ['line'] },
+        { filter: role('junction'), style: junctionStyle, shapes: ['circle'] },
+    ];
+
+    /** A junction's tooltip: its id and what it is, a text (names typed never become HTML). */
+    function junctionTooltip(props, shown) {
+        return props.role === 'junction' ? { text: props.text, at: shown.geometry.coordinates } : null;
+    }
+
     /** Draw a network: the characteristics (`full`) or the preview. */
     function draw(data, full) {
         removeDrawn();
-        drawn = {
-            data: data,
-            full: full,
-            group: Hydrograf.map.nameOverlay(L.featureGroup(), 'network'),
-            labels: L.layerGroup(),
-            boundary: full ? L.geoJSON(data.boundary_geojson, { style: boundaryStyle, interactive: false }) : null,
-            elements: {},
-            reaches: {},
-            junctions: [],
-            labelOf: {},
-            selectedLayer: null,
-        };
+        drawn = { data: data, full: full, labelOf: {} };
+        Hydrograf.map.showGeojson('network', networkData(), {
+            parts: NETWORK_PARTS,
+            tooltip: junctionTooltip,
+            shown: state.active,
+        });
         data.subcatchments.forEach(function (s) {
             var boundary = elementBoundary(s);
             // An element of a part of a split unit whose polygon went to its neighbour: no outline, no label
             if (!boundary || !boundary.geometry) return;
-            var approximate = !full && !!s.outline_approximate;
-            var kind = s.kind;
-            var layer = L.geoJSON(boundary, {
-                style: function () { return elementStyle(kind, false, approximate); },
-                interactive: false,
-            });
-            drawn.elements[s.id] = { layer: layer, kind: kind, approximate: approximate };
-            drawn.group.addLayer(layer);
             var at = labelPoint(boundary.geometry);
-            if (at) addLabel(s.id, kind, at, s.id + ': ' + elementText(s, data));
+            if (at) addLabel(s.id, s.kind, [at[1], at[0]], s.id + ': ' + elementText(s, data));
         });
-        if (drawn.boundary) drawn.group.addLayer(drawn.boundary);
         data.reaches.forEach(function (r) {
             if (!r.geojson || !r.geojson.geometry) return;
-            var layer = L.geoJSON(r.geojson, { style: function () { return reachStyle(false); }, interactive: false });
-            drawn.reaches[r.id] = layer;
-            drawn.group.addLayer(layer);
             addLabel(r.id, 'reach', midpoint(r.geojson.geometry.coordinates), r.id + ': ' + reachText(r));
-        });
-        data.junctions.forEach(function (j) {
-            var dot = L.circleMarker([j.latitude, j.longitude], junctionStyle());
-            // A DOM node: the names the person typed never become HTML
-            dot.bindTooltip(el('span', null, j.id + ' · ' + junctionText(j)), { direction: 'top' });
-            drawn.junctions.push(dot);
-            drawn.group.addLayer(dot);
         });
         showDrawn();
     }
 
-    /** The layers on the map in their order: approximate outlines over the others, then the lines and dots. */
+    function eachLabel(fn) {
+        Object.keys(drawn.labelOf).forEach(function (id) { fn(drawn.labelOf[id], id); });
+    }
+
+    /** The network and its labels on the map while the option is on. */
     function showDrawn() {
         if (!drawn || !state.active) return;
-        drawn.group.addTo(map());
-        drawn.labels.addTo(map());
-        Object.keys(drawn.elements).forEach(function (id) {
-            if (drawn.elements[id].approximate) drawn.elements[id].layer.bringToFront();
-        });
-        if (drawn.boundary) drawn.boundary.bringToFront();
-        Object.keys(drawn.reaches).forEach(function (id) { drawn.reaches[id].bringToFront(); });
-        drawn.junctions.forEach(function (dot) { dot.bringToFront(); });
+        Hydrograf.map.setOverlayShown('network', true);
+        eachLabel(function (label) { label.marker.show(); });
         updateLegend();
         restyle();
     }
 
     function hideDrawn() {
         if (drawn) {
-            map().removeLayer(drawn.group);
-            map().removeLayer(drawn.labels);
+            Hydrograf.map.setOverlayShown('network', false);
+            eachLabel(function (label) { label.marker.hide(); });
         }
         updateLegend();
     }
 
     function removeDrawn() {
-        hideDrawn();
+        if (drawn) {
+            Hydrograf.map.removeOverlay('network');
+            eachLabel(function (label) { label.marker.remove(); });
+        }
         drawn = null;
         updateLegend();
     }
 
-    /** Styles from the tokens of the theme; the selection and a network on its way out show. */
+    /** The selection and a network on its way out (half its opacity) show. */
     function restyle() {
         if (!drawn) return;
         var d = display();
-        var faded = !!(d && d.faded);
-        if (drawn.boundary) drawn.boundary.setStyle(boundaryStyle());
-        Object.keys(drawn.elements).forEach(function (id) {
-            var e = drawn.elements[id];
-            var style = elementStyle(e.kind, state.selected === id, e.approximate);
-            if (faded) { style.opacity *= 0.5; style.fillOpacity *= 0.5; }
-            e.layer.setStyle(style);
+        Hydrograf.map.setOverlayOpacity('network', d && d.faded ? 0.5 : 1);
+        eachLabel(function (label, id) {
+            label.element.classList.toggle('is-selected', state.selected === id);
         });
-        Object.keys(drawn.reaches).forEach(function (id) {
-            var style = reachStyle(state.selected === id);
-            if (faded) style.opacity *= 0.5;
-            drawn.reaches[id].setStyle(style);
-        });
-        drawn.junctions.forEach(function (dot) { dot.setStyle(junctionStyle()); });
-        Object.keys(drawn.labelOf).forEach(function (id) {
-            var label = drawn.labelOf[id];
-            label.marker.setIcon(labelIcon(id, label.kind));
-        });
-        if (drawn.selectedLayer) drawn.selectedLayer.bringToFront();
     }
 
     // ===== Map legend =====
@@ -808,7 +835,7 @@
     function legendRows() {
         var data = drawn.data;
         var rows = [];
-        if (drawn.boundary) {
+        if (drawn.full) {
             rows.push([Hydrograf.map.pathSwatch(Object.assign({ fillColor: 'none', fillOpacity: 0 },
                 boundaryStyle()), 'area'), WHOLE]);
         }
@@ -817,28 +844,30 @@
                 rows.push([Hydrograf.map.pathSwatch(elementStyle(kind, false, false), 'area'), KIND_LABELS[kind]]);
             }
         });
-        var approximate = Object.keys(drawn.elements).some(function (id) { return drawn.elements[id].approximate; });
+        var approximate = !drawn.full && data.subcatchments.some(function (s) {
+            var boundary = elementBoundary(s);
+            return s.outline_approximate && boundary && boundary.geometry;
+        });
         if (approximate) rows.push([Hydrograf.map.pathSwatch(approximateStyle(), 'area'), 'Granica przybliżona']);
-        if (Object.keys(drawn.reaches).length) rows.push([Hydrograf.map.pathSwatch(reachStyle(false)), 'Odcinek']);
+        if (data.reaches.some(function (r) { return r.geojson && r.geojson.geometry; })) {
+            rows.push([Hydrograf.map.pathSwatch(reachStyle(false)), 'Odcinek']);
+        }
         rows.push([Hydrograf.map.pathSwatch(junctionStyle(), 'point'), 'Węzeł']);
         return rows;
     }
 
     function updateLegend() {
-        var shown = !!(state.active && drawn && map().hasLayer(drawn.group));
+        var shown = !!(state.active && drawn && Hydrograf.map.hasOverlay('network'));
         if (!shown) {
             if (legend) {
-                map().removeControl(legend);
+                legend.remove();
                 legend = null;
             }
             return;
         }
-        if (!legend) {
-            legend = L.control({ position: 'bottomleft' });
-            legend.onAdd = function () { return L.DomUtil.create('div', 'layer-legend network-legend'); };
-            legend.addTo(map());
-        }
-        legend.getContainer().innerHTML = '<div class="layer-legend-title">' +
+        if (!legend) legend = Hydrograf.map.addControl(el('div', 'layer-legend network-legend'), 'bottom-left');
+        if (!legend) return;
+        legend.element.innerHTML = '<div class="layer-legend-title">' +
             (drawn.full ? 'Sieć zlewni' : 'Podgląd sieci') + '</div>' +
             legendRows().map(function (row) {
                 return '<div class="legend-item">' + row[0] + '<span>' + row[1] + '</span></div>';
@@ -910,11 +939,12 @@
         state.selected = element || reach ? id : null;
         Hydrograf.app.showElementParameters(element && d.full && state.active ? element.watershed : null, d && d.data);
         if (drawn) {
-            var layer = element ? drawn.elements[id] && drawn.elements[id].layer : reach ? drawn.reaches[id] : null;
-            drawn.selectedLayer = layer || null;
+            // The selected element or reach is drawn above its neighbours (NETWORK_PARTS)
+            Hydrograf.map.setGeojson('network', networkData());
             restyle();
-            if (opts.zoom && drawn.selectedLayer && state.active) {
-                map().fitBounds(drawn.selectedLayer.getBounds(), { padding: [40, 40], maxZoom: 15 });
+            var chosen = element ? elementBoundary(element) : reach ? reach.geojson : null;
+            if (opts.zoom && chosen && state.active) {
+                Hydrograf.map.fitToBounds(Hydrograf.map.geojsonBounds(chosen), { padding: 40, maxZoom: 14 });
             }
         }
         renderSelection(d);
@@ -1381,7 +1411,7 @@
     function enter() {
         state.active = true;
         els.section.hidden = false;
-        markers.addTo(map());
+        allPoints().forEach(function (p) { if (p.marker) p.marker.show(); });
         showDrawn();
         renderSnap();
         render();
@@ -1392,7 +1422,7 @@
     function leave() {
         state.active = false;
         els.section.hidden = true;
-        map().removeLayer(markers);
+        allPoints().forEach(function (p) { if (p.marker) p.marker.hide(); });
         hideDrawn();
         Hydrograf.attribution.show('network', null);
     }
@@ -1421,18 +1451,13 @@
             selectionKind: document.getElementById('network-selection-kind'),
             reach: document.getElementById('network-reach'),
         };
-        var m = map();
-        m.createPane('networkLabelPane');
-        m.getPane('networkLabelPane').style.zIndex = 450;
-        markers = L.layerGroup();
-
         els.run.addEventListener('click', run);
         els.clear.addEventListener('click', clear);
         document.getElementById('network-deselect').addEventListener('click', function () { select(null); });
 
-        // The threshold of the streams on the map changes when their layer is replaced
+        // The threshold of the streams on the map, the network the points snap to
         var shownThreshold = threshold();
-        m.on('layeradd layerremove', function () {
+        window.addEventListener('hydrograf:streams', function () {
             if (threshold() === shownThreshold) return;
             shownThreshold = threshold();
             renderSnap();

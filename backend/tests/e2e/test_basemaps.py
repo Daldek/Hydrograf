@@ -62,7 +62,7 @@ def _label(base_map: str) -> str:
 
 
 def _credit(page: Page) -> Locator:
-    return page.locator("#map .leaflet-control-attribution")
+    return page.locator("#map .maplibregl-ctrl-attrib")
 
 
 def _answer_basemaps(page: Page, entries: list[dict[str, Any]]) -> None:
@@ -236,7 +236,8 @@ def test_on_a_phone_the_credit_folds_at_the_first_drag(new_tab: Any) -> None:
     page.mouse.up()
 
     expect(osm).to_be_hidden()
-    button = credit.get_by_role("button", name=CREDIT_BUTTON, exact=True)
+    # MapLibre's compact credit folds behind a <summary> named by its aria-label
+    button = credit.get_by_label(CREDIT_BUTTON, exact=True)
     expect(button).to_be_visible()
     button.tap()
     expect(osm).to_be_visible()

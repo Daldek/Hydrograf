@@ -52,12 +52,11 @@
     function readParameters() {
         var params = {};
         try {
-            var map = Hydrograf.map && Hydrograf.map._getMap && Hydrograf.map._getMap();
-            if (map) {
-                var center = map.getCenter();
+            var view = Hydrograf.map && Hydrograf.map.view && Hydrograf.map.view();
+            if (view) {
                 params.map = {
-                    center: { lat: center.lat, lng: center.lng },
-                    zoom: map.getZoom(),
+                    center: view.center,
+                    zoom: view.zoom,
                     baseLayer: (Hydrograf.layers && Hydrograf.layers.getBaseLayerName)
                         ? Hydrograf.layers.getBaseLayerName() : null,
                     activeOverlays: (Hydrograf.layers && Hydrograf.layers.getActiveOverlays)

@@ -22,19 +22,14 @@
     // own base maps, in the catalogue's shape. The kit's <nogat-basemaps> lists them and
     // „bez podkładu”, opens on the choice the browser keeps (`nogat-basemap`) while it is
     // offered, else on the first entry the catalogue marks as a default, and tells of a
-    // person's choice by `change`. The kit's leafletBasemap (js/nogat.js) draws the chosen
-    // one under the overlays with its credit in the map's attribution: a raster entry as
-    // image tiles, OpenFreeMap through MapLibre in the kit's grey style. An entry whose
-    // provider fails is marked in the list and said on the map; nothing switches by itself.
+    // person's choice by `change`. The kit's maplibreBasemap (through Hydrograf.map) draws
+    // the chosen one under the overlays with its credit in the map's attribution: a raster
+    // entry as image tiles, OpenFreeMap in the kit's grey style. An entry whose provider
+    // fails is marked in the list and said on the map; nothing switches by itself.
 
-    // The names of the kit's grey style: Noto Sans 2.0 of openmaptiles/fonts, vendored
-    var GLYPHS = new URL('vendor/openmaptiles-fonts-2.0/{fontstack}/{range}.pbf', document.baseURI).href
-        .replace(/%7B/gi, '{').replace(/%7D/gi, '}');
     var basemaps = {
         element: null,  // the kit's <nogat-basemaps>
-        layer: null,    // the Leaflet layer of the base map drawn
         shown: 'none',  // the id chosen, "none" for „bez podkładu”
-        call: 0,        // the latest drawing: one still loading when another starts draws nothing
     };
 
     /** The kit's base maps of js/nogat.js, or null without its module. */
@@ -73,7 +68,7 @@
         element.addEventListener('change', function (event) {
             showBaseMap(event.detail.id);
         });
-        Hydrograf.map.onThemeChange(repaintBaseMap);
+        Hydrograf.map.onThemeChange(Hydrograf.map.repaintBasemap);
         Hydrograf.api.getBasemaps()
             .then(function (entries) {
                 element.entries = entries;
@@ -89,39 +84,31 @@
      * (or an id not offered) draws none. The view stays.
      */
     function showBaseMap(id) {
-        var map = Hydrograf.map._getMap();
-        var call = ++basemaps.call;
         basemaps.shown = id;
         showBaseMapNotice(null);
-        if (!map) return;
-        if (basemaps.layer) {
-            map.removeLayer(basemaps.layer);
-            basemaps.layer = null;
-        }
         var entry = basemaps.element.entries.find(function (candidate) {
             return candidate.id === id;
         });
-        if (!entry) return;
-        basemapKit().leaflet(L, entry, {
-            glyphs: GLYPHS,
-            texts: basemaps.element.texts,
+        if (!entry) {
+            Hydrograf.map.removeBasemap();
+            return;
+        }
+        Hydrograf.map.showBasemap(entry, {
             onFailure: function (failed) { onBaseMapFailure(failed, entry); },
-        }).then(function (layer) {
-            if (call === basemaps.call) basemaps.layer = layer.addTo(map);
         }).catch(function () {
-            // onBaseMapFailure has marked the entry and said it on the map
+            // onBaseMapFailure has marked the entry and said it on the map, or a later
+            // choice replaced it
         });
     }
 
     /**
      * A base map's provider does not answer (its TileJSON or first tiles): the kit took
-     * the layer off the map; the list marks the entry and, while it is the one chosen,
-     * the map says so until the next choice.
+     * it off the map; the list marks the entry and, while it is the one chosen, the map
+     * says so until the next choice.
      */
     function onBaseMapFailure(id, entry) {
         basemaps.element.fail(id);
         if (id !== basemaps.shown) return;
-        basemaps.layer = null;
         showBaseMapNotice(entry);
     }
 
@@ -137,30 +124,6 @@
         var texts = basemaps.element.texts;
         var label = (texts.labels && texts.labels[entry.id]) || entry.label;
         notice.textContent = texts.failed + ': ' + label + '. Wybierz inny podkład w panelu „Warstwy”.';
-    }
-
-    /** Repaint a vector base map in the colours of the new theme (Hydrograf.map.onThemeChange). */
-    function repaintBaseMap() {
-        var layer = basemaps.layer;
-        var gl = layer && typeof layer.getMaplibreMap === 'function' ? layer.getMaplibreMap() : null;
-        if (!gl) return;
-        var repaint = basemapKit().repaint;
-        try {
-            repaint(gl);
-        } catch (err) {
-            // Its style is still loading, with the colours read when it was built
-            gl.once('load', function () { repaint(gl); });
-        }
-    }
-
-    /**
-     * Bounds getter for a layer that exposes getBounds() once loaded.
-     */
-    function layerBounds(getLayer) {
-        return function () {
-            var layer = getLayer();
-            return layer && typeof layer.getBounds === 'function' ? layer.getBounds() : null;
-        };
     }
 
     function noBounds() { return null; }
@@ -248,85 +211,45 @@
     }
 
     /**
-     * Add an overlay row for a layer that already exists (or is created synchronously).
+     * Add an overlay row: the checkbox shows and hides an overlay of the map, its slider
+     * sets the overlay's opacity.
      * @param {HTMLElement} list - Group to append the row to.
      * @param {string} label - Layer name shown in the panel.
-     * @param {function(): ?L.Layer} getLayer - Returns the layer (null if unavailable).
-     * @param {function(): ?L.LatLngBounds} getBounds - Layer extent for #zoom-extent.
-     * @param {function(number)} setOpacity - Called with opacity 0..1.
+     * @param {Object} overlay - `id` of the map's overlay (Hydrograf.map); `load()`, which
+     *     puts it on the map (hidden) unless it is there and returns, or promises, whether
+     *     it is: a row whose overlay cannot be had unchecks itself; `bounds()`, its extent
+     *     [west, south, east, north] for #zoom-extent, or null.
      * @param {number} defaultTransparency - Initial transparency in percent.
      * @param {function()=} onShow - Called when the layer is turned on (legend).
      * @param {function()=} onHide - Called when the layer is turned off.
      * @param {string=} kind - The kind of Hydrograf's data it shows (registerOverlay).
-     */
-    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide, kind) {
-        var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
-        var cb = entry.cb;
-
-        registerOverlay(label, cb, getBounds, kind);
-
-        cb.addEventListener('change', function () {
-            var layer = getLayer();
-            if (!layer) {
-                cb.checked = false;
-                return;
-            }
-            var map = Hydrograf.map._getMap();
-            if (cb.checked) {
-                layer.addTo(map);
-                entry.applyOpacity();
-                if (onShow) onShow();
-            } else {
-                map.removeLayer(layer);
-                if (onHide) onHide();
-            }
-            entry.row.classList.toggle('off', !cb.checked);
-        });
-    }
-
-    /**
-     * Overlay row for async-loaded layers (GeoJSON, MVT).
-     * getLayer returns the existing layer, loadLayer returns a Promise of it; `kind` as
-     * for addOverlayEntry.
      * @returns {Object} The row entry of createLayerRow.
      */
-    function addAsyncOverlayEntry(list, label, getLayer, loadLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide, kind) {
-        var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
+    function addOverlayEntry(list, label, overlay, defaultTransparency, onShow, onHide, kind) {
+        var entry = createLayerRow(list, label, function (opacity) {
+            Hydrograf.map.setOverlayOpacity(overlay.id, opacity);
+        }, defaultTransparency);
         var cb = entry.cb;
 
-        registerOverlay(label, cb, getBounds, kind);
-
-        // One load at a time: a second check while the first load is pending
-        // must not build a second layer (it would be orphaned on the map and
-        // no later uncheck could remove it).
-        var pendingLoad = null;
+        registerOverlay(label, cb, overlay.bounds, kind);
 
         cb.addEventListener('change', function () {
-            var mapObj = Hydrograf.map._getMap();
             if (cb.checked) {
-                var layer = getLayer();
-                if (layer) {
-                    layer.addTo(mapObj);
+                Promise.resolve(overlay.load()).then(function (loaded) {
+                    // The box may have been unchecked while loading
+                    if (!cb.checked) return;
+                    if (!loaded) {
+                        cb.checked = false;
+                        entry.row.classList.add('off');
+                        showDataLines();
+                        return;
+                    }
+                    Hydrograf.map.setOverlayShown(overlay.id, true);
                     entry.applyOpacity();
-                } else if (!pendingLoad) {
-                    pendingLoad = Promise.resolve(loadLayer()).then(function (l) {
-                        pendingLoad = null;
-                        // The box may have been unchecked while loading.
-                        if (l && cb.checked && !mapObj.hasLayer(l)) {
-                            l.addTo(mapObj);
-                            entry.applyOpacity();
-                        }
-                    }, function (err) {
-                        pendingLoad = null;
-                        throw err;
-                    });
-                }
-                if (onShow) onShow();
+                    if (onShow) onShow();
+                });
             } else {
-                var existing = getLayer();
-                if (existing && mapObj.hasLayer(existing)) {
-                    mapObj.removeLayer(existing);
-                }
+                Hydrograf.map.setOverlayShown(overlay.id, false);
                 if (onHide) onHide();
             }
             entry.row.classList.toggle('off', !cb.checked);
@@ -365,7 +288,9 @@
      */
     function addStreamsEntry(list, availableThresholds) {
         var label = 'Linie spływu';
-        var entry = createLayerRow(list, label, Hydrograf.map.setStreamsOpacity, 0);
+        var entry = createLayerRow(list, label, function (opacity) {
+            Hydrograf.map.setOverlayOpacity('streams', opacity);
+        }, 0);
         var cb = entry.cb;
 
         // Threshold selector (shown while the layer is on)
@@ -384,35 +309,25 @@
         extra.appendChild(field);
         list.appendChild(extra);
 
+        // Another threshold keeps the layer, its visibility and opacity
         select.addEventListener('change', function () {
-            var layer = Hydrograf.map.loadStreamsVector(parseInt(select.value, 10));
-            if (cb.checked && layer) {
-                layer.addTo(Hydrograf.map._getMap());
-                entry.applyOpacity();
-            }
+            Hydrograf.map.setStreamsThreshold(parseInt(select.value, 10));
         });
 
         // MVT layers have no bounds of their own; use the DEM extent.
         registerOverlay(label, cb, Hydrograf.map.getDemBounds, 'drainage');
 
         cb.addEventListener('change', function () {
-            var map = Hydrograf.map._getMap();
-            var layer;
             if (cb.checked) {
-                layer = Hydrograf.map.getStreamsLayer();
-                if (!layer) {
-                    layer = Hydrograf.map.loadStreamsVector(parseInt(select.value, 10));
-                }
-                if (layer) {
-                    layer.addTo(map);
+                Hydrograf.map.ready.then(function (shown) {
+                    if (!shown || !cb.checked) return;
+                    Hydrograf.map.setStreamsThreshold(parseInt(select.value, 10));
+                    Hydrograf.map.setOverlayShown('streams', true);
                     entry.applyOpacity();
-                }
-                Hydrograf.map.createStreamsLegend();
+                    Hydrograf.map.createStreamsLegend();
+                });
             } else {
-                layer = Hydrograf.map.getStreamsLayer();
-                if (layer && map.hasLayer(layer)) {
-                    map.removeLayer(layer);
-                }
+                Hydrograf.map.setOverlayShown('streams', false);
                 Hydrograf.map.removeStreamsLegend();
             }
             entry.row.classList.toggle('off', !cb.checked);
@@ -420,29 +335,53 @@
         });
     }
 
+    /** A scale's denominator to two significant digits, as the hints write it: „34 000”. */
+    function roundScale(scale) {
+        var step = Math.pow(10, Math.max(0, Math.floor(Math.log10(scale)) - 1));
+        return (Math.round(scale / step) * step).toLocaleString('pl-PL');
+    }
+
     /**
      * Row of an analysis result (results.js): tile layer with the manifest's
      * opacity and extent, legend while on (its provider lines go to the view's
-     * strip), description and source in an (i).
+     * strip), description and source in an (i). The map draws a result from its
+     * first tile level (the manifest's `min_zoom`, Nogat's plan
+     * 2026-11-24-hydrograf-maplibre, open question 4): farther out the row says
+     * „Przybliż mapę” while it is on.
      * Turning on or off a result with a water level redraws an open terrain
      * profile with or without its water surface.
      */
     function addResultEntry(list, result) {
-        function getLayer() { return result.layer; }
+        var id = 'result:' + result.id;
         function refreshProfile() {
             if (result.waterLevel && window.Hydrograf.profile) Hydrograf.profile.refresh();
         }
-        var entry = addAsyncOverlayEntry(
+        var extra = document.createElement('div');
+        extra.className = 'layer-extra d-none';
+        var hint = document.createElement('span');
+        hint.className = 'hint';
+        extra.appendChild(hint);
+        function syncHint() {
+            var far = entry.cb.checked && !Hydrograf.map.withinZoom(id);
+            var scale = far ? Hydrograf.map.firstScale(id) : null;
+            hint.textContent = scale
+                ? 'Przybliż mapę — wynik jest rysowany od skali ok. 1:' + roundScale(scale) + '.' : '';
+            extra.classList.toggle('d-none', !scale);
+        }
+        var entry = addOverlayEntry(
             list,
             result.title,
-            getLayer,
-            getLayer,
-            function () { return result.bounds; },
-            function (opacity) { result.layer.setOpacity(opacity); },
+            {
+                id: id,
+                load: function () { return Hydrograf.results.addLayer(result); },
+                bounds: function () { return result.bounds; },
+            },
             Math.round((1 - result.opacity) * 100),
-            function () { Hydrograf.results.showLegend(result); refreshProfile(); },
-            function () { Hydrograf.results.hideLegend(result); refreshProfile(); }
+            function () { Hydrograf.results.showLegend(result); refreshProfile(); syncHint(); },
+            function () { Hydrograf.results.hideLegend(result); refreshProfile(); syncHint(); }
         );
+        list.appendChild(extra);
+        Hydrograf.map.onZoomEnd(syncHint);
         // Long titles are cut with an ellipsis: the full one on hover
         entry.name.title = result.title;
         if (result.infoKey && window.Hydrograf.info && Hydrograf.info.attach(entry.row, result.infoKey, result.title)) {
@@ -466,11 +405,12 @@
     var MZP_DEFAULT_SCENARIO = 1;
 
     /**
-     * The services draw depths only at 1:50 000 and larger scales, i.e. from
-     * zoom 14. Below it the layer leaves the map instead of carrying minZoom,
-     * which would stop the map zooming out while it is the only tile layer.
+     * The services draw depths only at 1:50 000 and larger scales: from zoom 13
+     * (1:34 124 at a whole level). The layer's minzoom keeps it off the map
+     * farther out, so nothing is asked of the service there; a layer's minzoom
+     * never holds the map's zoom.
      */
-    var MZP_MIN_ZOOM = 14;
+    var MZP_MIN_ZOOM = 13;
     var MZP_ZOOM_HINT = 'Przybliż mapę — głębokości są rysowane od skali ok. 1:50\u00A0000.';
 
     /** Depth classes [m] in the colours the services draw them. */
@@ -488,6 +428,17 @@
         return 'https://wody.isok.gov.pl/gpservices/KZGW/' + scenario.service + '/MapServer/WMSServer';
     }
 
+    /**
+     * The service's GetMap of a 512-px tile in EPSG:3857, its box filled by the map
+     * (Archiwista's tileUrl): a third of the requests of 256-px tiles to a slow
+     * service, at the resolution (and scale) of the zoom.
+     */
+    function mzpTiles(scenario) {
+        return [mzpUrl(scenario) + '?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=' + scenario.layer +
+            '&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:3857&WIDTH=512&HEIGHT=512' +
+            '&BBOX={bbox-epsg-3857}'];
+    }
+
     function mzpLegendTitle(scenario) {
         return 'Głębokość wody [m] — MZP, p\u00A0=\u00A0' + scenario.p + '\u00A0%';
     }
@@ -495,18 +446,17 @@
     /**
      * Overlay row of the flood hazard map in the base maps group: a checkbox
      * independent of the base map choice, drawn above any base map and the
-     * DEM (hazardPane). While on: the probability select and the zoom hint below
-     * the row, the legend on the map. Another probability keeps the layer,
-     * its visibility and opacity.
+     * DEM (the map's hazard slot). While on: the probability select and the zoom
+     * hint below the row, the legend on the map. Another probability keeps the
+     * layer, its visibility and opacity.
      */
     function addHazardEntry(group) {
         var label = 'Mapa zagrożenia powodziowego';
-        var map = Hydrograf.map._getMap();
         var scenario = MZP_SCENARIOS[MZP_DEFAULT_SCENARIO];
-        var layer = null;
+        var added = false;
 
         var entry = createLayerRow(group, label, function (opacity) {
-            if (layer) layer.setOpacity(opacity);
+            Hydrograf.map.setOverlayOpacity('hazard', opacity);
         }, 20);
         var cb = entry.cb;
         entry.name.title = label + ' (MZP): głębokość wody, Wody Polskie / ISOK';
@@ -533,66 +483,68 @@
         extra.appendChild(field);
         group.appendChild(extra);
 
-        var legendBox = L.DomUtil.create('div', 'layer-legend');
-        var legendTitle = L.DomUtil.create('div', 'layer-legend-title', legendBox);
+        function node(tag, className, parent) {
+            var created = document.createElement(tag);
+            created.className = className;
+            if (parent) parent.appendChild(created);
+            return created;
+        }
+        var legendBox = node('div', 'layer-legend');
+        var legendTitle = node('div', 'layer-legend-title', legendBox);
         legendTitle.textContent = mzpLegendTitle(scenario);
         MZP_CLASSES.forEach(function (c) {
-            var item = L.DomUtil.create('div', 'legend-item', legendBox);
-            L.DomUtil.create('span', 'legend-swatch', item).style.background = c.color;
+            var item = node('div', 'legend-item', legendBox);
+            node('span', 'legend-swatch', item).style.background = c.color;
             item.appendChild(document.createTextNode(' ' + c.label));
         });
-        var legendHint = L.DomUtil.create('div', 'layer-legend-note', legendBox);
+        var legendHint = node('div', 'layer-legend-note', legendBox);
         legendHint.textContent = MZP_ZOOM_HINT;
-        var legend = L.control({ position: 'bottomleft' });
-        legend.onAdd = function () { return legendBox; };
+        var legend = null;
 
         _overlayRegistry.push({ label: label, cb: cb, getBounds: noBounds });
 
+        // The hints say to zoom in while the view is farther out than the layer's first zoom
         function sync() {
-            var zoomedIn = map.getZoom() >= MZP_MIN_ZOOM;
-            if (cb.checked && zoomedIn) {
-                if (!map.hasLayer(layer)) layer.addTo(map);
-            } else if (layer && map.hasLayer(layer)) {
-                map.removeLayer(layer);
-            }
+            var zoomedIn = Hydrograf.map.withinZoom('hazard');
             hint.hidden = zoomedIn;
             legendHint.hidden = zoomedIn;
         }
+        Hydrograf.map.onZoomEnd(sync);
 
         select.addEventListener('change', function () {
             scenario = MZP_SCENARIOS[select.selectedIndex];
             legendTitle.textContent = mzpLegendTitle(scenario);
-            if (layer) {
-                layer.setUrl(mzpUrl(scenario), true);
-                layer.setParams({ layers: scenario.layer });
-            }
+            Hydrograf.map.setTiles('hazard', mzpTiles(scenario));
         });
 
         cb.addEventListener('change', function () {
             if (cb.checked) {
-                if (!layer) {
-                    // 512 px images: a third of the requests to a slow
-                    // service, at the resolution (and scale) of the zoom.
-                    layer = Hydrograf.map.nameOverlay(L.tileLayer.wms(mzpUrl(scenario), {
-                        layers: scenario.layer,
-                        format: 'image/png',
-                        transparent: true,
-                        version: '1.3.0',
-                        tileSize: 512,
-                        opacity: 0.8,
-                        maxZoom: 22,
-                        pane: 'hazardPane',
-                        attribution: MZP_ATTRIBUTION,
-                    }), 'hazard');
+                Hydrograf.map.ready.then(function (shown) {
+                    if (!shown || !cb.checked) return;
+                    if (!added) {
+                        Hydrograf.map.showRaster('hazard', {
+                            tiles: mzpTiles(scenario),
+                            tileSize: 512,
+                            layerMinzoom: MZP_MIN_ZOOM,
+                            // The service is slow: a zoom in asks it only for the view
+                            // the map ends at, never for the larger ones on the way
+                            floorLevel: true,
+                            opacity: 0.8,
+                            attribution: MZP_ATTRIBUTION,
+                            shown: false,
+                        });
+                        added = true;
+                    }
+                    Hydrograf.map.setOverlayShown('hazard', true);
                     entry.applyOpacity();
-                }
-                map.on('zoomend', sync);
-                legend.addTo(map);
+                    if (!legend) legend = Hydrograf.map.addControl(legendBox, 'bottom-left');
+                    sync();
+                });
             } else {
-                map.off('zoomend', sync);
-                legend.remove();
+                Hydrograf.map.setOverlayShown('hazard', false);
+                if (legend) legend.remove();
+                legend = null;
             }
-            sync();
             entry.row.classList.toggle('off', !cb.checked);
             extra.classList.toggle('d-none', !cb.checked);
         });
@@ -607,15 +559,17 @@
         _overlayRegistry.forEach(function (entry) {
             if (!entry.cb.checked) return;
             var b = entry.getBounds();
-            if (!b || !b.isValid()) return;
-            if (union) {
-                union.extend(b);
-            } else {
-                // Copy: extend() mutates and b may be a module's own bounds.
-                union = L.latLngBounds(b.getSouthWest(), b.getNorthEast());
-            }
+            if (!b) return;
+            union = union
+                ? [Math.min(union[0], b[0]), Math.min(union[1], b[1]), Math.max(union[2], b[2]), Math.max(union[3], b[3])]
+                : b.slice();
         });
         Hydrograf.map.fitToBounds(union || Hydrograf.map.getDataBounds());
+    }
+
+    /** The extent of a GeoJSON overlay of the map, once loaded. */
+    function overlayBounds(id) {
+        return function () { return Hydrograf.map.overlayBounds(id); };
     }
 
     /** Fallback thresholds if backend is unavailable (those of the preprocessing). */
@@ -640,9 +594,7 @@
         addOverlayEntry(
             overlayGroup,
             'NMT (wysokości)',
-            Hydrograf.map.getDemLayer,
-            Hydrograf.map.getDemBounds,
-            Hydrograf.map.setDemOpacity,
+            { id: 'dem', load: Hydrograf.map.loadDem, bounds: Hydrograf.map.getDemBounds },
             30,
             Hydrograf.map.createDemLegend,
             Hydrograf.map.removeDemLegend,
@@ -650,13 +602,10 @@
         );
 
         // BDOT10k water bodies
-        addAsyncOverlayEntry(
+        addOverlayEntry(
             overlayGroup,
             'Zbiorniki wodne (BDOT10k)',
-            Hydrograf.map.getBdotLakesLayer,
-            Hydrograf.map.loadBdotLakes,
-            layerBounds(Hydrograf.map.getBdotLakesLayer),
-            Hydrograf.map.setBdotLakesOpacity,
+            { id: 'bdot-lakes', load: Hydrograf.map.loadBdotLakes, bounds: overlayBounds('bdot-lakes') },
             0,
             null,
             null,
@@ -664,13 +613,10 @@
         );
 
         // BDOT10k streams
-        addAsyncOverlayEntry(
+        addOverlayEntry(
             overlayGroup,
             'Cieki BDOT10k',
-            Hydrograf.map.getBdotStreamsLayer,
-            Hydrograf.map.loadBdotStreams,
-            layerBounds(Hydrograf.map.getBdotStreamsLayer),
-            Hydrograf.map.setBdotStreamsOpacity,
+            { id: 'bdot-streams', load: Hydrograf.map.loadBdotStreams, bounds: overlayBounds('bdot-streams') },
             0,
             null,
             null,
@@ -678,13 +624,10 @@
         );
 
         // HSG soil groups: SoilGrids, the BDOT10k wetlands group D (ADR-078)
-        addAsyncOverlayEntry(
+        addOverlayEntry(
             overlayGroup,
             'Grupy glebowe (HSG)',
-            Hydrograf.map.getHsgLayer,
-            Hydrograf.map.loadHsgLayer,
-            layerBounds(Hydrograf.map.getHsgLayer),
-            Hydrograf.map.setHsgOpacity,
+            { id: 'hsg', load: Hydrograf.map.loadHsgLayer, bounds: overlayBounds('hsg') },
             0,
             Hydrograf.map.createHsgLegend,
             Hydrograf.map.removeHsgLegend,
@@ -692,13 +635,10 @@
         );
 
         // Land cover (BDOT10k) — MVT tiles, no own bounds: DEM extent
-        addAsyncOverlayEntry(
+        addOverlayEntry(
             overlayGroup,
             'Pokrycie terenu (BDOT10k)',
-            Hydrograf.map.getLandCoverLayer,
-            Hydrograf.map.loadLandCoverVector,
-            Hydrograf.map.getDemBounds,
-            Hydrograf.map.setLandCoverOpacity,
+            { id: 'landcover', load: Hydrograf.map.loadLandCover, bounds: Hydrograf.map.getDemBounds },
             30,
             Hydrograf.map.createLandCoverLegend,
             Hydrograf.map.removeLandCoverLegend,
@@ -708,34 +648,27 @@
         // Sewer network overlay (MVT, no known extent): only when the server
         // holds sewer data (`layers availability`). A placeholder keeps the row's
         // place in the group while the answer is pending.
-        if (window.Hydrograf.sewer) {
-            var sewerSlot = document.createComment('sewer');
-            overlayGroup.appendChild(sewerSlot);
-            Hydrograf.api.getLayers()
-                .then(function (answer) {
-                    if (!answer.result.sewer) {
-                        sewerSlot.remove();
-                        return;
-                    }
-                    var rows = document.createDocumentFragment();
-                    addOverlayEntry(
-                        rows,
-                        'Kanalizacja deszczowa',
-                        function () { return window.Hydrograf.sewer.getLayer(); },
-                        noBounds,
-                        function (opacity) {
-                            var layer = window.Hydrograf.sewer.getLayer();
-                            if (layer) layer.setOpacity(opacity);
-                        },
-                        50
-                    );
-                    sewerSlot.replaceWith(rows);
-                })
-                .catch(function (err) {
+        var sewerSlot = document.createComment('sewer');
+        overlayGroup.appendChild(sewerSlot);
+        Hydrograf.api.getLayers()
+            .then(function (answer) {
+                if (!answer.result.sewer) {
                     sewerSlot.remove();
-                    console.warn('Layer availability unknown, sewer layer hidden:', err.message);
-                });
-        }
+                    return;
+                }
+                var rows = document.createDocumentFragment();
+                addOverlayEntry(
+                    rows,
+                    'Kanalizacja deszczowa',
+                    { id: 'sewer', load: Hydrograf.map.loadSewer, bounds: noBounds },
+                    50
+                );
+                sewerSlot.replaceWith(rows);
+            })
+            .catch(function (err) {
+                sewerSlot.remove();
+                console.warn('Layer availability unknown, sewer layer hidden:', err.message);
+            });
 
         // ===== Analysis results group =====
         // The streams row waits for the thresholds; its slot keeps it first.

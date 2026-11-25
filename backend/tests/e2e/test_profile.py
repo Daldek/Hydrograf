@@ -42,8 +42,8 @@ COUNTS = {
 }
 # A tap this far from the last vertex ends the line (map.js FINISH_TAP_PX = 20)
 NEAR_LAST_PX = (8, 6)
-# Taps this far apart are separate taps, never a double tap (Leaflet's is two taps
-# within 200 ms anywhere on the map, MapLibre's within 500 ms): the pace of a person
+# Taps this far apart are separate taps, never a double tap (MapLibre's is two taps
+# within 500 ms and 30 px): the pace of a person
 PHONE_TAP_GAP_MS = 600
 # The vertices the request carries: the pixels clicked, as the map read them [px]
 CLICKED_PX = 2

@@ -135,10 +135,10 @@
     }
 
     /**
-     * Add the readout of the cursor position to the map (bottom left, under the legends).
-     * @param {L.Map} map
+     * Add the readout of the cursor position to the map (bottom left, under the legends);
+     * js/map.js calls it once its map is drawn, before any legend.
      */
-    function addReadout(map) {
+    function addReadout() {
         var current = system(stored()) ? stored() : 'wgs84';
         var last = null;
         var frame = 0;
@@ -158,37 +158,37 @@
             els.zone.textContent = text[1];
         }
 
-        var control = L.control({ position: 'bottomleft' });
-        control.onAdd = function () {
-            els.box = L.DomUtil.create('div', 'coord-readout');
-            els.box.title = 'Współrzędne kursora';
-            els.select = L.DomUtil.create('select', '', els.box);
-            els.select.setAttribute('aria-label', 'Układ współrzędnych kursora');
-            SYSTEMS.forEach(function (s) {
-                var option = L.DomUtil.create('option', '', els.select);
-                option.value = s.id;
-                option.textContent = s.label;
-            });
-            els.select.value = current;
-            els.value = L.DomUtil.create('span', 'coord-value num', els.box);
-            els.zone = L.DomUtil.create('span', 'coord-zone', els.box);
-            els.select.addEventListener('change', function () {
-                current = els.select.value;
-                store(current);
-                render();
-            });
-            // A click or wheel on the readout is not a click or zoom of the map, and
-            // the cursor over it keeps the last position on the map
-            L.DomEvent.disableClickPropagation(els.box);
-            L.DomEvent.disableScrollPropagation(els.box);
-            L.DomEvent.on(els.box, 'mousemove', L.DomEvent.stopPropagation);
-            render();
-            return els.box;
-        };
-        control.addTo(map);
+        function create(tag, className, parent) {
+            var node = document.createElement(tag);
+            node.className = className;
+            if (parent) parent.appendChild(node);
+            return node;
+        }
 
-        map.on('mousemove', function (e) {
-            last = e.latlng;
+        els.box = create('div', 'coord-readout');
+        els.box.title = 'Współrzędne kursora';
+        els.select = create('select', '', els.box);
+        els.select.setAttribute('aria-label', 'Układ współrzędnych kursora');
+        SYSTEMS.forEach(function (s) {
+            var option = create('option', '', els.select);
+            option.value = s.id;
+            option.textContent = s.label;
+        });
+        els.select.value = current;
+        els.value = create('span', 'coord-value num', els.box);
+        els.zone = create('span', 'coord-zone', els.box);
+        els.select.addEventListener('change', function () {
+            current = els.select.value;
+            store(current);
+            render();
+        });
+        render();
+        // The map's controls lie outside its canvas: a click, a wheel or the cursor on
+        // the readout is none of the map's, and it keeps the last position on the map
+        Hydrograf.map.addControl(els.box, 'bottom-left');
+
+        Hydrograf.map.onPointerMove(function (lat, lng) {
+            last = { lat: lat, lng: lng };
             if (!frame) frame = requestAnimationFrame(render);
         });
     }

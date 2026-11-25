@@ -789,8 +789,8 @@
             Hydrograf.shell.close('right');
         }
 
-        // Cursor: crosshair for action modes, grab for browse
-        var container = document.querySelector('.leaflet-container');
+        // Cursor: crosshair for action modes, grab for browse (a class of the map's container)
+        var container = document.getElementById('map');
         if (container) {
             container.classList.toggle('cursor-crosshair', mode !== 'browse');
         }

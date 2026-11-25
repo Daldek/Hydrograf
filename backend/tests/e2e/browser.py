@@ -133,7 +133,6 @@ class Tab:
     refused: list[str] = field(default_factory=list)
     in_flight: set[Request] = field(default_factory=set)
     document: Request | None = field(default=None, repr=False)
-    tolerated: list[tuple[re.Pattern[str], str]] = field(default_factory=list)
 
     def watch(self) -> None:
         """Start recording; called once, before the first navigation."""
@@ -173,27 +172,14 @@ class Tab:
         )
         return violations
 
-    def tolerate(self, pattern: str, reason: str) -> None:
-        """Leave out of ``problems`` what matches ``pattern``.
-
-        A known defect, named by ``reason``, that a test of its own tracks (marked
-        xfail with the same reason).
-        """
-        self.tolerated.append((re.compile(pattern), reason))
-
     def problems(self) -> list[str]:
         """CSP violations, page errors, console errors and refused outside requests."""
-        found = (
+        return (
             [f"CSP: {v}" for v in self.csp_violations()]
             + [f"page error: {e}" for e in self.page_errors]
             + [f"console error: {e}" for e in self.console_errors]
             + [f"refused outside request: {u}" for u in self.refused]
         )
-        return [
-            problem
-            for problem in found
-            if not any(pattern.search(problem) for pattern, _ in self.tolerated)
-        ]
 
     def _console(self, message: ConsoleMessage) -> None:
         if message.type == "error" and not message.text.startswith(FAILED_RESOURCE):

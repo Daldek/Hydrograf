@@ -10,13 +10,10 @@
     <script src="js/theme-init.js?v=38a679da99"></script>
 
     <!-- Libraries vendored in vendor/ (no third-party origin; integrity still checked) -->
-    <!-- Leaflet 1.9.4 -->
-    <link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css?v=a783710282"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=">
-
-    <!-- MapLibre GL 4.7.1 (vector basemap) -->
-    <link rel="stylesheet" href="vendor/maplibre-gl-4.7.1/maplibre-gl.css?v=576b085fdd"
-          integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V">
+    <!-- MapLibre GL JS 6.14.0: its stylesheet; js/map.js imports its ES module, which starts
+         its worker from the same directory -->
+    <link rel="stylesheet" href="vendor/maplibre-gl-6.14.0/maplibre-gl.css?v=bacba6a85a"
+          integrity="sha384-1TZtfVz7qtwR5vD7cMwjGT+9uiK4lqE3pbUOPwYO6OCpb+TYP0S9vLIhG02JCU04">
 
     <!-- Nogat design tokens, shell chrome, the kit's app menu, strip, base maps and charts, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
@@ -25,7 +22,7 @@
     <link rel="stylesheet" href="nogat/nogat-sources.css?v=983b5441d1">
     <link rel="stylesheet" href="nogat/nogat-basemaps.css?v=65df8e6624">
     <link rel="stylesheet" href="nogat/nogat-chart.css?v=6499bb3093">
-    <link rel="stylesheet" href="css/app.css?v=b84a7cc671">
+    <link rel="stylesheet" href="css/app.css?v=7ba4941eea">
 </head>
 <body>
 <div class="shell">
@@ -658,28 +655,14 @@
     </div>
 </dialog>
 
-<!-- Leaflet 1.9.4 JS -->
-<script defer src="vendor/leaflet-1.9.4/leaflet.js?v=db49d009c8"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
-
-<!-- MapLibre GL 4.7.1 + Leaflet binding (vector basemap) -->
-<script defer src="vendor/maplibre-gl-4.7.1/maplibre-gl.js?v=be9633c4d8"
-        integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj"></script>
-<script defer src="vendor/maplibre-gl-leaflet-0.0.22/leaflet-maplibre-gl.js?v=59ecd8d2b3"
-        integrity="sha384-4CB9Vtol9LN6lGgBCvmPLbUEZwilrqIvPieSRurgAXAB7FVJaLS9n8WyAIA5wjQ+"></script>
-
-<!-- Leaflet.VectorGrid 1.3.0 (MVT support) -->
-<script defer src="vendor/leaflet.vectorgrid-1.3.0/Leaflet.VectorGrid.bundled.min.js?v=ed1e89e4c9"
-        integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"></script>
-
 <!-- Application modules -->
 <script defer src="js/api.js?v=0f630a38e1"></script>
 <script defer src="js/shell.js?v=a6c0a452bb"></script>
-<script defer src="js/map.js?v=b63f755f6e"></script>
-<script defer src="js/coords.js?v=27329dc5f5"></script>
+<script defer src="js/map.js?v=3b28b0d179"></script>
+<script defer src="js/coords.js?v=fb99de495a"></script>
 <script defer src="js/charts.js?v=69fc1dbdb6"></script>
 <script defer src="js/attribution.js?v=2fb9e7c755"></script>
-<script defer src="js/layers.js?v=2bc33ab533"></script>
+<script defer src="js/layers.js?v=6b1fc31041"></script>
 <script defer src="js/profile.js?v=1a382c649f"></script>
 <script defer src="js/info-texts.js?v=612819bf64"></script>
 <script defer src="js/info.js?v=a985fcf72b"></script>
@@ -687,17 +670,16 @@
 <script defer src="js/rain-export.js?v=f36622bd37"></script>
 <script defer src="js/advanced.js?v=4dc792c449"></script>
 <script defer src="js/custom-rain.js?v=35b5d616f4"></script>
-<script defer src="js/depressions.js?v=b69d8825c9"></script>
-<script defer src="js/sewer.js?v=eb84ab1b2c"></script>
-<script defer src="js/results.js?v=85035394f6"></script>
-<script defer src="js/feedback.js?v=20fe9e98b9"></script>
+<script defer src="js/depressions.js?v=f68d555b78"></script>
+<script defer src="js/results.js?v=3a6f8f0bcd"></script>
+<script defer src="js/feedback.js?v=1cb938391b"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=d4ad5e9517"></script>
-<script defer src="js/identify.js?v=61a2cab426"></script>
-<script type="module" src="js/nogat.js?v=599214cccc"></script>
+<script defer src="js/identify.js?v=de978a18a0"></script>
+<script type="module" src="js/nogat.js?v=031d8eaaf8"></script>
 <script defer src="js/handoff.js?v=57448230e8"></script>
-<script defer src="js/network.js?v=67434dabef"></script>
+<script defer src="js/network.js?v=f48c9d505b"></script>
 <script defer src="js/terms.js?v=8a010e90bc"></script>
-<script defer src="js/app.js?v=40e3647a11"></script>
+<script defer src="js/app.js?v=be39f1a561"></script>
 </body>
 </html>

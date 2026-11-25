@@ -5,9 +5,9 @@ The libraries live in `frontend/vendor/<package>-<version>/`, copied byte for by
 the published package, so a visit fetches code, styles and fonts only from this site
 (Nogat DEV-15.7, regulamin § 8). A vendored file keeps its `integrity`: the browser
 checks it for same-origin files too, and this test checks it names the file's bytes.
-MapLibre GL JS's ES module and its worker load without a tag (admin/processing.js
-imports the module, which starts its worker), so no `integrity` covers them: the
-SHA-256 of MapLibre's files stands for it (MAPLIBRE).
+MapLibre GL JS's ES module and its worker load without a tag (js/map.js and
+admin/processing.js import the module, which starts its worker), so no `integrity`
+covers them: the SHA-256 of MapLibre's files stands for it (MAPLIBRE).
 """
 
 import base64

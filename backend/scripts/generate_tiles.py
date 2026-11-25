@@ -37,13 +37,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Tile generation settings
-MIN_ZOOM = 8
+# Tile generation settings. The map (MapLibre, 512-px tiles) asks a vector tile one
+# level lower than a 256-px map did at the same scale, so the first levels are 7 and,
+# for the threshold of 1000 m², 13: each layer appears at the scale it did before
+# (1:2 183 915, 1:34 124; Nogat's plan 2026-11-24-hydrograf-maplibre, M5)
+MIN_ZOOM = 7
 MAX_ZOOM = 18
 
 # Per-threshold zoom overrides: fine-grained thresholds only at high zooms
 THRESHOLD_MIN_ZOOM = {
-    1000: 14,
+    1000: 13,
 }
 
 

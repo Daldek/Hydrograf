@@ -246,8 +246,10 @@ def get_sewer_mvt(
     Public endpoint — only geometry and node_type are served
     (no diameter, slope, FA values).
     """
-    # SEC-013: Server-side zoom level restriction
-    if z < 10 or z > 20:
+    # SEC-013: Server-side zoom level restriction. A 512-px tile of the map at level 9
+    # holds what four 256-px tiles at level 10 held, so the bound still limits one
+    # screen's worth (Nogat's plan 2026-11-24-hydrograf-maplibre, M5)
+    if z < 9 or z > 20:
         return Response(content=b"", media_type="application/x-protobuf")
 
     xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)

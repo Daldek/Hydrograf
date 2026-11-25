@@ -13,9 +13,8 @@ and back. Then no violation was reported and no outside request refused; every
 request went to the site's own origin or to one the policy's directive for its kind
 lists (by Playwright's resource type: ``img-src`` for images, ``connect-src`` for
 fetches and so on, with CSP's fallbacks), OpenFreeMap, GUGiK and the MZP's WMS among
-them; and a worker started whose URL ``worker-src`` (or its fallbacks) allows: today
-MapLibre's ``blob:`` worker under ``worker-src blob:``, after step 2 its file of
-``vendor/`` under ``worker-src 'self'`` (M2 changes the page and the policy together).
+them; and a worker started whose URL ``worker-src`` (or its fallbacks) allows:
+MapLibre's file of ``vendor/`` under ``worker-src 'self'``.
 
 The admin page, signed in with its dialog's map open, asks only what its own policy
 allows (GUGiK's tiles, the first raster entry of the kit's catalogue, and MapLibre's
