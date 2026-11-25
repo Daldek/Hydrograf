@@ -1,5 +1,10 @@
 # ADR-080: A network of subcatchments, reaches and junctions delineated at control points
 
+> **Amended by ADR-091 (2026-11-25):** the delineation is the long command `network
+> delineate`, run only as a job (`POST /api/v1/jobs`); its answer is the envelope
+> `hydrograf-result/1`, the network's `notices` kept inside `result`. The lock of one network
+> at a time waits 600 s instead of 15 s.
+
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat

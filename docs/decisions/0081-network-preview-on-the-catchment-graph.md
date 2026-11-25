@@ -1,5 +1,8 @@
 # ADR-081: The network composed on the catchment graph, its characteristics on confirmation
 
+> **Amended by ADR-091 (2026-11-25):** the preview is the command `network preview`,
+> `POST /api/v1/network/preview`, its answer the envelope `hydrograf-result/1`.
+
 **Date:** 2026-11-11
 **Status:** accepted (the author's design of 2026-11-11; the details by delegation); amended
 2026-11-11 (the notices of short and flat reaches)

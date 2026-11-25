@@ -59,14 +59,14 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-047](#adr-047-wygładzanie-chaikin-cieków-w-preprocessingu) | Chaikin smoothing of streams in the preprocessing | accepted | 2026-03-24 |
 | [ADR-048](#adr-048-droga-spływu-z-działu-wód-jako-osobna-geometria) | Flow path from the divide as a separate geometry | accepted | 2026-03-24 |
 | [ADR-049](#adr-049-dem-auto-discovery-z-lancuchem-fallback) | DEM auto-discovery with a fallback chain | accepted | 2026-03-25 |
-| [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted, erratum 2026-11-14 | 2026-03-25 |
+| [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted, erratum 2026-11-14; amended by ADR-091 (the command `watershed delineate`, `GET /api/v1/watershed/delineate`) | 2026-03-25 |
 | [ADR-051](#adr-051-integracja-kanalizacji-deszczowej-2026-03-27) | Storm-sewer integration | amended by ADR-052 | 2026-03-27 |
 | [ADR-052](#adr-052-jawna-topologia-sieci-kanalizacyjnej-przebudowa) | Explicit storm-sewer topology (rebuild) | accepted | 2026-03-28 |
 | [ADR-053](#adr-053-feedback-testerow-z-opt-in-diagnostyka-po-stronie-klienta) | Tester feedback with opt-in client-side diagnostics | superseded by ADR-084 | 2026-08-02 |
 | [ADR-054](#adr-054-baza-odniesienia-dla-hydraulic_length_km--outlet_flow_dist_m) | Reference base of hydraulic_length_km: outlet_flow_dist_m | accepted | 2026-08-02 |
 | [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | amended by ADR-061 | 2026-09-28 |
 | [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 1.0 (numbered 2.1 when adopted) | accepted | 2026-10-25 |
-| [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | amended by ADR-084 | 2026-10-25 |
+| [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | amended by ADR-084 and ADR-091 (the catalog's operationIds, OpenAPI at /api/v1) | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066, ADR-067 and ADR-079 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
@@ -85,17 +85,18 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-077](decisions/0077-burned-lines-flow-the-way-of-their-watercourse.md) | A burned line flows the way of its watercourse: to its mouth, else down the DEM of the whole watercourse | accepted | 2026-11-09 |
 | [ADR-078](decisions/0078-wetlands-are-soil-group-d-and-lawns-are-open-space.md) | Wetlands are hydrologic soil group D; the grass of sports and recreation complexes and airports is open space | accepted | 2026-11-10 |
 | [ADR-079](decisions/0079-soil-groups-from-the-least-permeable-layer.md) | The soil groups are those of the least permeable SoilGrids layer of 0–100 cm | accepted | 2026-11-10 |
-| [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (seven times), noted 2026-11-11 (an option of „Wybierz zlewnię”) | 2026-11-10 |
-| [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted, amended 2026-11-11 | 2026-11-11 |
+| [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (seven times), noted 2026-11-11 (an option of „Wybierz zlewnię”); amended by ADR-091 (a job of `network delineate`) | 2026-11-10 |
+| [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted, amended 2026-11-11; amended by ADR-091 (`POST /api/v1/network/preview`) | 2026-11-11 |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | amended by ADR-084 and ADR-086; amended 2026-11-21 (the files named by Nogat's rule) | 2026-11-12 |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted, amended 2026-11-13 (one strip on screen; the terms linked, not restated) and 2026-11-25 (an own series from Obserwator's series export carries IMGW-PIB's or ČHMÚ's lines); amended by ADR-085 | 2026-11-13 |
-| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0) and 2026-11-14 (no footer); amended by ADR-085 (logs, blocks) and ADR-086 (admin paths) | 2026-11-13 |
+| [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0) and 2026-11-14 (no footer); amended by ADR-085 (logs, blocks), ADR-086 (admin paths) and ADR-091 (the client's address from X-Forwarded-For, the job limit) | 2026-11-13 |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted; amended by ADR-089 (the orthophoto from Nogat's catalogue, the blocks) | 2026-11-13 |
-| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted; amended by ADR-089 (the area map's base map and `img-src`) | 2026-11-14 |
+| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted; amended by ADR-089 (the area map's base map and `img-src`) and ADR-091 (the admin API at /api/v1/admin/) | 2026-11-14 |
 | [ADR-087](decisions/0087-a-sheet-missing-at-the-run-resolution-from-a-finer-nmt-of-the-set.md) | A sheet the source lacks at the run's resolution comes from a finer NMT of the set | accepted | 2026-11-15 |
 | [ADR-088](decisions/0088-lutz-jg-at-request-time-and-the-euler-ii-curve-scaled-by-the-areal-reduction-factor.md) | Lutz's Jg measured at request time on the traced flow path; Euler II's PMAXTP curve scaled by the areal reduction factor | proposed | 2026-11-21 |
 | [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit: its catalogue, its switcher, the settings and a static CSP | accepted | 2026-11-25 |
 | [ADR-090](decisions/0090-charts-on-the-nogat-kit.md) | The charts on Nogat's kit: nogat-chart.js instead of Chart.js | accepted | 2026-11-25 |
+| [ADR-091](decisions/0091-api-v1-command-catalog-envelopes-and-jobs.md) | The API at /api/v1: a command catalog, result envelopes and jobs | accepted | 2026-11-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
@@ -1258,6 +1259,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ---
 
 ## ADR-050: Unified delineate-watershed endpoint
+
+> **Amended by ADR-091 (2026-11-25):** the endpoint is the command `watershed delineate`,
+> `GET /api/v1/watershed/delineate` with query parameters, its answer the envelope
+> `hydrograf-result/1`; the two modes are unchanged.
 
 **Data:** 2026-03-25
 **Status:** Przyjeta

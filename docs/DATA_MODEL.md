@@ -777,7 +777,7 @@ CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 | `is_read` | BOOLEAN | NO | false | Read in the admin panel |
 | `context` | JSONB | YES | NULL | `{view, station, parameters, app_version}`: the map mode, `null` (Hydrograf has no stations), the view's parameters (map, clicked point, watershed, hydrograph settings, profile line) and the app version the server adds; at most 100,000 bytes as JSON (`FEEDBACK_CONTEXT_MAX_BYTES`); NULL in the reports of the old form |
 
-The admin list (`GET /api/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
+The admin list (`GET /api/v1/admin/feedback`) gives each report `context` and `legacy`: the four old columns of a report of the old form, `null` for a new report.
 
 ---
 
@@ -1007,7 +1007,7 @@ The request and response models are the Pydantic models of `backend/models/schem
 
 ### 6.1 Request: Delineate Watershed
 
-**Endpoint:** `POST /api/delineate-watershed`
+**Endpoint:** `GET /api/v1/watershed/delineate`; the members below are its query parameters
 
 Precomputed mode (with `threshold_m2`: the sub-catchment at the point by `ST_Contains`, BFS on the catchment graph, the merged boundary; above 300 sub-catchments the boundary is merged from a coarser threshold):
 ```json
@@ -1072,7 +1072,7 @@ class DelineateRequest(BaseModel):
 
 ### 6.3 Request: Generate Hydrograph
 
-**Endpoint:** `POST /api/generate-hydrograph`
+**Endpoint:** the job `hydrograph generate`: `POST /api/v1/jobs` with `{"command": "hydrograph generate", "options": …}`, the options as below
 
 ```json
 {

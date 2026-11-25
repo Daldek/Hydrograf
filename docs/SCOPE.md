@@ -42,7 +42,7 @@ This document defines precisely:
 - Export of the boundary as GeoJSON
 - Export of the boundary as Shapefile
 - Execution time: < 10 seconds
-- Selection of a stream segment with upstream traversal (POST `/api/delineate-watershed` with the parameter `threshold_m2`, ADR-050)
+- Selection of a stream segment with upstream traversal (GET `/api/v1/watershed/delineate` with the query parameter `threshold_m2`, ADR-050)
 
 **Technical requirements:**
 - Input data: the DEM (NMT) from GUGiK (5 m resolution, downloaded through Kartograf)
@@ -120,17 +120,17 @@ This document defines precisely:
 - MVT thematic layer: `/api/tiles/landcover/{z}/{x}/{y}.pbf` coloured by category
 
 **Terrain profile:**
-- Longitudinal profiles of a stream (POST /api/terrain-profile)
+- Longitudinal profiles of a stream (POST /api/v1/terrain/profile)
 
 **Terrain depressions:**
-- Endpoint GET `/api/depressions` with filters (area, depth)
+- Endpoint GET `/api/v1/depressions/list` with filters (area, depth)
 - Showing the depressions as an overlay on the map
 
 **Vector tiles (MVT):**
 - Streams: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` (filter by the FA threshold, style by Strahler order)
 - Sub-catchments: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf`
 - Land cover: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf`
-- Available thresholds: GET `/api/tiles/thresholds`
+- Available thresholds: GET `/api/v1/layers/thresholds`
 
 **DEM raster tiles:**
 - XYZ pyramid (zoom 8-16) with a multi-directional hillshade (4 lighting directions)
@@ -214,7 +214,7 @@ This document defines precisely:
 - „Zasoby”: CPU/RAM (psutil), DB pool and size, rows of the tables, CatchmentGraph, disk usage of the data
 - „Przetwarzanie NMT”: running the bootstrap pipeline from the panel + real-time logs (SSE), the area drawn on a map or a boundary file
 - „Czyszczenie”: tiles, overlays, dem_mosaic, TRUNCATE of tables; „Granice i kanalizacja”: the boundary and sewer uploads
-- The `/api/admin/*` API: the core routes of Nogat DEV-15.13 (feedback, stats, status) and Hydrograf's own
+- The `/api/v1/admin/*` API: the core routes of Nogat DEV-15.13 (feedback, stats, status) and Hydrograf's own
 
 ---
 
@@ -225,7 +225,7 @@ This document defines precisely:
 - The `--config` flag of `bootstrap.py`
 - The `--waterbody-mode` flag (3 modes: auto, none, custom) that controls the handling of water bodies (ADR-031)
 - A selector of the DEM resolution in the admin panel (5 m / 1 m)
-- The bootstrap route of the admin API (`POST /api/admin/bootstrap/start`) also takes `waterbody_mode`; the form of „Przetwarzanie NMT” does not offer it
+- The bootstrap route of the admin API (`POST /api/v1/admin/bootstrap/start`) also takes `waterbody_mode`; the form of „Przetwarzanie NMT” does not offer it
 
 ---
 
@@ -238,7 +238,7 @@ This document defines precisely:
 - Database tables: `sewer_nodes` (18 columns), `sewer_network` (16 columns), the flag `is_sewer_augmented`
 - MVT vector tiles of the sewer network: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
 - A sewer overlay on the front-end map
-- Admin: management of the sewer data (upload/status/delete) — 3 `/api/admin/sewer/*` endpoints
+- Admin: management of the sewer data (upload/status/delete) — 3 `/api/v1/admin/sewer/*` endpoints
 - A `sewer` section in the pipeline YAML configuration
 
 ---
@@ -246,8 +246,8 @@ This document defines precisely:
 #### 2.1.7 Network Delineation at Control Points (ADR-080)
 
 **✅ In scope:**
-- `POST /api/delineate-network`: a closing section and 0–30 control points above it (tributaries at their mouths, gauges; the closing section alone is a network), snapped to the streams of the map's threshold within 100 m; „Sieć zlewni” is an option of the mode „Wybierz zlewnię”
-- `POST /api/delineate-network/preview` (ADR-081): the same network composed on the catchment graph after every change of the points, in a fraction of a second: the snapped points, the ids of the elements, their areas and outlines, the reach lengths and the errors of the composition, before „Oblicz charakterystyki” runs the delineation
+- The command `network delineate`, run as a job (`POST /api/v1/jobs`): a closing section and 0–30 control points above it (tributaries at their mouths, gauges; the closing section alone is a network), snapped to the streams of the map's threshold within 100 m; „Sieć zlewni” is an option of the mode „Wybierz zlewnię”
+- `POST /api/v1/network/preview` (ADR-081): the same network composed on the catchment graph after every change of the points, in a fraction of a second: the snapped points, the ids of the elements, their areas and outlines, the reach lengths and the errors of the composition, before „Oblicz charakterystyki” runs the delineation
 - The network of HEC-HMS elements: every point a node (J at a confluence, P elsewhere), subcatchments of two kinds for the person (dopływ, the headwater among them, and the przyrzecze of each reach), reaches and junctions, made of the 1 ha sub-catchments, split where a point lies inside one; the areas of the elements sum to the closing section's catchment, checked to the cell
 - Each subcatchment with the parameters of a delineated watershed (area, CN, land cover, soil groups, morphometry, PMAXTP weights); each reach with its length (the difference of the flow distances of its ends), its slope (the NMT at its ends) and a BDOT10k check length
 - The hand-off of the whole network to Hydrolog's „Sieć i trasowanie”: one `nogat-handoff/1` with one `hydrolog-network/1` and the origin of every node (`node_provenance`)
@@ -547,7 +547,7 @@ This document defines precisely:
 **Nogat's GUI kit:** 1.3.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the base maps and their catalogue (ADR-089), the charts (ADR-090), the regulamin template 1.1 and the admin panel; its command form is not used yet
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
 **Modules:** 26 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, sewer, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
-**Map base layers:** the entries of the kit's catalogue `nogat-basemaps.json` the deployment allows (`basemaps`, `basemap_mirrors`, `basemap_extra` of its nogat.toml; `GET /api/basemaps`; ADR-089): OpenFreeMap grey (vector, the kit's grey style with Polish names), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
+**Map base layers:** the entries of the kit's catalogue `nogat-basemaps.json` the deployment allows (`basemaps`, `basemap_mirrors`, `basemap_extra` of its nogat.toml; `GET /api/v1/basemaps`; ADR-089): OpenFreeMap grey (vector, the kit's grey style with Polish names), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
 **Pages:** `index.html` (main), `admin/index.html` (admin panel at `/admin/`), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
 #### Infrastructure

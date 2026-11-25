@@ -1,10 +1,11 @@
 # Operating Hydrograf
 
-The configuration, the admin key, a second instance and the service logs of a Hydrograf
-deployment. Starting the stack, the preprocessing, the first requests, the public service
-and the admin panel are in [README.md](../README.md); the REST API is described by the
-OpenAPI document of a running instance (`/openapi.json`, with `/docs` as the interactive
-page).
+The configuration, the admin key, a second instance, the proxy in front, the jobs and the
+service logs of a Hydrograf deployment. Starting the stack, the preprocessing, the first
+requests, the API, the public service and the admin panel are in
+[README.md](../README.md); the REST API is described by its command catalog
+(`/api/v1/commands/list`, `/api/v1/commands/schema`) and the OpenAPI document of a running
+instance (`/api/v1/openapi.json`, with `/docs` as the interactive page).
 
 ## Configuration
 
@@ -53,12 +54,12 @@ A public deployment names its `nogat.toml` (Nogat DEV-18.1) in `.env`:
 API at `/config/nogat.toml`. With the table `[nogat.operator]` in that file Hydrograf is a
 public service with its regulamin at `/regulamin.html` (see
 [Public service](../README.md#public-service)); without it there is no regulamin and no link
-„Regulamin”. On the Docker host, name the state directory of the logs in `.env` too,
-`NOGAT_STATE_DIR=/home/USER/.local/state/nogat`, and create the API's directory in it once,
-writable by the container's user (UID 999) as `data/` is:
+„Regulamin”. On the Docker host, name the state directory of the logs and of the jobs file
+in `.env` too, `NOGAT_STATE_DIR=/home/USER/.local/state/nogat`, and create the API's
+directory in it once, writable by the container's user (UID 999) as `data/` is:
 `install -d -m 0777 ~/.local/state/nogat/hydrograf` (without `NOGAT_STATE_DIR` Compose
 mounts `./state/hydrograf` of the checkout, which needs the same; see
-[Service logs](#service-logs)).
+[Service logs](#service-logs) and [Jobs](#jobs)).
 
 ## Base maps
 
@@ -89,7 +90,7 @@ For an API run on the host, `HYDROGRAF_BASEMAPS`, then `NOGAT_BASEMAPS` (ids joi
 for example `HYDROGRAF_BASEMAPS=openfreemap,gugik-osm`) win over `basemaps` of the file; set
 but empty, they offer none. Docker Compose passes neither, so a deployment sets the keys in
 its `nogat.toml`; `basemap_mirrors` and `basemap_extra` are set only there. The API reads
-them once at start and answers them at `GET /api/basemaps`; a change needs a restart. An
+them once at start and answers them at `GET /api/v1/basemaps`; a change needs a restart. An
 unknown id or a wrong value stops the API at start: it prints the error document
 `hydrograf-error/1` on standard error (`docker logs hydro_api`), with `validation_error`
 and `details` naming the option, the value, where it was read and why, for example
@@ -104,6 +105,40 @@ own base map adds its origin (`https://tiles.example.org`, `https://maps.example
 to `img-src` and `connect-src` of the page's policy in the nginx file its nginx runs (Compose
 mounts `docker/nginx.conf` of the checkout at `/etc/nginx/nginx.conf`; an override of the
 instance may mount its own file there); without it the browser refuses its tiles.
+
+## Behind a proxy
+
+The API takes the client's address, which its request limit, its job limit and the
+visitors of the statistics need, from `X-Forwarded-For` (Nogat AGI-6.9, ADR-091): when
+the peer of the API is a loopback or private hop (nginx, a proxy on the host), the
+right-most address of the header that is no such hop; a public peer is the client itself.
+`X-Real-IP` and Cloudflare's `CF-Connecting-IP` are not read. nginx sends
+`X-Forwarded-For $proxy_add_x_forwarded_for` on every location it proxies, so the
+client's address that the Cloudflare Tunnel, Latarnik or another proxy on the host put
+in the header reaches the API, followed by that proxy's own; a forged address before it
+is skipped, since it is not the right-most. A deployment with its own nginx file needs
+the same header on each proxied location and the locations of `docker/nginx.conf`:
+`/api/v1/`, `/api/v1/admin/` (with `client_max_body_size 50m` for the uploads),
+`= /api/v1/admin/bootstrap/stream` (unbuffered, 3600 s), `/api/tiles/`, the pages and
+`/health`; without the header every client gets nginx's address and shares one limit.
+
+The admin paths are `/admin`, `/admin/*` and `/api/v1/admin/*`: a Cloudflare Access
+application (or another gate) in front of the admin panel names these three. The routes
+under `/api/` before ADR-091, `/api/admin/*` among them, are no longer proxied.
+
+## Jobs
+
+The two long commands, `hydrograph generate` and `network delineate`, run as jobs
+(`POST /api/v1/jobs`, README [API](../README.md#api)), which no proxy timeout cuts. The API
+keeps every job in its memory, its options and result included, one hour after it ends;
+at most 4 run at once, the others wait `queued`, and a client runs at most 2. The ids and
+times of the active jobs, never their options, results or clients, are written at each
+change to `<state_dir>/hydrograf/jobs.json` (on the Docker host
+`<NOGAT_STATE_DIR>/hydrograf/jobs.json`), so that the next start of the API ends them
+`interrupted`: their result answers 409 `job_interrupted` and the client starts them
+again. A restart or a deploy therefore interrupts the running hydrographs and networks;
+an unreadable `jobs.json` is logged and ignored. The jobs live in one process, like the
+request limit: run the API with one uvicorn process.
 
 ## A second instance
 

@@ -50,7 +50,8 @@ The map is at `http://localhost:8080` (the port is `HYDROGRAF_PORT`), the admin 
 `/admin/` (it asks for the admin key; see [Admin panel](#admin-panel)), and the scrolling user
 guide at `/instrukcja/` (on the test server: https://hydrograf-test.debever.pl/instrukcja),
 linked from the map's top-bar "Instrukcja" button via the welcome dialog. The API is under
-`/api` and the health check at `/health`. The web server listens on the loopback interface
+`/api/v1` (see [API](#api)), the map's vector tiles under `/api/tiles/` and the health
+check at `/health`. The web server listens on the loopback interface
 only (`127.0.0.1:${HYDROGRAF_PORT:-8080}`). In development `docker-compose.override.yml` is
 loaded automatically (hot reload, the code mounted from `./backend`).
 
@@ -105,6 +106,43 @@ The answer is the job (`nogat-job/1`); `GET /api/v1/jobs/<id>` follows it until 
 `peak_discharge_m3s`, `time_to_peak_min`, `total_volume_m3`), `water_balance` and `metadata`
 (the time of concentration and the methods used).
 
+### API
+
+Every operation is a command of Hydrograf's catalog (Nogat AGI §2 and §6, ADR-091), named
+`<group> <verb>` and served at `/api/v1/<group>/<verb>`; the table under
+[Capabilities](#capabilities) lists them. What a command takes and gives:
+
+```bash
+curl -s 'http://localhost:8080/api/v1/commands/list'
+curl -s 'http://localhost:8080/api/v1/commands/schema?command=precipitation%20depth'
+curl -s 'http://localhost:8080/api/v1/server'
+```
+
+The list (`hydrograf-command-list/1`) names each command with its route; the schema
+(`hydrograf-commands/1`) gives its options with their types, units, bounds and enums, its
+rules, an example call with an excerpt of its answer and the error codes it can answer;
+`/api/v1/server` (`nogat-server/1`) gives the version, the API's base, the GUI's address
+and the regulamin. The OpenAPI document is at `/api/v1/openapi.json`, each command one
+operation with the `operationId` `hydrograf_<group>_<verb>`. A command that reads a point
+is a `GET` with query parameters; one that takes a geometry or a series is a `POST` with a
+JSON body. Every answer of a command is the envelope `hydrograf-result/1`:
+`{"status": "ok", "result": {"schema": "hydrograf-<kind>/1", …}, "notices": […]}`.
+
+The two long commands, `hydrograph generate` and `network delineate`, run only as jobs:
+their own routes answer 409 `conflict` with the reason `run_as_job`. `POST /api/v1/jobs`
+with `{"command": …, "options": …}` answers 202 with the job and `Location: jobs/<id>`;
+`GET /api/v1/jobs/<id>` gives its state (`queued`, `running`, then `succeeded`, `failed`,
+`cancelled` or `interrupted`), `GET /api/v1/jobs/<id>/result` its envelope or its problem
+(409 `job_running` before it ends), and `POST /api/v1/jobs/<id>/cancel` cancels it. A job
+is kept one hour after it ends (then 404, reason `job_expired`); a restart of the server
+ends the running ones `interrupted`. A client runs at most 2 jobs at once.
+
+The map's vector tiles stay outside the API at `/api/tiles/{layer}/{z}/{x}/{y}.pbf`: they
+are the map's own files, no command. The former routes under `/api/` (such as
+`/api/delineate-watershed`) are gone; the
+[changelog](https://github.com/Daldek/Hydrograf/blob/main/docs/CHANGELOG.md) maps each to
+its command.
+
 ## Deploy
 
 Production runs `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`: the
@@ -143,20 +181,23 @@ Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR
   (`HYDROGRAF_REQUEST_LIMIT`, `HYDROGRAF_REQUEST_WINDOW`). The map's vector tiles
   (`/api/tiles/`) have a tile limit of their own instead: ten times the limit in the same
   window, 3,000 requests in 60 s by default, since one map move loads dozens of tiles.
-  „Zgłoś uwagę” (`/api/feedback`) has besides at most 5 reports in 5 minutes. `/health` and the static
+  „Zgłoś uwagę” (`POST /api/v1/feedback`) has besides at most 5 reports in 5 minutes, and a
+  client runs at most 2 jobs at once. `/health` and the static
   files that nginx serves are not counted. Over a limit the answer is 429 with
   `Retry-After`: a Polish page for a page, the problem `rate_limited` for a route. The client
-  address comes from Cloudflare's `CF-Connecting-IP`, believed only through private hops; it
-  stays in the API's memory for its window only.
+  address is the right-most address of `X-Forwarded-For` that is no loopback or private hop
+  (nginx appends its peer, the tunnel or Latarnik puts the client before it; Nogat AGI-6.9);
+  it stays in the API's memory for its window and a job's run only.
 - **Statistics.** One line per UTC day in `<data_dir>/hydrograf/stats.jsonl`
   (`HYDROGRAF_DATA_DIR`; `/data` in Docker, `HYDROGRAF_DATA_PATH` on the host), rewritten every
   10 minutes, at 00:00 UTC and at shutdown: `date`, `visitors` (distinct pairs of address and
   User-Agent of the day, counted as HMAC-SHA-256 hashes under a salt drawn daily and kept in
   memory only), `page_views` (GETs of a page served: the map, the guide, the regulamin),
   `stations_opened` (always 0: Hydrograf has no stations), `analyses_run`
-  (successful delineations of a watershed or a network, hydrographs and terrain profiles, not
-  the previews) and `downloads` (files the interface saves: hietogram CSV and JSON, PMAXTP
-  GeoJSON, the hand-off file; the interface reports each to `/api/downloads`). Nothing
+  (successful delineations of a watershed, design depths and terrain profiles, and the jobs
+  of a hydrograph or a network when they start; not the previews) and `downloads` (files
+  the interface saves: hietogram CSV and JSON, PMAXTP GeoJSON, the hand-off file; the
+  interface reports each to `POST /api/v1/downloads`). Nothing
   else is stored. The requests of the admin panel count in no total (Nogat DEV-15.13).
 - **„Zgłoś uwagę”.** The form sends the text and the view's context (the map mode, the map and
   the analysis settings); the server adds the app version and stores no User-Agent and no
@@ -171,22 +212,22 @@ process (the Compose files do).
 The panel is Nogat's kit page at `/admin/` (Nogat DEV-15.13, ADR-086; `/admin` answers 308
 to it): „Zgłoszenia”, „Statystyki” and „Stan” of the kit, then Hydrograf's „Zasoby”,
 „Przetwarzanie NMT”, „Czyszczenie” and „Granice i kanalizacja”. Its API is under
-`/api/admin/`; every route needs the header `X-Admin-Key` with the key of `ADMIN_API_KEY`
+`/api/v1/admin/`; every route needs the header `X-Admin-Key` with the key of `ADMIN_API_KEY`
 or of the file `ADMIN_API_KEY_FILE` names (a deployment's
 `~/.config/nogat/keys/hydrograf-admin.key`, see [Deploy](#deploy)), read on
 every request. No key is generated or logged: without one
 every admin route answers 401 with `admin_key_not_configured`. The access paths are
-`/admin`, `/admin/*` and `/api/admin/*`, nothing else; Cloudflare Access protects them
+`/admin`, `/admin/*` and `/api/v1/admin/*`, nothing else; Cloudflare Access protects them
 besides the key. Every admin answer is `Cache-Control: no-store`; the page has CSP
 `'self'` (its `img-src` admits the area map's base map, GUGiK's OpenStreetMap, and `data:`)
 and its requests stay under the request limit.
 
-A GET of `/api/admin/status` gives the app, its version, start and uptime, `data_dir`
+A GET of `/api/v1/admin/status` gives the app, its version, start and uptime, `data_dir`
 (`HYDROGRAF_DATA_DIR`) with its free disk, and three checks: `database` (PostGIS answers),
 `catchment_graph` (the graph of the delineation is in memory; `warning` while it loads and
 when it is not) and `data_dir` (`<data_dir>/hydrograf`, where the statistics are written,
 is writable).
-A GET of `/api/admin/stats?from=&to=` gives the days of `stats.jsonl` between the two UTC days
+A GET of `/api/v1/admin/stats?from=&to=` gives the days of `stats.jsonl` between the two UTC days
 (default the last 30) with the current day as counted so far, and the sums of every total
 but `visitors`.
 
@@ -199,6 +240,7 @@ but `visitors`.
 | Network of subcatchments, reaches and junctions at a closing section and control points above it, with its hand-off to Hydrolog | `POST /jobs` with `network delineate` | preprocessed data, saved rasters, DEM (GUGiK) |
 | The same network composed on the catchment graph in a fraction of a second, before its characteristics: snapped points, ids, areas, outlines, reach lengths | `POST /network/preview` | preprocessed data, saved rasters around the points |
 | Design hydrograph and water balance, with AMC I to III and your own rainfall series | `POST /jobs` with `hydrograph generate`, `GET /hydrograph/scenarios` | PMAXTP (IMGW-PIB) or your own series |
+| The design depth of a catchment: the PMAXTP mean over its boundary for a duration and a probability, the depth the hydrograph uses | `POST /precipitation/depth` | PMAXTP (IMGW-PIB) |
 | Terrain profile along a line, with the water levels of the analysis results | `POST /terrain/profile` | DEM (GUGiK), analysis results (`frontend/data/results/`) |
 | Everything known at one point of the map: coordinates, terrain, stream, land cover with its CN, soil group, sub-catchment, water of the analysis results | `GET /point/identify` | preprocessed data, analysis results |
 | Optional layers that hold data (storm sewer) | `GET /layers/availability` | database |
@@ -209,6 +251,7 @@ but `visitors`.
 | The base maps the map offers: the entries of Nogat's catalogue the deployment allows, then its own | `GET /basemaps` | `frontend/nogat/nogat-basemaps.json` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra` |
 | The address of the regulamin and the operator's e-mail, both null without an operator | `GET /terms` | the `nogat.toml` of `NOGAT_CONFIG` |
 | Count one file that the interface saved, for the daily statistics | `POST /downloads` | none |
+| The command catalog, a command's options and examples, the server's description; the jobs of the long commands | `GET /commands/list`, `GET /commands/schema`, `GET /server`, `POST /jobs` | none |
 | Administration: reports, statistics, status, resources, DEM processing, cleanup, boundary and sewer upload | `/admin/*` with the `X-Admin-Key` header (see [Admin panel](#admin-panel)) | none |
 
 The base maps of the interface are those of Nogat's kit (`frontend/nogat/nogat-basemaps.json`,
@@ -231,9 +274,11 @@ v3.0.0; Hydrograf imports the package `obserwator`).
 ## For AI agents
 
 Hydrograf is a service with preprocessing scripts, not a command-line tool or an MCP
-server, so it has no `AGENTS.md` and no `llms.txt`. The REST API is described by the
-OpenAPI document (`/openapi.json` of the API, with `/docs` as the interactive page), and
-the models in `backend/models/schemas.py` are the schemas of the requests and responses.
+server, so it has no `AGENTS.md` and no `llms.txt`. Its API is a command catalog for
+agents (Nogat AGI §2, ADR-091): `GET /api/v1/commands/list` names every command with its
+route and `GET /api/v1/commands/schema` gives its options, rules, examples and error
+codes (see [API](#api)); the OpenAPI document is at `/api/v1/openapi.json`, with `/docs`
+as the interactive page.
 Developing this repository? Read
 [CLAUDE.md](https://github.com/Daldek/Hydrograf/blob/main/CLAUDE.md).
 
@@ -256,9 +301,10 @@ the code in the
 [shared registry](https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md)),
 `title`, `status`, `detail`, `instance`, `code`, `hint` when a fix is known, `details` (its
 `reason` names the cause) and, for invalid values, `errors[]` with a JSON Pointer for each
-value. The HTTP status comes from the registry: invalid requests are 400, not 422. The
+value. A problem of a command, or of a job's result, names the command in `command`. The
+HTTP status comes from the registry: invalid requests are 400, not 422. The
 texts are English, and Polish with `Accept-Language: pl` (the interface sends it); codes
-and `details` do not change with the language. The five codes you meet most:
+and `details` do not change with the language. The codes you meet most:
 
 | Code | Status | When |
 |---|---|---|
@@ -267,10 +313,12 @@ and `details` do not change with the language. The five codes you meet most:
 | `no_data` | 404 | the request is valid but there is no precipitation or elevation data |
 | `unsupported` | 422 | the catchment is above 250 km² or lacks the parameters of the chosen model |
 | `unauthorized` | 401 | the `X-Admin-Key` of the admin panel is missing or wrong, or the server has no key |
+| `conflict` | 409 | a long command called at its own route (`run_as_job`: start it as a job), or the result of a job that has not ended (`job_running`) |
 
 Over the request limit every route answers 429 with `Retry-After` and the problem
 `rate_limited` (`details`: `reason` `request_limit`, `tile_limit` or `feedback_limit`,
-`retry_after_s`, `limit`, `window_s`). Only the gateway errors of nginx (502, 504) are not
+`retry_after_s`, `limit`, `window_s`); a third job of one client answers it with `reason`
+`job_limit`. Only the gateway errors of nginx (502, 504) are not
 problem documents. The preprocessing scripts exit with 0 on success, 1 on failure and 2
 when the command line is invalid; a refusal of the bootstrap (a set of an Archiwista
 project, the shared store) exits with the code of the registry, listed in the
