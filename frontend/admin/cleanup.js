@@ -2,7 +2,8 @@
  * Hydrograf admin panel: the section „Czyszczenie” (GET cleanup/estimate, POST cleanup).
  *
  * Each target of the API with the space it takes, and „Usuń” after a confirmation;
- * `scripts.clean` deletes its files and tables.
+ * `scripts.clean` deletes its files and tables. A target whose directories the API is
+ * still walking has no size yet (null), which the note says.
  */
 (function () {
     'use strict';
@@ -12,6 +13,7 @@
     var list = document.getElementById('cleanup-targets');
     var refresh = document.getElementById('cleanup-refresh');
     var ticket = 0;
+    var MEASURING = 'Rozmiar części celów jest jeszcze liczony; „Odśwież” pokaże go za chwilę.';
 
     function row(target) {
         var item = admin.el('li', 'admin-target');
@@ -36,8 +38,9 @@
             var data = await admin.request('cleanup/estimate');
             if (mine !== ticket) return;
             status.error(null);
-            status.note('');
-            list.replaceChildren.apply(list, (data.targets || []).map(row));
+            var targets = data.targets || [];
+            status.note(targets.some(function (target) { return target.size_mb === null; }) ? MEASURING : '');
+            list.replaceChildren.apply(list, targets.map(row));
             if (!list.children.length) list.append(admin.el('li', 'admin-line', 'Nie ma czego czyścić.'));
         } catch (error) {
             if (mine !== ticket) return;

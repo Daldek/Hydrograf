@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from api.endpoints.admin import _CLEANUP_COMPONENTS, router
+from api.endpoints.admin import _CLEANUP_COMPONENTS, FRONTEND_TILES, router
 from api.errors import install_error_handlers
 from core.database import get_db
 
@@ -33,6 +33,13 @@ def _make_mock_db():
     result.scalar.return_value = 52428800  # 50 MB
     db.execute.return_value = result
     return db
+
+
+def _sizes_of(size_mb):
+    """A stand-in of the module's _DirSizes: each directory measures size_mb(path)."""
+    sizes = MagicMock()
+    sizes.measure.side_effect = lambda paths: {path: size_mb(path) for path in paths}
+    return sizes
 
 
 class TestCleanupComponents:
@@ -68,8 +75,8 @@ class TestCleanupComponents:
 class TestCleanupEstimate:
     """Tests for GET /api/admin/cleanup/estimate."""
 
-    @patch("api.endpoints.admin._dir_size_mb", return_value=10.0)
-    def test_estimate_returns_all_and_cache(self, _mock_dir, app):
+    @patch("api.endpoints.admin._DIR_SIZES", _sizes_of(lambda path: 10.0))
+    def test_estimate_returns_all_and_cache(self, app):
         """Estimate returns 'all' and 'cache' targets."""
         mock_db = _make_mock_db()
         app.dependency_overrides[get_db] = lambda: mock_db
@@ -83,9 +90,9 @@ class TestCleanupEstimate:
         assert "all" in keys
         assert "cache" in keys
 
-    @patch("api.endpoints.admin._dir_size_mb", return_value=5.5)
-    def test_estimate_has_size_mb(self, _mock_dir, app):
-        """Each target has a size_mb field."""
+    @patch("api.endpoints.admin._DIR_SIZES", _sizes_of(lambda path: 5.5))
+    def test_estimate_sums_the_directories_and_the_database(self, app):
+        """'all' sums its four directories and the 50 MB database, 'cache' one."""
         mock_db = _make_mock_db()
         app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -93,9 +100,20 @@ class TestCleanupEstimate:
         response = client.get("/api/admin/cleanup/estimate")
         data = response.json()
 
-        for target in data["targets"]:
-            assert "size_mb" in target
-            assert isinstance(target["size_mb"], float)
+        sizes = {target["key"]: target["size_mb"] for target in data["targets"]}
+        assert sizes == {"all": 72.0, "cache": 5.5}
+
+    @patch(
+        "api.endpoints.admin._DIR_SIZES",
+        _sizes_of(lambda path: None if path == FRONTEND_TILES else 5.5),
+    )
+    def test_a_target_with_a_directory_still_walked_has_no_size(self, app):
+        app.dependency_overrides[get_db] = lambda: _make_mock_db()
+
+        data = TestClient(app).get("/api/admin/cleanup/estimate").json()
+
+        sizes = {target["key"]: target["size_mb"] for target in data["targets"]}
+        assert sizes == {"all": None, "cache": 5.5}
 
 
 class TestCleanupExecute:

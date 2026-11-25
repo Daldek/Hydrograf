@@ -5,6 +5,11 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **„Zasoby” and „Czyszczenie” of the admin panel answer within the proxy's time** (E5b-02 of the scenario test of 2026-11-15/16; `api/endpoints/admin.py`, `admin/resources.js`, `admin/cleanup.js`): `GET /api/admin/resources` and `GET /api/admin/cleanup/estimate` walked every file of the data directories inside the request, so on an instance with 2.15 M tile files the walk took 48.9 s and nginx answered 504 after its 30 s. Each directory is now walked in a thread of its own: a request waits for the walks it starts at most 5 s and answers the last size it knows, `null` before a directory's first walk ends (and then `total_mb`, or the `size_mb` of a cleanup target, `null` too), and the panel says „Rozmiar części danych na dysku jest jeszcze liczony; „Odśwież” pokaże go za chwilę.” A size is reused for 30 s as before, one walk per directory at a time. Production's 611 k tile files take 11.5 s to walk: the first request answered in 5.4 s without their size, the next one with it.
+
 ## [0.6.1] - 2026-11-25
 
 ### Changed

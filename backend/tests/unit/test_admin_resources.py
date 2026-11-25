@@ -1,5 +1,6 @@
 """Tests for admin resources endpoint (the section „Zasoby” of the panel)."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,9 +9,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from api.endpoints.admin import _dir_size_mb, router
+from api.endpoints.admin import FRONTEND_TILES, _DirSizes, router
 from core.database import get_db
 from scripts.clean import DB_TABLES
+
+MB = 1024 * 1024
 
 
 def _noop_auth():
@@ -35,13 +38,20 @@ def _make_mock_db(db_size_bytes: int = 104857600):
     return db
 
 
+def _sizes_of(size_mb):
+    """A stand-in of the module's _DirSizes: each directory measures size_mb(path)."""
+    sizes = MagicMock()
+    sizes.measure.side_effect = lambda paths: {path: size_mb(path) for path in paths}
+    return sizes
+
+
 class TestResources:
     """Tests for GET /api/admin/resources."""
 
     @pytest.fixture(autouse=True)
     def _sizes(self):
         """Five MB in each data directory, without walking the real ones."""
-        with patch("api.endpoints.admin._dir_size_mb", return_value=5.0):
+        with patch("api.endpoints.admin._DIR_SIZES", _sizes_of(lambda path: 5.0)):
             yield
 
     @patch("api.endpoints.admin.get_db_engine")
@@ -229,24 +239,108 @@ class TestResources:
             "total_mb": 20.0,
         }
 
+    @patch("api.endpoints.admin.get_db_engine")
+    @patch("api.endpoints.admin.get_catchment_graph")
+    def test_a_directory_still_walked_has_no_size_nor_total(
+        self, mock_cg, mock_engine, app
+    ):
+        mock_cg.return_value = MagicMock(loaded=False)
+        app.dependency_overrides[get_db] = lambda: _make_mock_db()
+        walking = _sizes_of(lambda path: None if path == FRONTEND_TILES else 5.0)
 
-class TestDirSizeMb:
-    """Tests for _dir_size_mb helper."""
+        with patch("api.endpoints.admin._DIR_SIZES", walking):
+            data = TestClient(app).get("/api/admin/resources").json()
 
-    def test_nonexistent_path(self, tmp_path):
-        """Returns 0.0 for non-existent path."""
-        assert _dir_size_mb(tmp_path / "nonexistent") == 0.0
+        assert data["disk"] == {
+            "frontend_data_mb": 5.0,
+            "frontend_tiles_mb": None,
+            "nmt_data_mb": 5.0,
+            "cache_mb": 5.0,
+            "total_mb": None,
+        }
 
-    def test_empty_dir(self, tmp_path):
-        """Returns 0.0 for empty directory."""
-        assert _dir_size_mb(tmp_path) == 0.0
 
-    def test_dir_with_files(self, tmp_path):
-        """Calculates correct size for directory with files."""
-        # Write 1 MB of data to make rounding work
-        (tmp_path / "file1.bin").write_bytes(b"x" * (512 * 1024))
+class _BlockedWalk:
+    """dir_size that waits for release() before it answers size_mb."""
+
+    def __init__(self, size_mb: float):
+        self.size_mb = size_mb
+        self.calls = 0
+        self._release = threading.Event()
+
+    def __call__(self, path):
+        self.calls += 1
+        self._release.wait(10)
+        return self.size_mb * MB
+
+    def release(self):
+        self._release.set()
+
+
+class TestDirSizes:
+    """The sizes of the data directories, walked in threads of their own (E5b-02)."""
+
+    def test_missing_and_empty_directories_measure_zero(self, tmp_path):
+        sizes = _DirSizes()
+        missing = tmp_path / "missing"
+
+        assert sizes.measure([missing, tmp_path], wait_s=5) == {
+            missing: 0.0,
+            tmp_path: 0.0,
+        }
+
+    def test_a_directory_measures_its_files_below_it(self, tmp_path):
+        (tmp_path / "file1.bin").write_bytes(b"x" * (MB // 2))
         (tmp_path / "sub").mkdir()
-        (tmp_path / "sub" / "file2.bin").write_bytes(b"x" * (512 * 1024))
+        (tmp_path / "sub" / "file2.bin").write_bytes(b"x" * (MB // 2))
 
-        size = _dir_size_mb(tmp_path)
-        assert size == 1.0
+        assert _DirSizes().measure([tmp_path], wait_s=5) == {tmp_path: 1.0}
+
+    def test_a_walk_longer_than_the_wait_gives_null_then_its_size(self, tmp_path):
+        sizes = _DirSizes()
+        walk = _BlockedWalk(1.0)
+        with patch("api.endpoints.admin.dir_size", walk):
+            try:
+                assert sizes.measure([tmp_path], wait_s=0.05) == {tmp_path: None}
+                assert sizes.measure([tmp_path], wait_s=0.05) == {tmp_path: None}
+            finally:
+                walk.release()
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 1.0}
+
+        assert walk.calls == 1
+
+    def test_a_size_past_its_time_is_given_while_it_is_walked_again(self, tmp_path):
+        sizes = _DirSizes()
+        with patch("api.endpoints.admin.dir_size", return_value=MB):
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 1.0}
+
+        walk = _BlockedWalk(2.0)
+        with (
+            patch("api.endpoints.admin._DIR_SIZE_TTL", 0.0),
+            patch("api.endpoints.admin.dir_size", walk),
+        ):
+            try:
+                assert sizes.measure([tmp_path], wait_s=0.05) == {tmp_path: 1.0}
+            finally:
+                walk.release()
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 2.0}
+
+    def test_a_size_within_its_time_is_not_walked_again(self, tmp_path):
+        sizes = _DirSizes()
+        with patch("api.endpoints.admin.dir_size", return_value=MB) as walk:
+            sizes.measure([tmp_path], wait_s=5)
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 1.0}
+
+        assert walk.call_count == 1
+
+    def test_a_failed_walk_keeps_the_last_size_and_the_next_walks_again(self, tmp_path):
+        sizes = _DirSizes()
+        with patch("api.endpoints.admin.dir_size", side_effect=OSError("gone")):
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: None}
+        with patch("api.endpoints.admin.dir_size", return_value=MB):
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 1.0}
+        with (
+            patch("api.endpoints.admin._DIR_SIZE_TTL", 0.0),
+            patch("api.endpoints.admin.dir_size", side_effect=OSError("gone")),
+        ):
+            assert sizes.measure([tmp_path], wait_s=5) == {tmp_path: 1.0}

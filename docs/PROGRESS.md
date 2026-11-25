@@ -97,7 +97,8 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    for 0.7.0 or later. Known defects, by the IDs of the scenario test of 2026-11-15/16
    (`~/workspace/_e2e/2026-11-15/scenario/REPORT.md` §4, owners §6; none of C1–C7 of Nogat's run
    of candidate-5 is Hydrograf's) and of the external test report of 2026-11-02 (A2, B2, B3);
-   *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *0.5.1* what was in its scope and is
+   *fixed* marks what 0.5.1 fixed (CHANGELOG `[0.5.1]`), *fixed for 0.7.0* what the branch
+   `fix/0.7.0-small` fixed (CHANGELOG `[Unreleased]`), *0.5.1* what was in its scope and is
    still open, *0.7.0* what is planned for 0.7.0:
    - *Large basins (0.7.0, with a plan):* E7-08 (a second bootstrap into an instance replaces the
      first part and mixes its cover and soils; no `--append`, no inflow from the part above),
@@ -117,12 +118,14 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      the precise mode reads the cut `dem_mosaic.tif`), Next 17 (*0.5.1*).
    - *API:* E5b-01 (*fixed*: the catchment graph loaded inside the first request, 504; it now
      loads in a thread of its own and the requests answer 503 at once until it is loaded), E5b-02
-     (0.7.0: `GET /api/admin/resources` walks every tile, 504), E5b-03 (the precise mode near a
-     stream returns 0.0003 km² without a notice), E5b-04 (0.7.0: `generate-hydrograph` with a
-     point alone takes about 3 min, 504), E5b-08 (*fixed* on Hydrograf's side: the hydrograph's
-     Hydrolog computations hold numba's compiler lock, so a compile no longer catches their
-     warnings; Hydrolog 0.8.1 the other: the first network beside a hydrograph gave 500), E5b-10
-     (the network preview does not warn of a window above 60 M cells).
+     (*fixed for 0.7.0*: `GET /api/admin/resources` walked every tile inside the request, 504;
+     each data directory is now walked in a thread of its own and a request waits for it at most
+     5 s), E5b-03 (the precise mode near a stream returns 0.0003 km² without a notice), E5b-04
+     (0.7.0: `generate-hydrograph` with a point alone takes about 3 min, 504), E5b-08 (*fixed* on
+     Hydrograf's side: the hydrograph's Hydrolog computations hold numba's compiler lock, so a
+     compile no longer catches their warnings; Hydrolog 0.8.1 the other: the first network beside
+     a hydrograph gave 500), E5b-10 (the network preview does not warn of a window above 60 M
+     cells).
    - *Lines, rainfall and warnings (B4, B5):* E3-03 (0.7.0: `obserwator-series-csv` is refused as
      an own series), E3-04 (*0.5.1*: `custom_precipitation` carries no provider lines), E5b-05
      (*fixed*: the full hydrograph path had no ISRIC line), E5b-06 (*fixed*: Hydrolog's warnings

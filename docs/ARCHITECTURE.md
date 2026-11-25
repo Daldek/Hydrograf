@@ -665,8 +665,8 @@ Prefix: /api/admin
 
 GET  /api/admin/status             — app, version, started_at, uptime_s, data_dir, disk, checks (database, catchment_graph, data_dir) of Nogat DEV-15.13
 GET  /api/admin/stats?from=&to=    — the days of stats.jsonl between two UTC days (default the last 30), the current day as counted, totals but visitors
-GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories
-GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
+GET  /api/admin/resources          — CPU, RAM (psutil), DB size and pool, rows per table, catchment graph, MB of the data directories (each walked in a thread of its own, the request waiting at most 5 s: null and total_mb null until its first walk ends; E5b-02)
+GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees (size_mb null while a directory of the target is walked for the first time)
 POST /api/admin/cleanup            — {"targets": ["all" | "cache"]}: the processing data (rasters, overlays, tiles, the tables) or the download cache, through execute_clean() of scripts/clean.py
 GET  /api/admin/bootstrap/status   — status of the bootstrap process
 POST /api/admin/bootstrap/start    — start the bootstrap subprocess
