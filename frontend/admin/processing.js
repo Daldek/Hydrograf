@@ -284,33 +284,59 @@
     // ---------------------------------------------------------------- the map
 
     /**
-     * The rectangle drawn on a Leaflet map in a dialog, over the first raster base map of
-     * the kit's catalogue that the deployment allows (GET /api/v1/basemaps: GUGiK's grey
-     * OpenStreetMap by default, none without one), drawn by the kit's leafletBasemap with
-     * its credit (Nogat DEV-15.13, DEV-15.15; ADR-089).
+     * The rectangle drawn on a map in a dialog, over the first raster base map of the kit's
+     * catalogue that the deployment allows (GET /api/v1/basemaps: GUGiK's grey
+     * OpenStreetMap by default, none without one), drawn by the kit's maplibreBasemap with
+     * its credit (Nogat DEV-15.13, DEV-15.15; ADR-089). The map is MapLibre GL JS 6.14.0, as
+     * the page's (Nogat's plan 2026-11-24-hydrograf-maplibre, M10): a mouse drag draws the
+     * box, the map is never mouse-panned; without WebGL 2 the dialog says so in its place
+     * and the four fields are filled by hand (M13).
      */
     var picker = (function () {
+        var LIBRARY = '../vendor/maplibre-gl-6.14.0/maplibre-gl.mjs';
+        var NO_WEBGL = 'Mapa wymaga przeglądarki z WebGL 2. Wpisz granice obszaru w pola formularza.';
+        var NO_MAP = 'Nie udało się wczytać mapy. Wpisz granice obszaru w pola formularza.';
+        var EMPTY = { type: 'FeatureCollection', features: [] };
         var dialog = document.getElementById('bbox-dialog');
         var opener = document.getElementById('bbox-map-open');
         var confirmButton = document.getElementById('bbox-confirm');
+        var area = document.getElementById('bbox-map');
         var notice = document.getElementById('bbox-map-notice');
+        var loading = null;  // a Promise of the map, or of null without one
         var map = null;
-        var rectangle = null;
-        var anchor = null;
+        var box = null;      // [west, south, east, north] drawn
+        var anchor = null;   // the place where the drag began
 
         function round6(value) {
             return Math.round(value * 1e6) / 1e6;
         }
 
-        function draw(bounds) {
-            if (rectangle) map.removeLayer(rectangle);
-            var colour = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-            rectangle = L.rectangle(bounds, { color: colour, weight: 2, fillOpacity: 0.15 }).addTo(map);
+        function token(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+
+        /** Draw the box [west, south, east, north], or none. */
+        function draw(drawn) {
+            box = drawn;
+            if (!map) return;
+            map.getSource('box').setData(drawn ? {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [[[drawn[0], drawn[1]], [drawn[2], drawn[1]], [drawn[2], drawn[3]],
+                        [drawn[0], drawn[3]], [drawn[0], drawn[1]]]],
+                },
+            } : EMPTY);
+        }
+
+        function boxOf(a, b) {
+            return [Math.min(a.lng, b.lng), Math.min(a.lat, b.lat), Math.max(a.lng, b.lng), Math.max(a.lat, b.lat)];
         }
 
         /**
-         * Draw the base map through the kit's adapter; one whose provider does not answer
-         * leaves the map and is said under it, the rectangle still drawn without it.
+         * Draw the base map through the kit; one whose provider does not answer leaves the
+         * map and is said under it, the rectangle still drawn without it.
          */
         async function showBasemap() {
             var entries;
@@ -331,81 +357,130 @@
                 notice.hidden = false;
             }
             try {
-                (await kit.leafletBasemap(L, entry, { onFailure: onFailure })).addTo(map);
+                await kit.maplibreBasemap(entry, { map: map, before: 'box-fill', onFailure: onFailure });
             } catch (error) {
                 // onFailure has said it
             }
         }
 
-        function create() {
-            map = L.map(document.getElementById('bbox-map'), { center: [52.0, 19.0], zoom: 6 });
-            showBasemap().catch(function (error) {
-                console.warn('The area map has no base map:', error.message);
+        /** The dialog says why there is no map; the confirmation stays disabled. */
+        function unavailable(message, error) {
+            console.warn('The area map is not drawn:', error && error.message ? error.message : error);
+            var note = document.createElement('p');
+            note.className = 'admin-map-unavailable';
+            note.setAttribute('role', 'status');
+            note.textContent = message;
+            area.replaceChildren(note);
+            return null;
+        }
+
+        /** A map without rotation, pitch or mouse panning, its box over the base map. */
+        async function create() {
+            var maplibregl = await import(LIBRARY);
+            var accent = token('--accent');
+            var created;
+            try {
+                created = new maplibregl.Map({
+                    container: area,
+                    style: {
+                        version: 8,
+                        sources: { box: { type: 'geojson', data: EMPTY } },
+                        layers: [
+                            { id: 'background', type: 'background', paint: { 'background-color': token('--surface-2') } },
+                            { id: 'box-fill', type: 'fill', source: 'box', paint: { 'fill-color': accent, 'fill-opacity': 0.15 } },
+                            { id: 'box-line', type: 'line', source: 'box', paint: { 'line-color': accent, 'line-width': 2 } },
+                        ],
+                    },
+                    center: [19.0, 52.0],
+                    zoom: 5,
+                    dragPan: false,
+                    dragRotate: false,
+                    pitchWithRotate: false,
+                    touchPitch: false,
+                    maxPitch: 0,
+                    boxZoom: false,
+                    attributionControl: { compact: false },
+                    locale: {
+                        'Map.Title': 'Mapa',
+                        'NavigationControl.ZoomIn': 'Przybliż',
+                        'NavigationControl.ZoomOut': 'Oddal',
+                    },
+                });
+            } catch (error) {
+                return unavailable(error instanceof maplibregl.GPUInitializationError ? NO_WEBGL : NO_MAP, error);
+            }
+            created.touchZoomRotate.disableRotation();
+            created.keyboard.disableRotation();
+            // A tile that does not load leaves the map as it is (the kit reports a base map
+            // that fails); anything else is a fault of this page
+            created.on('error', function (event) {
+                if (!event.sourceId) console.warn(event.error);
             });
+            created.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+            await new Promise(function (resolve) { created.once('load', resolve); });
+            map = created;
             map.on('mousedown', function (event) {
                 if (event.originalEvent.button !== 0) return;
-                anchor = event.latlng;
-                map.dragging.disable();
+                anchor = event.lngLat;
                 confirmButton.disabled = true;
             });
             map.on('mousemove', function (event) {
-                if (anchor) draw(L.latLngBounds(anchor, event.latlng));
+                if (anchor) draw(boxOf(anchor, event.lngLat));
             });
             map.on('mouseup', function (event) {
                 if (!anchor) return;
-                var bounds = L.latLngBounds(anchor, event.latlng);
+                var from = map.project(anchor);
+                var drawn = boxOf(anchor, event.lngLat);
                 anchor = null;
-                map.dragging.enable();
-                var corner = map.latLngToContainerPoint(bounds.getNorthEast());
-                var other = map.latLngToContainerPoint(bounds.getSouthWest());
-                if (Math.abs(corner.x - other.x) < 5 && Math.abs(corner.y - other.y) < 5) {
-                    if (rectangle) map.removeLayer(rectangle);
-                    rectangle = null;
+                if (Math.abs(from.x - event.point.x) < 5 && Math.abs(from.y - event.point.y) < 5) {
+                    draw(null);
                     return;
                 }
-                draw(bounds);
+                draw(drawn);
                 confirmButton.disabled = false;
             });
-            map.getContainer().addEventListener('mouseleave', function () {
-                if (!anchor) return;
+            map.getCanvasContainer().addEventListener('mouseleave', function () {
                 anchor = null;
-                map.dragging.enable();
             });
+            showBasemap().catch(function (error) {
+                console.warn('The area map has no base map:', error.message);
+            });
+            return map;
         }
 
-        function open() {
+        async function open() {
             dialog.showModal();
-            if (!map) create();
-            map.invalidateSize();
             var values = {};
             for (var side in fields) values[side] = parseFloat(fields[side].value);
             var known = !isNaN(values.north) && !isNaN(values.south) &&
                 !isNaN(values.east) && !isNaN(values.west);
+            confirmButton.disabled = true;
+            if (!loading) {
+                loading = create().catch(function (error) { return unavailable(NO_MAP, error); });
+            }
+            if (!(await loading)) return;
+            map.resize();
             confirmButton.disabled = !known;
             if (known) {
-                var bounds = L.latLngBounds([values.south, values.west], [values.north, values.east]);
-                draw(bounds);
-                map.fitBounds(bounds, { padding: [40, 40] });
+                draw([values.west, values.south, values.east, values.north]);
+                map.fitBounds([[values.west, values.south], [values.east, values.north]], { padding: 40, animate: false });
             }
         }
 
         dialog.addEventListener('close', function () {
             anchor = null;
-            if (map) map.dragging.enable();
-            if (dialog.returnValue !== 'confirm' || !rectangle) return;
-            var bounds = rectangle.getBounds();
-            fields.north.value = round6(bounds.getNorth());
-            fields.south.value = round6(bounds.getSouth());
-            fields.east.value = round6(bounds.getEast());
-            fields.west.value = round6(bounds.getWest());
+            if (dialog.returnValue !== 'confirm' || !box) return;
+            fields.north.value = round6(box[3]);
+            fields.south.value = round6(box[1]);
+            fields.east.value = round6(box[2]);
+            fields.west.value = round6(box[0]);
             bbox();
         });
         opener.addEventListener('click', open);
 
         return {
             reset: function () {
-                if (map && rectangle) map.removeLayer(rectangle);
-                rectangle = null;
+                draw(null);
             },
         };
     })();

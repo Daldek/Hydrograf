@@ -187,11 +187,11 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
   the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but `js/nogat.js`
-  (imports Nogat's kit, ADR-082), `admin/processing.js` (imports `nogat-basemaps.js`
-  dynamically, ADR-089) and the kit's copies in `frontend/nogat/`, which keep Nogat's 2
-  spaces; about 560 lines of its own JavaScript exceed 100 columns.
+  (imports Nogat's kit, ADR-082), `admin/processing.js` (imports `nogat-basemaps.js`,
+  ADR-089, and MapLibre GL JS's module dynamically) and the kit's copies in
+  `frontend/nogat/`, which keep Nogat's 2 spaces; about 560 lines of its own JavaScript
+  exceed 100 columns.
 - DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in resources.
-- DEV-15.13: the admin `img-src` admits `data:`, Leaflet's removed tiles, until MapLibre.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
 - DEV-18, DEV-19: profile `tool` only; settings from the environment (`.env.example`) and
   from the `nogat.toml` NOGAT_CONFIG names (`[nogat.operator]`, `[nogat] gui`; `state_dir`,

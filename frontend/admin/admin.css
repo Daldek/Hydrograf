@@ -190,10 +190,42 @@
 }
 
 .admin-map {
+    position: relative;
     height: min(440px, 60dvh);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     background: var(--surface-2);
+}
+
+/* The drag draws the box: a crosshair, never MapLibre's hand */
+.admin-map .maplibregl-canvas-container.maplibregl-interactive { cursor: crosshair; }
+
+/* The zoom's „+” and „−” as letters in the theme's colours: MapLibre's images are data:
+   URIs, which the page's img-src does not admit (DEV-15.13) */
+.admin-map .maplibregl-ctrl-group {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: none;
+}
+.admin-map .maplibregl-ctrl-group button {
+    color: var(--text);
+    font: 700 17px/29px var(--font-sans);
+}
+.admin-map .maplibregl-ctrl-group button + button { border-top-color: var(--line); }
+.admin-map .maplibregl-ctrl button .maplibregl-ctrl-icon { background-image: none; text-align: center; }
+.admin-map .maplibregl-ctrl button:disabled .maplibregl-ctrl-icon { opacity: 1; color: var(--text-3); }
+.admin-map .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon::before { content: "+"; }
+.admin-map .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon::before { content: "\2212"; }
+
+/* No map without WebGL 2: the dialog says so in its place */
+.admin-map-unavailable {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    margin: 0;
+    padding: var(--space-4);
+    color: var(--text-2);
+    text-align: center;
 }
 
 /* A base map that does not answer, said under the map, which stays usable without it */

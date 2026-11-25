@@ -11,22 +11,21 @@
     <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
 
     <!-- The admin page is Nogat's <nogat-admin> shell (DEV-15.13, ADR-086): the tokens,
-         the kit's panel and base maps, then Leaflet for the area map and the page's own
-         sections; the area map's base map comes from the kit's nogat-basemaps.js, which
-         processing.js imports (ADR-089) -->
+         the kit's panel and base maps, MapLibre GL JS 6.14.0's stylesheet for the area map
+         (processing.js imports its module) and the page's own sections; the area map's
+         base map comes from the kit's nogat-basemaps.js, which processing.js imports too
+         (ADR-089) -->
     <link rel="stylesheet" href="../css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="../nogat/nogat-admin.css?v=a4bdf8bd02">
     <link rel="stylesheet" href="../nogat/nogat-basemaps.css?v=65df8e6624">
-    <link rel="stylesheet" href="../vendor/leaflet-1.9.4/leaflet.css?v=a783710282"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=">
-    <link rel="stylesheet" href="admin.css?v=90cde06bbf">
+    <link rel="stylesheet" href="../vendor/maplibre-gl-6.14.0/maplibre-gl.css?v=bacba6a85a"
+          integrity="sha384-1TZtfVz7qtwR5vD7cMwjGT+9uiK4lqE3pbUOPwYO6OCpb+TYP0S9vLIhG02JCU04">
+    <link rel="stylesheet" href="admin.css?v=f0ee362db3">
 
     <script type="module" src="../nogat/nogat-admin.js?v=19f3abe211"></script>
-    <script defer src="../vendor/leaflet-1.9.4/leaflet.js?v=db49d009c8"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
     <script defer src="admin.js?v=8533ca9cec"></script>
     <script defer src="resources.js?v=18d1d3fc19"></script>
-    <script defer src="processing.js?v=c7c3ea0f45"></script>
+    <script defer src="processing.js?v=a60e3ce700"></script>
     <script defer src="cleanup.js?v=35f6e70fe6"></script>
     <script defer src="boundaries.js?v=e571d67c58"></script>
 </head>

@@ -1,6 +1,7 @@
 """
 Contract: nginx's Content-Security-Policy names the kit's base maps (Nogat DEV-15.13,
-DEV-15.15; ADR-089).
+DEV-15.15; ADR-089) and MapLibre's worker (Nogat's plan 2026-11-24-hydrograf-maplibre,
+M2).
 
 Hydrograf's CSP is nginx's (`docker/nginx.conf`, the same in the TLS variant
 `docker/nginx-ssl.conf.template`), not built by the API from its settings, so the page's
@@ -8,8 +9,8 @@ Hydrograf's CSP is nginx's (`docker/nginx.conf`, the same in the TLS variant
 `frontend/nogat/nogat-basemaps.json` (the setting `basemaps` narrows the switcher, not
 these lines), `img-src` besides the flood hazard map's WMS, the map's own layer, and no
 directive a remote scheme source or `*`. The admin page's policy admits in `img-src`
-only the origin of the first raster entry, the one its area map draws without a
-switcher, and `data:`, the empty image Leaflet gives each tile it removes.
+and `connect-src` only the origin of the first raster entry, the one its area map
+draws without a switcher, and its worker the site's own file.
 """
 
 import json
@@ -82,7 +83,7 @@ def test_the_admin_page_admits_only_the_base_map_of_its_area_map(name):
     admin = _policies(name)["admin"]
     first_raster = next(entry for entry in CATALOGUE if entry["kind"] == "raster")
 
-    assert _remote(admin["img-src"]) == {first_raster["origin"]}
-    assert _schemes(admin["img-src"]) == {"data:"}
-    assert "connect-src" not in admin
+    assert admin["img-src"] == ["'self'", first_raster["origin"]]
+    assert admin["connect-src"] == ["'self'", first_raster["origin"]]
+    assert admin["worker-src"] == ["'self'"]
     assert admin["default-src"] == ["'self'"]

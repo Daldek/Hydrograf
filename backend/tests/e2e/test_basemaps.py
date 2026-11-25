@@ -25,6 +25,7 @@ from playwright.sync_api import FloatRect, Locator, Page, Route, expect
 
 from tests.e2e.browser import Tab, open_map
 from tests.e2e.site import ADMIN_KEY, FRONTEND
+from tests.e2e.test_layers import wait_still
 
 CATALOGUE: list[dict[str, Any]] = json.loads(
     (FRONTEND / "nogat" / "nogat-basemaps.json").read_text(encoding="utf-8")
@@ -45,6 +46,11 @@ GLYPHS = r"/vendor/openmaptiles-fonts-2.0/noto-sans-regular/\d+-\d+\.pbf$"
 MIDDLE_PX = 120
 LIGHT_ABOVE, DARK_BELOW = 170, 100
 REPAINT_TIMEOUT_MS = 15_000
+# A strip along the admin map's left edge, clear of the box its fit leaves 40 px from
+# the edges and of the zoom buttons over its top: its width and height [px]
+STRIP_PX = (24, 80)
+# How far the channels of a pixel of a grey base map lie apart [0-255]
+GREY_TOLERANCE = 3
 
 
 def _switcher(page: Page) -> Locator:
@@ -80,6 +86,21 @@ def _brightness(page: Page) -> float:
     }
     image = Image.open(io.BytesIO(page.screenshot(clip=clip))).convert("L")
     return float(ImageStat.Stat(image).mean[0])
+
+
+def _strip(area: Locator) -> list[tuple[int, int, int]]:
+    """The pixels of a strip along the left edge of a map, halfway down."""
+    box = area.bounding_box()
+    assert box is not None
+    clip: FloatRect = {
+        "x": box["x"] + 4,
+        "y": box["y"] + (box["height"] - STRIP_PX[1]) / 2,
+        "width": STRIP_PX[0],
+        "height": STRIP_PX[1],
+    }
+    image = Image.open(io.BytesIO(area.page.screenshot(clip=clip))).convert("RGB")
+    packed = image.tobytes()
+    return [(packed[k], packed[k + 1], packed[k + 2]) for k in range(0, len(packed), 3)]
 
 
 def _open_admin_map(tab: Tab) -> Locator:
@@ -229,9 +250,12 @@ def test_the_admin_map_draws_the_first_raster_entry_grey_with_its_credit(
     assert tab.sent_since(0, GUGIK_OSM_TILES.pattern)
     assert tab.sent_since(0, r"/wss/service/PZGIK/ORTO/") == []
     assert tab.sent_since(0, OPENFREEMAP) == []
-    # Leaflet gives a tile layer's class to the layer's container
-    expect(area.locator(".leaflet-layer.nogat-basemap-grey")).to_have_count(1)
-    credit = area.locator(".leaflet-control-attribution")
+    # The tiles drawn grey: every pixel's channels alike, the tile's detail kept
+    wait_still(tab.page, area)
+    strip = _strip(area)
+    assert all(max(p) - min(p) <= GREY_TOLERANCE for p in strip), set(strip)
+    assert len(set(strip)) > 1, set(strip)
+    credit = area.locator(".maplibregl-ctrl-attrib")
     expect(credit).to_contain_text(ENTRIES["gugik-osm"]["credit"]["text"])
     expect(tab.page.locator("#bbox-map-notice")).to_be_hidden()
 
@@ -243,4 +267,6 @@ def test_the_admin_map_draws_no_base_map_without_a_raster_entry(tab: Tab) -> Non
 
     asked = [sent.url for sent in tab.requests]
     assert not [u for u in asked if re.search(f"{OPENFREEMAP}|{GEOPORTAL}", u)]
-    expect(area.locator("img.leaflet-tile")).to_have_count(0)
+    # The map's own background alone
+    wait_still(tab.page, area)
+    assert len(set(_strip(area))) == 1

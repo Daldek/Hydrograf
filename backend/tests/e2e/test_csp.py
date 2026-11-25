@@ -18,10 +18,8 @@ MapLibre's ``blob:`` worker under ``worker-src blob:``, after step 2 its file of
 ``vendor/`` under ``worker-src 'self'`` (M2 changes the page and the policy together).
 
 The admin page, signed in with its dialog's map open, asks only what its own policy
-allows (GUGiK's tiles, the first raster entry of the kit's catalogue, under
-``img-src``) and reports no violation: its ``img-src`` admits ``data:``, the empty GIF
-Leaflet gives each tile it removes, which nginx.conf refused before the dialog's map
-took the kit's base map (ADR-089).
+allows (GUGiK's tiles, the first raster entry of the kit's catalogue, and MapLibre's
+worker of ``vendor/``) and reports no violation.
 """
 
 import re

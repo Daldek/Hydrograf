@@ -640,11 +640,13 @@ def _wait_ready(base: str, process: subprocess.Popen[bytes], log_path: Path) -> 
         time.sleep(0.3)
 
 
-# nginx's mime.types for the files the site serves; anything else is its default_type
+# nginx's mime.types for the files the site serves, with nginx.conf's own `.mjs`;
+# anything else is its default_type
 _TYPES = {
     ".html": "text/html",
     ".css": "text/css",
     ".js": "application/javascript",
+    ".mjs": "application/javascript",
     ".json": "application/json",
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -721,7 +723,7 @@ class _PagesHandler(BaseHTTPRequestHandler):
             self._file(
                 FRONTEND / path[1:], [("Cache-Control", "no-store"), _SERVER_HEADERS[0]]
             )
-        elif re.search(r"\.(css|js|ico|svg)$", path, re.IGNORECASE):
+        elif re.search(r"\.(css|js|mjs|ico|svg)$", path, re.IGNORECASE):
             self._file(FRONTEND / path[1:], [_SERVER_HEADERS[0]])
         elif path.lower().endswith(".html"):
             self._page(self.path)
