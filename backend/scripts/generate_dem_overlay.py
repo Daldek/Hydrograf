@@ -1,5 +1,5 @@
 """
-Generate a colored PNG overlay from DEM raster for Leaflet display.
+Generate a colored PNG overlay from DEM raster for the map (an image source).
 
 Reads a DEM (GeoTIFF/VRT), applies a hypsometric color ramp blended with a hillshade,
 saves as transparent PNG of at most ``--max-size`` px with WGS84 bounds metadata.
@@ -213,7 +213,7 @@ def _warp(
 
 def main() -> None:
     """Run the DEM overlay generator."""
-    parser = argparse.ArgumentParser(description="Generate DEM overlay PNG for Leaflet")
+    parser = argparse.ArgumentParser(description="Generate DEM overlay PNG for the map")
     parser.add_argument("--input", required=True, help="Input DEM raster (GeoTIFF/VRT)")
     parser.add_argument("--output", required=True, help="Output PNG path")
     parser.add_argument("--meta", required=True, help="Output metadata JSON path")

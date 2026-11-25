@@ -37,7 +37,8 @@ Hydrograf is a web application for watershed delineation, catchment parameters a
 ## Run
 
 Requirements: Docker with Compose for the full stack; for development also Python 3.12 or
-newer and [uv](https://docs.astral.sh/uv/).
+newer and [uv](https://docs.astral.sh/uv/). The map needs a browser with WebGL 2 (Chrome 56,
+Firefox 51, Edge 79, Safari 15 or newer); without it the panels work without a map.
 
 ```bash
 git clone https://github.com/Daldek/Hydrograf.git
@@ -219,8 +220,9 @@ every request. No key is generated or logged: without one
 every admin route answers 401 with `admin_key_not_configured`. The access paths are
 `/admin`, `/admin/*` and `/api/v1/admin/*`, nothing else; Cloudflare Access protects them
 besides the key. Every admin answer is `Cache-Control: no-store`; the page has CSP
-`'self'` (its `img-src` admits the area map's base map, GUGiK's OpenStreetMap, and `data:`)
-and its requests stay under the request limit.
+`'self'` (its `img-src` and `connect-src` admit the area map's base map, GUGiK's
+OpenStreetMap, and `worker-src` MapLibre's worker of `vendor/`) and its requests stay under
+the request limit.
 
 A GET of `/api/v1/admin/status` gives the app, its version, start and uptime, `data_dir`
 (`HYDROGRAF_DATA_DIR`) with its free disk, and three checks: `database` (PostGIS answers),
@@ -255,13 +257,13 @@ but `visitors`.
 | Administration: reports, statistics, status, resources, DEM processing, cleanup, boundary and sewer upload | `/admin/*` with the `X-Admin-Key` header (see [Admin panel](#admin-panel)) | none |
 
 The base maps of the interface are those of Nogat's kit (`frontend/nogat/nogat-basemaps.json`,
-ADR-089): OpenFreeMap in the kit's grey style with Polish names (vector, drawn by MapLibre GL
-through Leaflet), the grey OpenStreetMap of GUGiK and the orthophoto of GUGiK, the browser
+ADR-089): OpenFreeMap in the kit's grey style with Polish names (vector), the grey
+OpenStreetMap of GUGiK and the orthophoto of GUGiK, the browser
 keeping the choice; the flood hazard map (MZP) of Wody
 Polskie is an overlay from their WMS service. The results of external analyses (for
 example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
-vanilla JS with Leaflet and MapLibre GL, vendored in `frontend/vendor/` (no page
+vanilla JS with the map on MapLibre GL JS (ADR-092), vendored in `frontend/vendor/` (no page
 loads a script, style or font from another site), in the Nogat visual identity
 (`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje”,
 the hand-off, the strip of sources, the base maps, the charts with their zoom and PNG, the

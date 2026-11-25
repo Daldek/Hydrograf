@@ -16,6 +16,10 @@
 > (`nogat-chart.js`, `nogat-chart.css`), coloured by classes in the tokens, not by
 > Chart.js repainted at a change of theme; Chart.js is no longer vendored.
 
+> **Amended by ADR-092 (2026-11-25):** the map is MapLibre GL JS 6.14.0's, vendored, without
+> Leaflet and `@maplibre/maplibre-gl-leaflet`; MapLibre's worker is a file of `vendor/`
+> under `worker-src 'self'`, and the CSP has no `blob:` worker or `child-src`.
+
 **Date:** 2026-11-01
 **Status:** accepted
 

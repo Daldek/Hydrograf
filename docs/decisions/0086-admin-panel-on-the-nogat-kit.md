@@ -9,6 +9,11 @@
 > `api="../api/v1/admin/"`), and Cloudflare Access protects `/admin`, `/admin/*` and
 > `/api/v1/admin/*`.
 
+> **Amended by ADR-092 (2026-11-25):** the area map is MapLibre GL JS 6.14.0's (a drag draws
+> the box, the map never pans; without WebGL 2 the dialog says so and the four fields are
+> typed), and the page's CSP admits its base map's origin in `img-src` and `connect-src`,
+> `worker-src 'self'`, no `data:`.
+
 **Date:** 2026-11-14
 **Status:** accepted
 

@@ -547,7 +547,7 @@ class OverlayGrid:
 
     @property
     def bounds(self) -> list[list[float]]:
-        """Return ``[[lat_min, lon_min], [lat_max, lon_max]]`` for Leaflet."""
+        """Return the metadata's ``[[lat_min, lon_min], [lat_max, lon_max]]``."""
         lon_min = self.full_transform.c
         lat_max = self.full_transform.f
         lon_max = lon_min + self.full_width * self.full_transform.a

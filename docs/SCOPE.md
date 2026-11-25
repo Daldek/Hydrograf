@@ -1,7 +1,7 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.26
+**Version:** 1.28
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -540,13 +540,13 @@ This document defines precisely:
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
-**Map:** Leaflet.js 1.9.4; vector base layer through MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22 (the kit's Leaflet adapter), its names in Noto Sans 2.0 (`vendor/openmaptiles-fonts-2.0/`); Leaflet.VectorGrid 1.3.0
+**Map:** MapLibre GL JS 6.14.0 (ADR-092; the same files as Obserwator and Archiwista), the base maps through the kit's `maplibreBasemap`, their names in Noto Sans 2.0 (`vendor/openmaptiles-fonts-2.0/`); it needs WebGL 2 (Chrome 56, Firefox 51, Edge 79, Safari 15), without which the panels work without a map
 **Charts:** Nogat's kit `nogat-chart.js` and `nogat-chart.css` (DEV-15.16, ADR-090): SVG in the tokens' classes, zoom and pan of a time, distance or share axis, readout by pointer, finger and keys, PNG with the providers' lines
-**Libraries:** served by Hydrograf from `frontend/vendor/` with their licences and `integrity`; the CSP allows scripts, styles and fonts from the site only, no CDN (ADR-085)
+**Libraries:** served by Hydrograf from `frontend/vendor/` with their licences and `integrity` (MapLibre's module and worker, loaded by `import()`, checked by their SHA-256 in the contract tests); the CSP allows scripts, styles and fonts from the site only, no CDN (ADR-085)
 **UI framework:** none (own shell `chrome.css` + `app.css` on the main page; Nogat's kit `nogat-admin.css` and `admin/admin.css` on the admin page), in the tokens
 **Nogat's GUI kit:** 1.3.0 in `frontend/nogat/` (`nogat-kit.json`; copied, never edited): the menu „Aplikacje”, the hand-off to Hydrolog, the strip of the providers' lines, the base maps and their catalogue (ADR-089), the charts (ADR-090), the regulamin template 1.1 and the admin panel; its command form is not used yet
 **Style:** Nogat visual identity (DEV-15.3, ECO-055, ADR-065): tokens in `css/tokens.css` (a copy of Nogat's `design/tokens.css`), the Archiwista shell (top bar, navigation rail, the panels „Warstwy” and „Zlewnia”, phone layout ≤ 860 px), light and dark theme
-**Modules:** 26 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, sewer, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
+**Modules:** 25 JS modules of `js/` on `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, custom-rain, rain-export, info, info-texts, advanced, depressions, results, identify, coords, network, handoff, attribution, instance, nogat, terms, feedback, welcome, shell, app; the admin page's 5 modules in `frontend/admin/` (admin, resources, processing, cleanup, boundaries) on `window.Hydrograf.admin`; outside the namespace: `theme-init.js`, `theme-switch.js`
 **Map base layers:** the entries of the kit's catalogue `nogat-basemaps.json` the deployment allows (`basemaps`, `basemap_mirrors`, `basemap_extra` of its nogat.toml; `GET /api/v1/basemaps`; ADR-089): OpenFreeMap grey (vector, the kit's grey style with Polish names), OSM GUGiK grey (Poland only), „Ortofotomapa GUGiK” (WMTS of geoportal.gov.pl, Poland only), no base layer; overlay: flood hazard map (MZP) of Wody Polskie (WMS)
 **Pages:** `index.html` (main), `admin/index.html` (admin panel at `/admin/`), `instrukcja/index.html` (user guide), `regulamin.html` (the regulamin of a public deployment, filled by the API; ADR-084)
 
@@ -818,7 +818,7 @@ PHASE 3: Hydrograph generation
 
 ### 11.2 Non-Functional (Must Pass)
 
-- ✅ **NF1:** The system works in Chrome, Firefox, Edge (latest versions)
+- ✅ **NF1:** The system works in Chrome, Firefox, Edge, Safari (latest versions); the map needs WebGL 2
 - ✅ **NF2:** UI responsiveness < 100ms for interactions
 - ✅ **NF3:** Test coverage > 80%
 - ✅ **NF4:** The user documentation is complete (setup, usage, troubleshooting)
@@ -969,13 +969,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.27
+**Document version:** 1.28
 **Date of the last update:** 2026-11-25
 **Current version:** v0.6.1 (`backend/pyproject.toml`): the tags Kartograf `v0.9.0`, Obserwator `v3.2.1` and Hydrolog `v0.9.1` of the release round of 2026-11-24
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.28 (2026-11-25): the map on MapLibre GL JS 6.14.0 instead of Leaflet (ADR-092, step 2 of Nogat's plan `2026-11-24-hydrograf-maplibre`) in 5.1, without `sewer.js` (25 modules); WebGL 2 in 11.2 NF1; the header version like the footer (it said 1.26)
 - 1.27 (2026-11-25): the charts of Nogat's kit instead of Chart.js (ADR-090, step 5 of Nogat's plan `2026-11-24-unified-charts`) in 2.1.3 and 5.1: zoom, readout and PNG
 - 1.26 (2026-11-25): the base maps of Nogat's kit 1.3.0 (ADR-089, step 4 of Nogat's plan `2026-11-24-shared-base-maps`) in 2.1.1 and 5.1: the catalogue's entries the deployment allows, the kit's grey OpenFreeMap with vendored glyphs, the choice kept in the browser, the regulamin template 1.1
 - 1.25 (2026-11-25): the release state of Hydrograf 0.6.1: the tags Kartograf `v0.9.0` (range `>=0.9.0,<0.10`), Obserwator `v3.2.1` and Hydrolog `v0.9.1` in 3.1.4 and 5.1, the current version v0.6.1

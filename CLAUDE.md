@@ -54,8 +54,10 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
   the regulamin template, the admin page's shell; ADR-082, ADR-089, ADR-090) are copies of
   Nogat's, never edited here: change them in Nogat, then copy them again byte for byte (DEV-15.6).
   Third-party scripts, styles and fonts are vendored in `frontend/vendor/<package>-<version>/`
-  as published (`-text` in `.gitattributes`), with their licence files and their `integrity`,
-  never loaded from another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py`).
+  as published (`-text` in `.gitattributes`), with their licence files and their `integrity`
+  (MapLibre's module and worker, loaded by `import()`, by their SHA-256), never loaded from
+  another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py`). The map is MapLibre
+  GL JS 6.14.0 (ADR-092), touched only by `js/map.js` and `admin/processing.js`.
 - After changing a JS or CSS file or adding a `<script>` or `<link>` to `index.html`,
   `admin/index.html` or `instrukcja/index.html`, run `python3 scripts/bump_asset_versions.py`
   before the commit (reference a new file without `?v=`; the script adds it): the pages load
@@ -190,7 +192,7 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
   (imports Nogat's kit, ADR-082), `admin/processing.js` (imports `nogat-basemaps.js`,
   ADR-089, and MapLibre GL JS's module dynamically) and the kit's copies in
   `frontend/nogat/`, which keep Nogat's 2 spaces; `js/map.js` loads MapLibre's module by
-  `import()` from its IIFE; about 560 lines of its own JavaScript exceed 100 columns.
+  `import()` from its IIFE; about 650 lines of its own JavaScript exceed 100 columns.
 - DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in resources.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
 - DEV-18, DEV-19: profile `tool` only; settings from the environment (`.env.example`) and

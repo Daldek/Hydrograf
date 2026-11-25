@@ -474,7 +474,7 @@ Launch:                                                            🚀
 
 #### **Phase 3: Frontend (2 weeks)**
 **Milestones:**
-- ☑ Leaflet map with point selection (polygon drawing mode, object selection mode)
+- ☑ Leaflet map with point selection (polygon drawing mode, object selection mode) (REPLACED by the map on MapLibre GL JS 6.14.0, ADR-092)
 - ☑ Rainfall scenario form
 - ☑ API calls with error handling
 - ☑ Chart.js charts (hydrograph, histogram) (REPLACED by the charts of Nogat's kit, with their zoom and PNG, ADR-090)

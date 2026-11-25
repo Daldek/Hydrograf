@@ -3,7 +3,7 @@ Generate depression (blue spot) data from DEM difference and insert into PostGIS
 
 Computes terrain depressions as the difference between filled and original DEM,
 vectorizes connected components, inserts geometry + metrics into depressions table,
-and optionally generates a PNG overlay for Leaflet display.
+and optionally generates a PNG overlay for the map.
 
 The rasters are read in square tiles, so the memory does not grow with the grid. The
 depression cells of a tile are labelled (4-connectivity, as `scipy.ndimage.label` of

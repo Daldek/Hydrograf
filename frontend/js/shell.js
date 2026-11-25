@@ -4,7 +4,7 @@
  * Page chrome around the map: theme switch, side panels (desktop columns,
  * phone bottom sheets) and the column resizers. Whenever the map area changes
  * size (panel width or collapse, map bar wrapping, window resize) a
- * `hydrograf:layout` event is dispatched on window so the Leaflet map can
+ * `hydrograf:layout` event is dispatched on window so the map (js/map.js) can
  * re-measure itself.
  */
 (function () {

@@ -1,5 +1,11 @@
 # ADR-089: The base maps from Nogat's kit: its catalogue, its switcher, the settings and a static CSP
 
+> **Amended by ADR-092 (2026-11-25):** the map is MapLibre GL JS 6.14.0's, so the kit's
+> `maplibreBasemap` draws every entry (point 2: no Leaflet adapter, no MapLibre GL 4.7.1);
+> the credit is in MapLibre's credit control (point 4); `connect-src` names the flood hazard
+> map's WMS too (point 7); the admin page's `img-src` and `connect-src` name its base map's
+> origin, without `data:` (point 8).
+
 **Date:** 2026-11-25
 **Status:** accepted (step 4 of Nogat's plan `docs/plans/2026-11-24-shared-base-maps.md`,
 approved by the author on 2026-11-24; Nogat DEV-15.15, DEV-15.13, DEV-18.1, ECO-089, kit

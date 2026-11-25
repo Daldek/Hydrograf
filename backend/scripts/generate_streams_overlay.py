@@ -1,5 +1,5 @@
 """
-Generate a colored PNG overlay from stream order raster for Leaflet display.
+Generate a colored PNG overlay from stream order raster for the map.
 
 Reads a Strahler stream order raster (uint8, 0=no stream, 1-8=order),
 applies a discrete blue color palette, saves as transparent PNG
@@ -201,7 +201,7 @@ def _dilate(data: np.ndarray, max_order: int) -> np.ndarray:
 def main() -> None:
     """Run the stream order overlay generator."""
     parser = argparse.ArgumentParser(
-        description="Generate stream order overlay PNG for Leaflet"
+        description="Generate stream order overlay PNG for the map"
     )
     parser.add_argument(
         "--input", required=True, help="Input stream order raster (GeoTIFF)"

@@ -5,6 +5,11 @@
 > `isric`, `wody-polskie`) and the blocks the allowed base maps name (`osm`), not a fixed
 > `BLOCKS`.
 
+> **Amended by ADR-092 (2026-11-25):** the map's one vendored library is MapLibre GL JS
+> 6.14.0 (Leaflet, Leaflet.VectorGrid and `maplibre-gl-leaflet` are gone); its module and
+> worker, loaded by `import()`, carry no `integrity`, and their SHA-256 are checked by
+> `tests/contract/test_frontend_vendor.py`.
+
 **Date:** 2026-11-13
 **Status:** accepted (step 3 of Nogat's plan `docs/plans/2026-11-13-terms-fix.md`, approved
 by the author on 2026-11-13; Nogat ECO-066, ECO-068, kit 0.6.2)

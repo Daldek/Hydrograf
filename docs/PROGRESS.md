@@ -33,6 +33,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Shared base maps | done | Step 4 of Nogat's plan `2026-11-24-shared-base-maps` (DEV-15.15, ECO-089, kit 1.3.0; ADR-089), branch `feat/shared-basemaps`, not merged: the kit's `<nogat-basemaps>` in „Podkłady kartograficzne” fed by `GET /api/v1/basemaps` and drawn by the kit's Leaflet adapter (OpenFreeMap in the kit's grey style with Noto Sans vendored, the choice kept in the browser, „Podkład nie odpowiada” in the list and on the map, the Polish credit folded on a phone); the settings `basemaps`, `basemap_mirrors`, `basemap_extra` (a wrong one stops the API at start); the regulamin's `osm` block only with an OSM base map; nginx's CSP with the catalogue's origins (`tests/contract/test_nginx_csp.py`); the admin area map through the kit, its `img-src` with `data:` (e2e defect 4 fixed). The guide's picture of „Warstwy” retaken on 2026-11-25. Next 21. |
 | Charts on the kit | done | Step 5 of Nogat's plan `2026-11-24-unified-charts` (DEV-15.16, ECO-090, kit 1.3.0; ADR-090), branch `feat/kit-charts` from `develop` with the base maps, not merged: the six charts drawn by `nogat-chart.js` through `js/nogat.js` (zoom, pan, reset, the bar, the readout by pointer, finger and keys; the profile's readout moves the map marker; land cover and soil groups one bar per class), „PNG” at each chart by `toPng` with the providers' lines, Chart.js removed; `tests/e2e/test_charts.py` (11 tests). Next 22. |
 | API v1 (HG1) | done | Step HG1 of Nogat's plan `2026-11-24-latarnik` (Nogat ECO-095, AGI §6; ADR-091), branch `feat/api-v1` from `develop` with the charts, not merged: the command catalog (`commands list`, `commands schema`), `GET /api/v1/server`, the envelopes, the jobs of `hydrograph generate` and `network delineate` (in memory, `jobs.json` for the interrupted ones, 2 per client), `precipitation depth`, the client's address from `X-Forwarded-For` through nginx, the frontend and the admin page on `/api/v1`, `/api` removed but the tiles. Gate, e2e (78 passed, 1 xfailed) and the `db` tests pass. Next 23. |
+| Map on MapLibre | done | Step 2 of Nogat's plan `2026-11-24-hydrograf-maplibre` (M1 to M14; ADR-092, superseding ADR-003), branch `feat/maplibre` from `develop` `cd9288a`, not merged: the main page's map and the admin dialog's area map on MapLibre GL JS 6.14.0 (Obserwator's four files), `js/map.js` the one owner (`Hydrograf.map.ready`), M4's slots, vector tiles one level lower (`generate_tiles.py` from level 7, the sewer from 9), the flood hazard map from zoom 13 over the whole level below, WebGL 2 required, `worker-src 'self'`; Leaflet, VectorGrid, `maplibre-gl-leaflet`, MapLibre 4.7.1 and `js/sewer.js` gone; the kit's `nogat-basemaps.js` of Nogat `1a68cc7` empties a stale credit. Gate on every commit (2769 passed); the browser suite 87 passed (step 1's 79 unchanged, the former xfail included, and 8 of `test_maplibre.py`); the base map, MapLibre and MZP browser tests 21 passed after the kit's copy. Next 24. |
 | Documentation | in progress | Guide and slide screenshots refreshed from the current live UI on 2026-11-14; the documents of release v0.5.0 (CHANGELOG `[Unreleased]`, the pins → tags in CLAUDE.md, the integration documents and CROSS_PROJECT_ANALYSIS) on 2026-11-16, when README and CLAUDE.md were also brought within their budgets (DOC-1.7) by moving the deployment reference to `docs/USAGE.md`; the documents of release 0.6.0 checked against its code on 2026-11-22 (README, CLAUDE.md, the CHANGELOG, ARCHITECTURE, SCOPE, PRD, the integrations, INFO_TEXTS_SOURCES, the guide and the slides). The documents still in Polish are listed in Next 7, the local paths in Next 18. |
 | Release v0.5.0 | done | Released on 2026-11-16 as a member of the first joint release of the ecosystem (Nogat release set candidate-6; ECO-074): tag `v0.5.0` on `main` (`634fce6`). Its deployment to production is a separate step of the author's. |
 | Releases v0.5.1 and v0.5.2 | done | v0.5.1, defect fixes only (the author's approval of 2026-11-17; Next 5): tag `v0.5.1` (`a86e8ce`), 2026-11-18. v0.5.2, nginx 1.31.9 with the pinned images and Kartograf `v0.8.2` of Nogat's release set candidate-10: tag `v0.5.2` (`2f6da1d`), 2026-11-20. |
@@ -295,23 +296,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     The folded strip was checked in Chromium at 390 × 844 px on the static pages (Hydrograf has
     no browser tests; `tests/contract/test_frontend_kit.py` checks the kit's hashes).
 20. **After the browser tests (step 1 of Nogat's plan `2026-11-24-hydrograf-maplibre`):**
-    until the plan's step 2, a change of the map adds its case to `backend/tests/e2e/`. The
-    author's: the CI job `e2e` among the required checks of the rulesets. Of the four defects
-    of today's map the tests found, branch `fix/map-defects` (2026-11-25, not merged) fixes
-    two and turns their strict xfails into plain tests: a click on a network point placed a
-    new point (`network.js`'s markers did not listen to `click`, so Leaflet fired the map's
-    click; plan M9; the markers now stop the click), and after a zoom the land cover, streams
-    and sewer forgot their slider's opacity (the sliders wrote the VectorGrid container's CSS
-    opacity, which the tiles' fade-in reset to `options.opacity`; they now call the layer's
-    `setOpacity`). The same branch tracks the three PNG answers of `tests/e2e/recorded/`,
-    which `*.png` of `.gitignore` had kept out of the suite's commit (every e2e test failed on
-    a fresh checkout; recorded again on 2026-11-25). Still a strict xfail: zooming out past
-    1:50 000 with MZP on asks two GetMap images of the farther view (the WMS layer loads on
-    `zoomanim`, `layers.js` takes it off on `zoomend`), left to step 2. The admin dialog's
-    map broke its page's CSP (removed tiles get Leaflet's `data:` GIF, which `img-src` of
-    `docker/nginx.conf:94` did not allow: 12 violations and console errors per opening);
-    `feat/shared-basemaps` fixes it (Next 21). The plan's table (line 22, M4) puts the
-    sewer in `overlayPane` above the streams; today it is in `tilePane` (200), under the DEM.
+    a change of the map adds its case to `backend/tests/e2e/`. The author's: the CI job `e2e`
+    among the required checks of the rulesets. The four defects of the Leaflet map the tests
+    found are fixed: two on `fix/map-defects` (a click on a network point placed a new
+    point; the land cover, streams and sewer forgot their slider's opacity after a zoom),
+    the admin dialog's CSP by `feat/shared-basemaps` and the move to MapLibre, and the
+    flood hazard map's requests past 1:50 000 by the move to MapLibre (Next 24), whose
+    browser test is a plain test now.
 21. **Shared base maps (step 4 of Nogat's plan `2026-11-24-shared-base-maps`, ADR-089):**
     branch `feat/shared-basemaps`, to be merged into `develop` after the author's approval. On
     release, a public deployment sets a new `terms_effective` in `[nogat.operator]` of its
@@ -337,6 +328,25 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     database `hydro_db` publishes no port and was not to be touched; the catalog's example
     excerpts (area 137.03 km², CN 61.2, time to peak 245 min) are illustrative until that run
     replaces them with its values.
+24. **The map on MapLibre (step 2 of Nogat's plan `2026-11-24-hydrograf-maplibre`, ADR-092):**
+    branch `feat/maplibre`, to be merged into `develop` after the author's approval and
+    released as the minor after the one with the base maps (the plan's open question 3). On
+    deployment: run `scripts/generate_tiles.py` again (the pre-generated streams from level 7,
+    1000 m² from 13; without it the streams appear one scale step later), and a deployment
+    with its own nginx file takes the `types` line of `.mjs`, `.mjs` in the static code's
+    location and both CSP values. Not done:
+    - the guide's and the slides' pictures of the map were taken on Leaflet (in
+      `Hydrograf-v2-zlewnia.png` its zoom buttons and the credit „Leaflet” show): to be
+      retaken from the live service once it runs the branch, as Next 22's charts. A local
+      server with the browser tests' data gives no meaningful picture: their catchment is
+      the synthetic DEM of `tests/fixtures/pipeline_run.py`, and their base map one recorded
+      tile, where the pictures show the Kamiennik on the real base maps;
+    - the plan's Results: `tests/performance/test_tile_load.py` ran only on the synthetic
+      data (each ratio 0.90 to 1.68 against the level above), which says nothing of a real
+      catchment's load; it is to be run against a deployment's database before the
+      Results are written;
+    - Nogat's step 3 (the kit's `leafletBasemap` removed, the ECO decision and the DEV §15
+      rule) waits for this step's release.
 
 ## Open questions
 

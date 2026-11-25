@@ -1,5 +1,5 @@
 """
-Generate XYZ tile pyramid from DEM raster for Leaflet L.tileLayer display.
+Generate XYZ tile pyramid from DEM raster for the map's raster tile layer.
 
 Pipeline (the DEM is read in strips of whole rows, never as a whole):
   1. Summarize the elevations: extremes and the exact 5th-95th percentile of all
@@ -137,7 +137,7 @@ def generate_tiles(
     total_size = sum(f.stat().st_size for f in output_path.rglob("*.png"))
     print(f"Tiles generated: {tile_count} files, {total_size / 1024 / 1024:.1f} MB")
 
-    # Compute WGS84 bounds for metadata (Leaflet uses lat/lng)
+    # Compute WGS84 bounds for metadata (lat/lng; js/map.js reads them as a box)
     wgs84_transform, wgs84_w, wgs84_h = calculate_default_transform(
         dst_crs,
         "EPSG:4326",

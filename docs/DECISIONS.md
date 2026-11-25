@@ -13,7 +13,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 |---|---|---|---|
 | [ADR-001](#adr-001-graf-w-bazie-zamiast-rastrow-runtime) | Graph in the database instead of runtime rasters | amended by ADR-021 and ADR-028 | 2026-01-14 |
 | [ADR-002](#adr-002-monolityczna-aplikacja-fastapi) | Monolithic FastAPI application | accepted | 2026-01-14 |
-| [ADR-003](#adr-003-leafletjs-zamiast-google-maps) | Leaflet.js instead of Google Maps | accepted | 2026-01-14 |
+| [ADR-003](#adr-003-leafletjs-zamiast-google-maps) | Leaflet.js instead of Google Maps | superseded by ADR-092 | 2026-01-14 |
 | [ADR-004](#adr-004-hietogram-beta-zamiast-blokowego) | Beta hyetograph instead of block hyetograph | accepted | 2026-01-14 |
 | [ADR-005](#adr-005-docker-compose-dla-deployment) | Docker Compose for deployment | accepted | 2026-01-14 |
 | [ADR-006](#adr-006-copy-zamiast-insert-dla-importu-dem) | COPY instead of INSERT for the DEM import | superseded by ADR-028 | 2026-01-20 |
@@ -70,7 +70,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066, ADR-067 and ADR-079 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085, ADR-086, ADR-089 and ADR-090 | 2026-11-01 |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | amended by ADR-085, ADR-086, ADR-089, ADR-090 and ADR-092 | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
 | [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 and ADR-087 | 2026-11-02 |
 | [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | amended by ADR-069 | 2026-11-04 |
@@ -90,13 +90,14 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off: the GUIs from HYDROGRAF_GUI, the kit through one module | amended by ADR-084 and ADR-086; amended 2026-11-21 (the files named by Nogat's rule) | 2026-11-12 |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product: one module, the responses, the hand-off and the exports | accepted, amended 2026-11-13 (one strip on screen; the terms linked, not restated) and 2026-11-25 (an own series from Obserwator's series export carries IMGW-PIB's or ČHMÚ's lines); amended by ADR-085 | 2026-11-13 |
 | [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service: the regulamin, the request limit in the app, logs without addresses, daily totals and a form without contact | accepted, amended 2026-11-13 (kit 0.6.0) and 2026-11-14 (no footer); amended by ADR-085 (logs, blocks), ADR-086 (admin paths) and ADR-091 (the client's address from X-Forwarded-For, the job limit) | 2026-11-13 |
-| [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted; amended by ADR-089 (the orthophoto from Nogat's catalogue, the blocks) | 2026-11-13 |
-| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted; amended by ADR-089 (the area map's base map and `img-src`) and ADR-091 (the admin API at /api/v1/admin/) | 2026-11-14 |
+| [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines on every product, the orthophoto of GUGiK, no remote scripts, the logs of ECO-066 | accepted; amended by ADR-089 (the orthophoto from Nogat's catalogue, the blocks) and ADR-092 (MapLibre GL JS the map's one library) | 2026-11-13 |
+| [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections | accepted; amended by ADR-089 (the area map's base map and `img-src`), ADR-091 (the admin API at /api/v1/admin/) and ADR-092 (the area map on MapLibre, its page's CSP) | 2026-11-14 |
 | [ADR-087](decisions/0087-a-sheet-missing-at-the-run-resolution-from-a-finer-nmt-of-the-set.md) | A sheet the source lacks at the run's resolution comes from a finer NMT of the set | accepted | 2026-11-15 |
 | [ADR-088](decisions/0088-lutz-jg-at-request-time-and-the-euler-ii-curve-scaled-by-the-areal-reduction-factor.md) | Lutz's Jg measured at request time on the traced flow path; Euler II's PMAXTP curve scaled by the areal reduction factor | proposed | 2026-11-21 |
-| [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit: its catalogue, its switcher, the settings and a static CSP | accepted | 2026-11-25 |
+| [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit: its catalogue, its switcher, the settings and a static CSP | accepted; amended by ADR-092 (drawn by the kit's `maplibreBasemap`, the CSP) | 2026-11-25 |
 | [ADR-090](decisions/0090-charts-on-the-nogat-kit.md) | The charts on Nogat's kit: nogat-chart.js instead of Chart.js | accepted | 2026-11-25 |
 | [ADR-091](decisions/0091-api-v1-command-catalog-envelopes-and-jobs.md) | The API at /api/v1: a command catalog, result envelopes and jobs | accepted | 2026-11-25 |
+| [ADR-092](decisions/0092-the-map-on-maplibre-gl-js.md) | The map on MapLibre GL JS 6.14.0 instead of Leaflet | accepted | 2026-11-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
@@ -149,6 +150,9 @@ specifications and plans of the Kartograf work when ADR-065 was numbered.
 ---
 
 ## ADR-003: Leaflet.js zamiast Google Maps
+
+> **Superseded by ADR-092 (2026-11-25):** the map is MapLibre GL JS 6.14.0's (vendored, the
+> same version as Obserwator's and Archiwista's); Leaflet and its plugins are gone.
 
 **Data:** 2026-01-14
 **Status:** Przyjeta

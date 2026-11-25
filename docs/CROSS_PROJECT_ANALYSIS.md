@@ -13,7 +13,7 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           HYDROGRAF                                     │
 │         (Main application - Hydrological Analysis System)               │
-│         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
+│         FastAPI + PostgreSQL/PostGIS + MapLibre GL JS                   │
 │         23 endpoints (11 core + 12 admin), 991 tests (2026-03-27)       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
