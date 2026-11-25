@@ -165,7 +165,7 @@
     <figure class="detail"><a href="Hydrograf-v2-warstwy.png"><img class="app-shot wide-shot crop-left" src="Hydrograf-v2-warstwy.png" width="1188" height="1063" alt="Panel Warstwy z podkładami, liniami spływu, SFINCS i mapą zagrożenia powodziowego obok mapy z warstwą głębokości wody."></a><figcaption>Panel „Warstwy”. Kliknij obraz, aby powiększyć.</figcaption></figure>
     <div class="stack">
       <div class="card"><span class="label">Wiersz warstwy</span><p>Pole wyboru włącza warstwę, suwak ustawia krycie w %. Pełną nazwę skróconego wiersza pokaże najechanie kursorem.</p></div>
-      <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”.</p></div>
+      <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”. Przeglądarka zapamięta wybrany podkład.</p></div>
       <div class="card"><span class="label">Przybliż do zasięgu</span><p>Ikona ramki obok tytułu panelu dopasowuje widok do włączonych warstw, a gdy żadna nie jest włączona — do całego obszaru danych.</p></div>
       <div class="card"><span class="label">Legendy</span><p>NMT, linie spływu, grupy glebowe, pokrycie terenu, wynik SFINCS i mapa zagrożenia powodziowego mają legendę w lewym dolnym rogu mapy, dopóki są włączone.</p></div>
     </div>
@@ -200,7 +200,7 @@
     <div class="col">
       <h4 class="label">Podkłady kartograficzne</h4>
       <dl class="defs">
-        <div><dt>OpenFreeMap szary</dt><dd>Domyślny podkład wektorowy w odcieniach szarości.</dd></div>
+        <div><dt>OpenFreeMap szary</dt><dd>Domyślny podkład wektorowy w odcieniach szarości, z polskimi nazwami miejscowości; jasny lub ciemny razem z motywem.</dd></div>
         <div><dt>OSM GUGiK szary (tylko Polska)</dt><dd>OpenStreetMap z serwera GUGiK, w szarości.</dd></div>
         <div><dt>Ortofotomapa GUGiK</dt><dd>Zdjęcia lotnicze Polski z serwera GUGiK.</dd></div>
         <div><dt>bez podkładu</dt><dd>Same warstwy na jednolitym tle.</dd></div>
@@ -213,6 +213,7 @@
       </dl>
     </div>
   </div>
+  <p class="hint">Podkład, którego serwer nie odpowiada, dostaje na liście dopisek „Podkład nie odpowiada”, a mapa mówi o tym w lewym górnym rogu — wybierz wtedy inny; Hydrograf nie zmienia go sam. Źródło podkładu jest w prawym dolnym rogu mapy (na telefonie po pierwszym przesunięciu mapy chowa się za „i”).</p>
   <p class="hint">Cieki BDOT10k pochodzą z mapy, a linie spływu Hydrograf wylicza z NMT — to na nich wyznacza zlewnie. Porównaj obie warstwy przed wyborem punktu.</p>
 
 </section>
@@ -1133,7 +1134,7 @@
 <script defer="" src="../js/theme-switch.js?v=2d10fe19e0"></script>
 <script defer="" src="../js/instance.js?v=04b557b531"></script>
 <script defer="" src="../js/terms.js?v=5b87c2c7ae"></script>
-<script type="module" src="../js/nogat.js?v=709227bbe2"></script>
+<script type="module" src="../js/nogat.js?v=0ba69742f8"></script>
 
 
 

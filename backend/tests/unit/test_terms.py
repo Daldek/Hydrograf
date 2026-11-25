@@ -2,8 +2,9 @@
 The regulamin of a deployment (core/terms.py; Nogat DEV-15.7, DEV-18.1; ADR-084).
 
 The kit's template is filled from `[nogat.operator]` and the entry `hydrograf` of the
-table `gui`: the blocks of Hydrograf's data sources stay, the others go, every value is
-escaped, and a value missing means no page at all.
+table `gui`: the blocks of Hydrograf's data sources and of the base maps the page
+offers stay, the others go, every value is escaped, and a value missing means no page
+at all.
 """
 
 import logging
@@ -11,8 +12,12 @@ import re
 
 import pytest
 
-from core.config import Settings, nogat_table
-from core.terms import BLOCKS, KIT_DIR, TEMPLATE, build_terms, fill
+from core.basemaps import catalogue
+from core.config import KIT_DIR, Settings, nogat_table
+from core.terms import DATA_BLOCKS, TEMPLATE, build_terms, fill
+
+# The blocks of a deployment with the default base maps, all of the catalogue
+KEPT = (*DATA_BLOCKS, "osm")
 
 OPERATOR = """
 [nogat]
@@ -34,6 +39,8 @@ mail_transfer = ""
 def deployment(tmp_path, monkeypatch):
     """Return the Settings of a deployment with the given nogat.toml."""
     monkeypatch.delenv("HYDROGRAF_GUI", raising=False)
+    monkeypatch.delenv("HYDROGRAF_BASEMAPS", raising=False)
+    monkeypatch.delenv("NOGAT_BASEMAPS", raising=False)
 
     def settings(text: str, hydrograf_gui: str = "") -> Settings:
         path = tmp_path / "nogat.toml"
@@ -82,11 +89,12 @@ class TestFill:
             fill(self.TEMPLATE, values, [])
 
 
-def test_the_kit_template_has_every_block_hydrograf_keeps():
+def test_the_kit_template_has_every_block_hydrograf_may_keep():
     """A block renamed in a new kit would drop a data source from the page unseen."""
     template = (KIT_DIR / TEMPLATE).read_text(encoding="utf-8")
+    basemap_blocks = {block for entry in catalogue() for block in entry["blocks"]}
 
-    for name in BLOCKS:
+    for name in {*DATA_BLOCKS, *basemap_blocks}:
         assert f"<!-- block: {name} -->" in template, name
 
 
@@ -105,7 +113,7 @@ class TestBuildTerms:
         page = terms.page
         # Every field is filled: the project's, the operator's and the address
         assert "<h1>Regulamin serwisu Hydrograf</h1>" in page
-        assert "Wersja 1.0, obowiązuje od 2026-11-20" in page
+        assert "Wersja 1.1, obowiązuje od 2026-11-20" in page
         assert "Serwis prowadzi Jan Kowalski" in page
         assert 'href="mailto:kontakt@example.pl"' in page
         assert "Ruch do serwisu przechodzi przez Cloudflare, Inc." in page
@@ -118,12 +126,12 @@ class TestBuildTerms:
         assert 'href="nogat/nogat-terms.css"' in page
         assert "{{" not in page
         assert "<!-- block" not in page
-        # Only the blocks of Hydrograf's data sources: no Copernicus (CORINE is not
-        # used) and no other provider's
+        # Only the blocks of Hydrograf's data sources and of its default base maps:
+        # no Copernicus (CORINE is not used) and no other provider's
         headings = _block_headings()
-        assert set(BLOCKS) <= set(headings)
+        assert set(KEPT) <= set(headings)
         for name, heading in headings.items():
-            assert (f"<h3>{heading}</h3>" in page) is (name in BLOCKS), name
+            assert (f"<h3>{heading}</h3>" in page) is (name in KEPT), name
         assert "Copernicus" not in page
         assert "Esri" not in page
         # GUGiK's block links its conditions of reuse; the PMAXTP block the terms in
@@ -183,3 +191,20 @@ class TestBuildTerms:
         )
 
         assert (build_terms(deployment(text)) is not None) is served
+
+    @pytest.mark.parametrize(
+        ("basemaps", "osm"),
+        [("[]", False), ('["gugik-ortho"]', False), ('["openfreemap"]', True)],
+        ids=["none", "orthophoto", "openfreemap"],
+    )
+    def test_the_base_maps_offered_choose_the_osm_block(
+        self, deployment, basemaps, osm
+    ):
+        text = OPERATOR.replace("[nogat]\n", f"[nogat]\nbasemaps = {basemaps}\n", 1)
+        headings = _block_headings()
+
+        terms = build_terms(deployment(text))
+
+        assert terms is not None
+        assert (f"<h3>{headings['osm']}</h3>" in terms.page) is osm
+        assert f"<h3>{headings['gugik']}</h3>" in terms.page

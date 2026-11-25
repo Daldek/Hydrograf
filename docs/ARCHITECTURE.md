@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.28
+**Version:** 2.29
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -124,12 +124,13 @@ Summary of the key ADRs:
 | ADR-051 | Storm-sewer network integration | Inlet burning + FA routing through the sewer network in preprocessing |
 | ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
 | ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
-| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; no Bootstrap since ADR-086 |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; no Bootstrap since ADR-086; the base maps from Nogat's kit since ADR-089 |
 | [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
 | [ADR-083](decisions/0083-provider-attribution-in-every-product.md) | The providers' lines in every product | PMAXTP's lines of Nogat DEV §20 from one module (`core/attribution.py`) in the responses, the hand-off and every export; the front end shows what a response or the results manifest carries |
 | [ADR-084](decisions/0084-public-service-terms-limit-and-statistics.md) | Hydrograf as a public service | Nogat's regulamin from `[nogat.operator]` of NOGAT_CONFIG; the request limit per client address and the daily totals in the API (one process), the pages through the API; logs without addresses, 14 days (the API's own files since ADR-085); the form with the text and the view's context |
 | [ADR-085](decisions/0085-gugik-and-soilgrids-lines-own-files-and-logs.md) | GUGiK's and ISRIC's lines, own files and the logs of ECO-066 | G and SG with the dates of `instance.json` on every product of their data, the GUGiK orthophoto, no remote scripts, the logs `nogat-log/1` of `<state_dir>/hydrograf/logs` |
 | [ADR-086](decisions/0086-admin-panel-on-the-nogat-kit.md) | The admin panel on Nogat's kit | `/admin/` is the kit's `<nogat-admin>` with Hydrograf's sections, `GET /api/admin/status` and `stats`, the key of `ADMIN_API_KEY` or `ADMIN_API_KEY_FILE` |
+| [ADR-089](decisions/0089-shared-base-maps-from-the-nogat-kit.md) | The base maps from Nogat's kit | The kit's catalogue and `<nogat-basemaps>` fed by `GET /api/basemaps` (settings `basemaps`, `basemap_mirrors`, `basemap_extra`), drawn by the kit's Leaflet adapter until the map moves to MapLibre; OpenFreeMap in the kit's grey style with vendored glyphs; the choice kept in the browser; a static nginx CSP checked against the catalogue |
 
 ---
 
@@ -142,7 +143,7 @@ backend/
 ├── api/
 │   ├── __init__.py
 │   ├── errors.py                  # Problem responses application/problem+json (RFC 9457) of every error, their OpenAPI documentation, operationId (ADR-059)
-│   ├── main.py                    # FastAPI app instance, lifespan (the logs' start and stop), middleware (the access log outermost)
+│   ├── main.py                    # FastAPI app instance, lifespan (the logs' start and stop; a wrong setting of the base maps stops the start with hydrograf-error/1 on stderr), middleware (the access log outermost)
 │   ├── traffic.py                 # Middleware of the public service (ADR-084): the client address (CF-Connecting-IP through private hops), the request limit, the 429 page or problem, the daily totals
 │   ├── dependencies/
 │   │   ├── __init__.py
@@ -150,6 +151,7 @@ backend/
 │   └── endpoints/
 │       ├── __init__.py
 │       ├── admin.py               # /api/admin/*: status, stats (Nogat DEV-15.13), resources, cleanup, bootstrap, sewer (ADR-086)
+│       ├── basemaps.py            # GET /basemaps: the base maps the map offers, the kit's catalogue as the deployment's settings allow it (Nogat DEV-15.15, ADR-089)
 │       ├── depressions.py         # GET /depressions
 │       ├── feedback.py            # POST /feedback (the text and the view's context), the admin list GET/PATCH/DELETE /admin/feedback
 │       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI, else [nogat] gui of NOGAT_CONFIG) for the app menu (ADR-082, ADR-084)
@@ -168,11 +170,12 @@ backend/
 │   ├── active_run.py              # The pointer <output_dir>/active_run.json to the published run by PGW units, whose VRT mosaics the raster resolvers of core/config.py return (ADR-071)
 │   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile, the providers' lines of a result (provider_lines, ADR-083)
 │   ├── attribution.py             # The lines the providers' terms require (Nogat DEV §20, ADR-083, ADR-085): PMAXTP's PS, PP, M and the terms line RK, GUGiK's G with the dates of core/data_sources.py, ISRIC's SG; ProviderLines, merge, is_terms, data_lines
+│   ├── basemaps.py                # The base maps of the deployment (Nogat DEV-15.15, DEV-18.1; ADR-089): the kit's catalogue frontend/nogat/nogat-basemaps.json and the settings basemaps, basemap_mirrors, basemap_extra (deployment_basemaps, current_basemaps once per process), the regulamin's blocks they name (basemap_blocks); InvalidSettingError stops the API at start
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS), reloaded when the network in the database changes
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics and state_dir() of the logs (Nogat DEV-18.1, DEV-18.2)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI or of nogat.toml (ADR-082, ADR-084), the request limit, the data_dir of the statistics, state_dir() of the logs (Nogat DEV-18.1, DEV-18.2), the base maps' environment variables and KIT_DIR, the kit's directory
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── data_sources.py            # The products of the instance's data and when they were made and downloaded: `sources` of frontend/data/instance.json (ADR-085)
 │   ├── database.py                # Database connection pool
@@ -201,7 +204,7 @@ backend/
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
 │   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
-│   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf (ADR-084)
+│   ├── terms.py                   # The regulamin: the kit's nogat-terms.html filled once per process from [nogat.operator] of NOGAT_CONFIG and the gui entry hydrograf, with DATA_BLOCKS and the blocks of the allowed base maps (kept_blocks; ADR-084, ADR-089)
 │   ├── unit_flow_paths.py         # Flow-path operations on the disk-backed D8 cells of the PGW units (ADR-071)
 │   ├── unit_hydrology.py          # The fill and D8 of the whole grid once, taken by owner and routed on disk (ADR-071)
 │   ├── unit_ownership.py          # The PGW owners (or the catchments grouped into them) rasterized on the DEM grid (ADR-071)
@@ -264,7 +267,7 @@ backend/
 ├── tests/
 │   ├── unit/                      # 100+ unit test files (offline)
 │   ├── integration/               # 20+ integration test files (TestClient; marker db: PostGIS)
-│   ├── contract/                  # Contracts: error registry, messages, OpenAPI, problems, README, .env.example, kit, vendor
+│   ├── contract/                  # Contracts: error registry, messages, OpenAPI, problems, README, .env.example, kit, vendor, the nginx CSP against the kit's catalogue of base maps
 │   ├── performance/               # Performance tests (benchmarks)
 │   ├── e2e/                       # Browser tests of the map and the panels in Chromium (marker e2e: PostGIS, Playwright)
 │   ├── fixtures/                  # Test data
@@ -323,9 +326,31 @@ Over a limit: 429, Retry-After: <s>; a page: a Polish HTML page; a route: the pr
 rate_limited, details {reason: request_limit|tile_limit|feedback_limit, retry_after_s,
 limit, window_s}
 ```
-`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks `pmaxtp`, `gugik`, `isric`, `wody-polskie` and `osm` (kit 1.1.0; no `copernicus`: CORINE is not used; ADR-085). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
+`core/terms.py` fills the kit's `nogat/nogat-terms.html` (mounted into the API at `/frontend/nogat`) once per process from `[nogat.operator]` of the `nogat.toml` that NOGAT_CONFIG names (`/config/nogat.toml` in Docker) and the address of the entry `hydrograf` of the table `gui`, with the blocks of Hydrograf's own data, `DATA_BLOCKS` (`pmaxtp`, `gugik`, `isric`, `wody-polskie`), and those the allowed base maps name (`osm` with `openfreemap` or `gugik-osm`; `kept_blocks`, §2.2.1c) (kit 1.3.0, regulamin 1.1; no `copernicus`: CORINE is not used; ADR-085, ADR-089). The providers' lines of GUGiK's and ISRIC's data, G and SG, come from `core/attribution.py` with the dates of `sources` in `frontend/data/instance.json` (`core/data_sources.py`), which the bootstrap and `scripts/write_instance_info.py` write from the Kartograf metadata of the files used. `context` of a report is the map mode (`browse`, `select`, `network`, `profile`, `identify`), `station` (always null) and `parameters` (the map, the clicked point, the watershed, the hydrograph settings, the profile line); the server adds `app_version` and stores no User-Agent.
 
 The middleware `api/traffic.py` runs inside the access log's (§7.1), which records its refusals too. The client address is `CF-Connecting-IP`, believed only when nginx's peer (`X-Real-IP`) and the API's peer are private hops (loopback, RFC 1918, ULA, link-local); else the nearest public hop. Pages (`GET` of `/index.html`, `/admin/index.html`, `/instrukcja/index.html`, `/regulamin.html`) and routes count against `HYDROGRAF_REQUEST_LIMIT` in `HYDROGRAF_REQUEST_WINDOW` (300 in 60 s); `/api/tiles/` against ten times that instead; `POST /api/feedback` besides against 5 in 300 s; `/health` not at all. An address lives in memory for its window (ended windows are forgotten within 5 s) and, through the UTC day, as an HMAC-SHA-256 of the address and the User-Agent under a salt drawn daily. `core/usage.py` writes one line per UTC day to `<data_dir>/hydrograf/stats.jsonl` every 10 minutes, at 00:00 UTC and at shutdown: `visitors`, `page_views`, `stations_opened` (0), `analyses_run` (successful `POST` of delineate-watershed, delineate-network, generate-hydrograph and terrain-profile, not the previews) and `downloads`. Both need one API process.
+
+#### 2.2.1c The Base Maps (ADR-089)
+```
+GET /api/basemaps
+Response: 200 OK
+[
+  {"id": "openfreemap", "label": "OpenFreeMap szary", "kind": "vector",
+   "url": "https://tiles.openfreemap.org/planet", "origin": "https://tiles.openfreemap.org",
+   "minzoom": 0, "maxzoom": 14, "bounds": [-180, -85.051129, 180, 85.051129],
+   "grey": true, "default": true,
+   "credit": {"text": "OpenFreeMap © OpenMapTiles, dane © autorzy OpenStreetMap",
+              "links": [["OpenFreeMap", "https://openfreemap.org"], …]},
+   "blocks": ["osm"]},
+  {"id": "gugik-osm", …, "bounds": [13.8, 48.8, 24.4, 55.0], "blocks": ["osm", "gugik"]},
+  {"id": "gugik-ortho", …},
+  {"id": "powiat-ortho", "label": "Ortofotomapa powiatu", "kind": "raster",   // an own base map of basemap_extra: no zoom range, bounds or blocks
+   "url": "https://maps.example.org/wms?SERVICE=WMS&…&BBOX={bbox-epsg-3857}",
+   "origin": "https://maps.example.org", "grey": false, "default": false,
+   "credit": {"text": "Ortofotomapa © Starostwo", "links": []}}
+]
+```
+The entries of Nogat's catalogue `frontend/nogat/nogat-basemaps.json` (kit 1.3.0, Nogat DEV-15.15) that the setting `basemaps` allows, in the catalogue's order and as it writes them, but for the `url` and `origin` of a copy the deployment serves (`basemap_mirrors`); then the deployment's own base maps (`basemap_extra`); `[]` means no base map. `core/basemaps.py` reads the settings once per process (`current_basemaps()`, called at the start of the API): `basemaps` is the first of `HYDROGRAF_BASEMAPS` and `NOGAT_BASEMAPS` (ids joined by `,`; set but empty, none), then `basemaps` of `[hydrograf]`, then of `[nogat]` in the nogat.toml of NOGAT_CONFIG (a list of ids), else every entry; `basemap_mirrors` (a table of catalogue ids to http or https addresses) and `basemap_extra` (a list of tables `{id, name, kind = "xyz"|"wms"|"vector", url, attribution, grayscale?}`; `name` becomes `label`, `xyz` and `wms` `raster`, a WMS address a tile template with `{bbox-epsg-3857}` as Archiwista builds it) come from the first of the two sections that has the key. An unknown id or a wrong value raises `InvalidSettingError` (`validation_error`; `basemap_unknown`, `basemaps_invalid`, `basemap_mirrors_invalid`, `basemap_extra_invalid`, `basemap_extra_missing`; `details` `option`, `value`, `source`, `reason`, and `field` of an own base map), an unreadable catalogue `FileOperationError` (`basemap_catalogue_unreadable`), and the API stops at start after printing the error document `hydrograf-error/1` on standard error. The CSP of nginx is not built from these settings (§5.2).
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -1228,18 +1253,25 @@ frontend/
 ├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (vendor/), no Bootstrap
 ├── admin/                   # Admin panel at /admin/ (ADR-086): index.html is Nogat's <nogat-admin> shell with the sections
 │                            #   „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja” (admin.css, admin.js shared,
-│                            #   resources.js, processing.js with the Leaflet area map, cleanup.js, boundaries.js; IIFE scripts)
+│                            #   resources.js, processing.js with the Leaflet area map over the kit's first raster base map, cleanup.js, boundaries.js; IIFE scripts)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
-├── nogat/                    # Copies of Nogat's GUI kit 1.1.0 (design/kit/, ADR-082 to ADR-086) — do NOT edit, copy them again
+├── nogat/                    # Copies of Nogat's GUI kit 1.3.0 (design/kit/, ADR-082 to ADR-086, ADR-089) — do NOT edit, copy them again
 │   ├── nogat-admin.js        # <nogat-admin> and its views „Zgłoszenia”, „Statystyki” (the days shown saved as hydrograf_stats_<first>_<last>.csv, Nogat DEV-19.21), „Stan” (ES module, ADR-086)
 │   ├── nogat-admin.css       # Their styles, in the tokens
 │   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
 │   ├── nogat-app-menu.css    # Its styles, in the tokens
+│   ├── nogat-basemaps.json   # The catalogue of the shared base maps (Nogat DEV-15.15): ids, labels, tiles, origins, bounds, credits, the regulamin's blocks; read by core/basemaps.py (ADR-089)
+│   ├── nogat-basemaps.js     # <nogat-basemaps> (the switcher, the choice kept as nogat-basemap), BASEMAP_TEXTS, leafletBasemap (Hydrograf's adapter) and maplibreBasemap, the kit's grey style and its repaint (ES module)
+│   ├── nogat-basemaps.css    # The switcher, the credit in the map's attribution control (12 px, folded behind „i” up to 860 px), the grey style's colours
+│   ├── nogat-chart.js        # The kit's chart module (Nogat DEV-15.16), not used by Hydrograf yet (ES module)
+│   ├── nogat-chart.css       # Its styles, in the tokens
+│   ├── nogat-command-form.js # The kit's command form (Nogat DEV-15.17), not used by Hydrograf yet (ES module)
+│   ├── nogat-command-form.css # Its styles, in the tokens
 │   ├── nogat-sources.js      # <nogat-sources>: the view's strip of provider lines and its dialog, fillSources() for the welcome window (ES module)
 │   ├── nogat-sources.css     # Its styles, in the tokens
 │   ├── nogat-handoff.js      # The hand-off: labels, hydrograf_handoff_<subject>.json (nameSlug, Nogat DEV-19.21), text, clipboard with its fallback, download (ES module)
-│   ├── nogat-terms.html      # The regulamin template with its blocks, which core/terms.py fills (ADR-084)
+│   ├── nogat-terms.html      # The regulamin template 1.1 with its blocks, which core/terms.py fills (ADR-084)
 │   ├── nogat-terms.css       # Its styles, in the tokens
 │   ├── nogat-terms.md        # The regulamin's text for review
 │   ├── nogat-terms-operator.md # The kit's draft regulamin for an operator's instance (Nogat ECO-079), not linked
@@ -1252,9 +1284,10 @@ frontend/
 │   └── Hydrograf-*.png       # Shared 256-colour screenshots for guide and presentation
 ├── vendor/                   # Third-party libraries byte for byte as published (npm), each with its licence files; no CDN
 │   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and the area map of /admin/)
-│   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (vector basemap)
+│   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (the vector base map, through the kit's Leaflet adapter)
 │   ├── maplibre-gl-leaflet-0.0.22/ # leaflet-maplibre-gl.js
 │   ├── chart.js-4.4.7/       # chart.umd.js
+│   ├── openmaptiles-fonts-2.0/ # noto-sans-regular/: the glyph ranges 0-255, 256-511, 512-767, 1024-1279, 8192-8447 (.pbf) of openmaptiles/fonts v2.0 with LICENSE (OFL-1.1), the names of the kit's grey style
 │   └── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
 ├── css/
 │   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 7786271) — do NOT edit, copy it again
@@ -1269,7 +1302,7 @@ frontend/
     ├── coords.js             # Cursor coordinates (bottom left): WGS84, PL-1992 or PL-2000 by Gauss–Krüger in the browser; not on touch screens
     ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
     ├── attribution.js        # The providers' lines of a response or a manifest entry (ADR-083): their union over the view's surfaces in the strip #view-sources, the trailing CSV columns and the JSON/GeoJSON fields of the exports
-    ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
+    ├── layers.js             # „Warstwy” panel: the flood hazard map overlay (WMS of Wody Polskie) and the kit's <nogat-basemaps> fed by GET /api/basemaps, drawn by leafletBasemap with the failure notice #basemap-notice (ADR-089), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
@@ -1283,7 +1316,7 @@ frontend/
     ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
     ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
     ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
-    ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
+    ├── nogat.js              # ES module (index, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, defines <nogat-basemaps>, puts the hand-off module and the kit's base maps (texts, leaflet, repaint) on window.Hydrograf.nogat (ADR-082, ADR-089)
     ├── terms.js              # GET /api/terms: the link „Regulamin” at the bottom of the rail and under the guide's table of contents (`#terms-link`), the `terms` of the menu and of the strip, every line of the service's data (PMAXTP's, G, SG) for the welcome window and the lines of the layers' kinds (`layers`) for the strip, the operator's e-mail under „Zgłoś uwagę” (ADR-084, ADR-085)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>): the text and the view's context, no contact (ADR-084)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
@@ -1291,7 +1324,7 @@ frontend/
     └── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
 ```
 
-`js/` holds 25 IIFE modules on `window.Hydrograf`, all loaded by the main page (`instance.js` and `terms.js` by the guide too), and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. `admin/` holds the 5 IIFE scripts of the admin panel. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 25 IIFE modules on `window.Hydrograf`, all loaded by the main page (`instance.js` and `terms.js` by the guide too), and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. `admin/` holds the 5 IIFE scripts of the admin panel; `processing.js` imports the kit's `nogat-basemaps.js` dynamically for its area map (ADR-089). ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -1307,7 +1340,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/` and `/instrukcja/` (not on the admin page, DEV-15.13): a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without a table of GUIs (`HYDROGRAF_GUI`, else `[nogat] gui` of NOGAT_CONFIG), or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two paragraphs (a factual summary of what Hydrograf computes; the area of the data and that the results are estimates for preliminary analyses, not a hydrological forecast) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
 - **Navigation rail** — Mapa and Logowanie (`/admin/`, the admin panel on Nogat's kit, ADR-086); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
-- **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
+- **Left panel „Warstwy”** — overlays with an opacity slider, the group „Podkłady kartograficzne” (the overlay „Mapa zagrożenia powodziowego”, then the kit's base-map switcher) and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
 - **„Wybierz zlewnię” and its two options** (`app.js`, `setClickMode`; ADR-080, note of 2026-11-11) — while the mode is on, the radio group „Co wyznaczyć” sits at the top of the map (`#select-tools`, placed and styled like the drawing tools of „Profil terenu”, `.map-tools`, also on phones): „Jedna zlewnia” (the default; the click mode `select`) or „Sieć zlewni” (the click mode `network`). The button of the mode is on for both; it returns to the option chosen last in the page (`state.selectTarget`, not kept across reloads). Switching the option keeps both the watershed and the network.
 - **„Wybierz zlewnię” → „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — the first click places the closing section and every later click a point (at most 30), as draggable markers; a marker not yet in a preview shows the first free `P<n>` among the shown ids, which is also its handle in the request, so a problem names it as the map does, and after every preview each marker shows its node's id (`points[].node`: `J<n>` at a confluence, `P<n>` elsewhere). The closing section alone is a network: „Oblicz charakterystyki” needs no other point. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `POST /api/delineate-network/preview` (`api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” calls `POST /api/delineate-network` with the names and draws the closing section's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the option (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the closing section first, then the points by their ids, each with its name field and „w węźle sieci” when it was drawn to a node (`at_node`), the check of B5, the notices and the tree from the closing section upward (a node entered without a reach as „J4 → J1”; in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Jedna zlewnia” leaves the map in the option (`map.setWatershedShown`) and returns, with its sections, after it.
@@ -1346,7 +1379,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
 #### 4.2.1 Map (Leaflet.js)
 
-Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa GUGiK** (key `gugik-ortho`: GUGiK's orthophoto WMTS `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution`, KVP, layer `ORTOFOTOMAPA`, JPEG, matrix set `EPSG:3857` levels 0–19, bounded by the layer's box 13.8–24.4° E, 48.8–55.0° N so that no tile is asked outside Poland; „Ortofotomapa © GUGiK”), **bez podkładu** (no basemap).
+Base maps (`layers.js`, Nogat DEV-15.15, ADR-089): the kit's `<nogat-basemaps>` at the end of the group „Podkłady kartograficzne” lists the entries of `GET /api/basemaps` (§2.2.1c) and „bez podkładu”: by default **OpenFreeMap szary** (vector, the kit's grey style over the TileJSON `https://tiles.openfreemap.org/planet`, names `name:pl` first, colours from the tokens, repainted at a change of theme through `Hydrograf.map.onThemeChange`; glyphs Noto Sans 2.0 from `vendor/openmaptiles-fonts-2.0/`; nothing else from OpenFreeMap), **OSM GUGiK szary (tylko Polska)** (raster, greyed by the kit) and **Ortofotomapa GUGiK** (`gugik-ortho`: GUGiK's orthophoto WMTS `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/StandardResolution`, KVP, layer `ORTOFOTOMAPA`, JPEG, matrix set `EPSG:3857` levels 0–19), both GUGiK entries bounded by Poland's box 13.8–24.4° E, 48.8–55.0° N so that no tile is asked outside it. The kit's `leafletBasemap` (through `js/nogat.js`) draws the chosen entry under the overlays: a raster entry as an `L.tileLayer`, a vector one through MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22, until the map moves to MapLibre (Nogat plan `2026-11-24-hydrograf-maplibre`). The browser keeps the choice (`localStorage` `nogat-basemap`); the map opens on it while it is offered, else on the first default entry of the catalogue. A provider that does not answer (its TileJSON or first tiles) is taken off the map, marked „Podkład nie odpowiada” in the list and said at the top left of the map (`#basemap-notice`: „Podkład nie odpowiada: <label>. Wybierz inny podkład w panelu „Warstwy”.”) until the next choice; nothing switches by itself. The credit is the catalogue's Polish line in Leaflet's attribution corner (12 px, `--text-3`; up to 860 px folded behind „i” at the first drag, `nogat-basemaps.css`), never in the strip.
 
 **Wheel zoom** (`map.js`, `wheelZoomHandler`): Leaflet's scroll-wheel handler (`scrollWheelZoom` is off) with two guards, because the default turned every 40 ms batch of wheel events, however small, into a whole zoom level and went on zooming after the wheel had stopped. An event weaker than half of the strongest event of its gesture is the fading tail of a touchpad, a Magic Mouse or a smooth-scrolling mouse driver and is ignored (a pause of 80 ms or a change of direction starts a new gesture), and wheel input older than 150 ms, an event or a whole batch that waited while the page was busy (e.g. MapLibre redrawing the base map), does not start a zoom step.
 
@@ -1365,8 +1398,8 @@ Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from
 - Attribution: „MZP © Wody Polskie / ISOK (CC BY 4.0)” with links to the Hydroportal and the licence; the CC BY 4.0 licence follows the dataset „Mapa zagrożenia powodziowego (MZP)” on dane.gov.pl (provider: Krajowy Zarząd Gospodarki Wodnej). The ArcGIS REST/WMTS services of these maps return 401; only the WMS is public. Response times vary: usually 0.4–2 s per image, sometimes single images take 10–30 s.
 
 ```javascript
-// map.js, init (abridged): the base layer is set by layers.js (OpenFreeMap by default,
-// L.maplibreGL with the style https://tiles.openfreemap.org/styles/positron)
+// map.js, init (abridged): no base map here; layers.js draws the one the kit's
+// <nogat-basemaps> shows, through the kit's leafletBasemap (ADR-089)
 map = L.map('map', {
     center: [51.9, 19.5],
     zoom: 7,
@@ -1764,11 +1797,16 @@ http {
         # client's origin
         absolute_redirect off;
 
-        # Security headers
+        # Security headers. img-src and connect-src name the origins of the kit's base
+        # maps (frontend/nogat/nogat-basemaps.json, Nogat DEV-15.15, ADR-089; compared with
+        # it by tests/contract/test_nginx_csp.py) and img-src the flood hazard map's WMS;
+        # the setting `basemaps` narrows the switcher, not these lines. A deployment's copy
+        # or own base map (`basemap_mirrors`, `basemap_extra`) needs its origin in the
+        # deployment's own copy of this file. worker-src blob: is MapLibre 4.7.1's worker.
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://mapy.geoportal.gov.pl https://wody.isok.gov.pl; font-src 'self'; connect-src 'self' https://tiles.openfreemap.org https://mapy.geoportal.gov.pl; worker-src blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         # HSTS only meaningful over HTTPS — see nginx-ssl.conf.template for TLS config
 
         # Tile proxy (^~ prevents the regex .pbf match of the data files below)
@@ -1795,17 +1833,18 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_read_timeout 30s;
         }
-        # The page's file under CSP 'self', the area map's tiles of GUGiK's grey
-        # OpenStreetMap excepted (a basemap from its provider, which DEV-15.7 allows); its
-        # Cache-Control: no-store comes with the API's answer. add_header here replaces
-        # the server's, so its other security headers are repeated.
+        # The page's file under CSP 'self', but img-src admits the area map's base map,
+        # the first raster entry of the kit's catalogue (GUGiK's grey OpenStreetMap, Nogat
+        # DEV-15.13, DEV-15.15), and data:, the empty image Leaflet gives each tile it
+        # removes; its Cache-Control: no-store comes with the API's answer. add_header here
+        # replaces the server's, so its other security headers are repeated.
         location ^~ /_site/admin/ {
             internal;
             alias /usr/share/nginx/html/admin/;
             add_header X-Content-Type-Options "nosniff" always;
             add_header X-Frame-Options "DENY" always;
             add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-            add_header Content-Security-Policy "default-src 'self'; img-src 'self' https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+            add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://mapy.geoportal.gov.pl; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
         }
         # The page's own scripts and styles (before the general rule of the static files)
         location ~ ^/admin/.+\.(css|js)$ {
@@ -1926,14 +1965,16 @@ http {
 
 **CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
 - `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `font-src 'self'`: no other origin. The libraries are vendored in `frontend/vendor/` (§4.1) and keep their `integrity`, which the browser checks for same-origin files too and `tests/contract/test_frontend_vendor.py` checks against the files, with no page referencing a remote script, stylesheet or font.
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie). The admin page has a CSP of its own (`location ^~ /_site/admin/`): `default-src 'self'` with `img-src 'self' https://mapy.geoportal.gov.pl` for the area map of „Przetwarzanie NMT” (ADR-086).
-- `connect-src`: `https://tiles.openfreemap.org` (style, vector tiles and glyphs of OpenFreeMap, fetched by MapLibre).
+- `img-src`: `data:`, `blob:`, the origins of the kit's base maps, `https://tiles.openfreemap.org` and `https://mapy.geoportal.gov.pl` (OSM GUGiK and the GUGiK orthophoto; Leaflet draws a raster entry as images, MapLibre fetches, so both directives name every entry's origin, Nogat DEV-15.15), and `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie). The admin page has a CSP of its own (`location ^~ /_site/admin/`): `default-src 'self'` with `img-src 'self' data: https://mapy.geoportal.gov.pl` for the area map of „Przetwarzanie NMT” (ADR-086, ADR-089; `data:` is the empty image Leaflet gives a removed tile, Nogat DEV-15.13).
+- `connect-src`: the origins of the kit's base maps, `https://tiles.openfreemap.org` (OpenFreeMap's TileJSON and vector tiles, fetched by MapLibre; no style, sprites or glyphs, which are the kit's and `vendor/openmaptiles-fonts-2.0/`) and `https://mapy.geoportal.gov.pl`.
 - `worker-src blob:`, `child-src blob:` — the Web Worker of MapLibre GL.
+
+The base maps' origins are the catalogue's (`frontend/nogat/nogat-basemaps.json`, ADR-089), whatever the setting `basemaps` allows: nginx serves the pages and sets their headers, while the settings reach only the API. `tests/contract/test_nginx_csp.py` checks that both nginx files name exactly the catalogue's origins in the page's `img-src` (with the MZP's WMS) and `connect-src`, no scheme source but `data:` and `blob:` in `img-src` and none in `connect-src`, and the admin page's `img-src` with only the first raster entry's origin and `data:`. A deployment that serves a copy of a base map (`basemap_mirrors`) or an own base map (`basemap_extra`) names its origin in its own copy of the nginx file.
 
 **Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
 - the HTML pages (`/`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`); the admin page `/admin/` and its scripts with `Cache-Control: no-store` (Nogat DEV-15.13);
 - the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
-- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The vendored libraries get a `?v=` too; their directory names carry the package version.
+- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports, static or dynamic, of the own scripts in `js/` and `admin/` (`js/nogat.js` imports the kit of `nogat/`, `admin/processing.js` the kit's `nogat-basemaps.js`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of the scripts that import it (ADR-082, ADR-089). The vendored libraries get a `?v=` too; their directory names carry the package version.
 
 ---
 
@@ -2243,7 +2284,7 @@ def effective_rainfall_slow(intensities, cn):
 `backend/tests/` (pytest, configured in `backend/pyproject.toml`):
 - `unit/` — offline tests of the modules, with fixtures and mocked dependencies
 - `integration/` — the routes through FastAPI's `TestClient`, and the database code against PostGIS (marker `db`)
-- `contract/` — the error registry, the message catalogue, the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies and the vendored files
+- `contract/` — the error registry, the message catalogue, the OpenAPI document, the problem documents, the README examples, `.env.example`, the kit's copies, the vendored files and the base maps' origins in the CSP of the nginx files (`test_nginx_csp.py`)
 - `performance/` — timing tests of the PostGIS queries (marker `benchmark`, with the database)
 - `e2e/` — the map and the panels in Chromium through Playwright (marker `e2e`): a session fixture runs the synthetic DEM of `tests/fixtures/pipeline_run.py` through the pipeline into a private database and a temporary data root (the DEM's tiles, the streams' tiles of `generate_tiles.py` where tippecanoe is present, the depressions, the sewer, an analysis result of two levels), the API under uvicorn, and `frontend/` by a server of the tests' own that routes as `docker/nginx.conf` and sends its two CSP values; the outside base maps and the WMS are answered from recorded files (`tests/e2e/recorded/`). Without PostGIS or Chromium the tests are skipped, under `CI` they fail
 - `fixtures/` — test data
@@ -2310,11 +2351,12 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.28
+**Document version:** 2.29
 **Date of the last update:** 2026-11-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.29 (2026-11-25): the base maps from Nogat's kit 1.3.0 (ADR-089, Nogat's plan `2026-11-24-shared-base-maps`, step 4): §1.2 ADR-089 (ADR-065 amended); §2.1 `api/endpoints/basemaps.py`, `core/basemaps.py`, `KIT_DIR` and the base maps' variables of `core/config.py`, the start refused in `api/main.py`, `kept_blocks` of `core/terms.py`, `tests/contract/test_nginx_csp.py`; §2.2.1b the regulamin's blocks; §2.2.1c `GET /api/basemaps` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra`; §4.1 kit 1.3.0 (`nogat-basemaps`, `nogat-chart`, `nogat-command-form`), `vendor/openmaptiles-fonts-2.0/`, `layers.js`, `nogat.js`, `admin/processing.js`; §4.2.0 the panel „Warstwy”; §4.2.1 the base maps, the excerpt of `map.js`; §5.2 the CSP of nginx with the catalogue's origins and the admin page's `data:`, the versions of a dynamic import; §11.1 the contract tests; the header and the footer 2.29
 - 2.28 (2026-11-25): the browser tests (Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): §2.1 `tests/e2e`; §4.2.1 `Hydrograf.map.describe()` and `nameOverlay()`; §11.1 the marker `e2e`; §11.2 the job `e2e`; the header and the footer 2.28
 - 2.27 (2026-11-25): §2.4.7 Hydrolog pinned by its tag `v0.9.1` (Hydrograf 0.6.1); the header and the footer 2.27
 - 2.26 (2026-11-24): §2.4.7 Hydrolog pinned by its commit `1b25a91` (0.9.1) of Nogat's release set candidate-13; the header and the footer 2.26

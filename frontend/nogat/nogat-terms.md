@@ -1,6 +1,6 @@
 # Regulamin serwisu {{service_name}}
 
-Wersja 1.0, obowiązuje od {{terms_effective}}
+Wersja 1.1, obowiązuje od {{terms_effective}}
 
 ## 1. Postanowienia ogólne
 
@@ -22,7 +22,8 @@ Serwis prowadzi {{operator_name}} (dalej: operator) jako osoba prywatna, poza dz
 ## 4. Dostęp
 
 1. Serwis jest dostępny publicznie, bez rejestracji i logowania.
-2. Operator może w każdej chwili ograniczyć, zawiesić lub zakończyć udostępnianie serwisu albo jego części, w szczególności przy przeciążeniu, naruszeniu regulaminu lub zmianie warunków dostawców danych.
+2. Z serwisu korzystasz przez przeglądarkę albo, gdy serwis udostępnia interfejs programistyczny (API), przez program, który z niego korzysta, np. wtyczkę QGIS Goniec ekosystemu Nogat. Regulamin dotyczy obu sposobów.
+3. Operator może w każdej chwili ograniczyć, zawiesić lub zakończyć udostępnianie serwisu albo jego części, w szczególności przy przeciążeniu, naruszeniu regulaminu lub zmianie warunków dostawców danych.
 
 ## 5. Źródła danych i ich warunki
 
@@ -63,6 +64,34 @@ Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 
 > Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
 > Dane ČHMÚ zostały przetworzone
+<!-- /block -->
+
+<!-- block: camels-pl -->
+### CAMELS-PL
+
+> Źródło danych: CAMELS-PL
+> Dane CAMELS-PL zostały przetworzone
+
+Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
+<!-- /block -->
+
+<!-- block: e-obs -->
+### E-OBS
+
+> We acknowledge the E-OBS dataset and the data providers in the ECA&D project (https://www.ecad.eu). Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jones. 2018: An Ensemble Version of the E-OBS Temperature and Precipitation Datasets, J. Geophys. Res. Atmos., 123. doi:10.1029/2017JD028200
+
+Regulamin danych E-OBS: <https://www.ecad.eu/documents/ECAD_datapolicy.pdf>
+<!-- /block -->
+
+<!-- block: pig -->
+### PIG-PIB: monitoring wód podziemnych
+
+> Źródło danych: Państwowy Instytut Geologiczny – Państwowy Instytut Badawczy (PIG-PIB), Monitoring Wód Podziemnych
+> Dane PIG-PIB zostały przetworzone
+
+Regulamin danych PIG-PIB: <https://www.pgi.gov.pl/rejestry-i-bazy-danych-geologicznych/zasady-korzystania-z-isp.html>
+
+Licencja CC BY 4.0: <https://creativecommons.org/licenses/by/4.0/>
 <!-- /block -->
 
 <!-- block: gugik -->
@@ -116,7 +145,7 @@ Licencja ODbL: <https://www.openstreetmap.org/copyright>
 ## 6. Twoje obowiązki
 
 1. Korzystasz z serwisu zgodnie z prawem i regulaminem.
-2. Nie pobierasz danych automatycznie (scraping, masowe zapytania) w sposób, który obciąża serwis lub utrudnia korzystanie z niego innym, nie obchodzisz jego zabezpieczeń, w tym limitu żądań, i nie próbujesz dostać się do jego części administracyjnych. Do pobierania wielu danych służą narzędzia ekosystemu Nogat i serwisy dostawców.
+2. Nie pobierasz danych automatycznie (scraping, masowe zapytania) w sposób, który obciąża serwis lub utrudnia korzystanie z niego innym, nie obchodzisz jego zabezpieczeń, w tym limitu żądań, i nie próbujesz dostać się do jego części administracyjnych. Programy korzystają z serwisu przez jego API, gdy je udostępnia, w granicach limitu żądań. Do pobierania wielu danych służą narzędzia ekosystemu Nogat i serwisy dostawców.
 3. W zgłoszeniach nie przekazujesz treści bezprawnych ani danych osobowych (§ 8).
 
 ## 7. Odpowiedzialność
@@ -133,7 +162,7 @@ Licencja ODbL: <https://www.openstreetmap.org/copyright>
 4. Ruch do serwisu przechodzi przez {{processor}}, który przetwarza go, w tym Twój adres IP, w imieniu operatora jako podmiot przetwarzający na podstawie umowy powierzenia zawartej w jego warunkach świadczenia usług, i może prowadzić własne dzienniki bezpieczeństwa zgodnie ze swoją polityką prywatności. {{processor_transfer}}
 5. Podkład mapowy i warstwy map innych dostawców (§ 5) Twoja przeglądarka pobiera bezpośrednio z ich serwerów, które otrzymują przy tym Twój adres IP.
 6. Formularz „Zgłoś uwagę” przesyła tylko treść zgłoszenia i kontekst dodany przez serwis: widok, stację, parametry widoku i wersję aplikacji; nie ma pól kontaktowych i nie zapisuje adresu IP. Nie wpisuj w nim danych osobowych; jeśli chcesz odpowiedzi, napisz e-mail. Zgłoszenia i e-maile operator przetwarza, aby je załatwić (art. 6 ust. 1 lit. f RODO), i usuwa po załatwieniu sprawy. E-maile do operatora są przechowywane w jego skrzynce w usłudze {{mail_provider}}. {{mail_transfer}}
-7. Ustawienia (motyw, układ widoków, układ współrzędnych) i wprowadzone dane serwis zapamiętuje w pamięci Twojej przeglądarki (localStorage), bo o to prosisz, korzystając z tych funkcji; usuniesz je w ustawieniach przeglądarki. Wartości i pliki, które przekazujesz do obliczeń, serwer wykorzystuje tylko do ich wykonania. Serwis nie ustawia własnych plików cookie i nie korzysta z zewnętrznych narzędzi analitycznych ani reklamowych. {{processor_cookie}}
+7. Ustawienia (motyw, układ widoków, układ współrzędnych, podkład mapy) i wprowadzone dane serwis zapamiętuje w pamięci Twojej przeglądarki (localStorage), bo o to prosisz, korzystając z tych funkcji; usuniesz je w ustawieniach przeglądarki. Wartości i pliki, które przekazujesz do obliczeń, serwer wykorzystuje tylko do ich wykonania. Serwis nie ustawia własnych plików cookie i nie korzysta z zewnętrznych narzędzi analitycznych ani reklamowych. {{processor_cookie}}
 8. Masz prawo dostępu do swoich danych, ich sprostowania, usunięcia i ograniczenia przetwarzania oraz prawo sprzeciwu (art. 15–18 i 21 RODO); w praktyce dotyczą one e-maili i zgłoszeń, bo adresu IP, skrótu ani dzienników operator nie potrafi przypisać do osoby (art. 11 RODO). Żądanie wyślij na adres operatora; odpowiada w ciągu miesiąca (art. 12 ust. 3 RODO). Przysługuje Ci prawo wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych (<https://uodo.gov.pl>).
 
 ## 9. Licencja oprogramowania
@@ -156,6 +185,7 @@ Uwagi, pytania i błędy zgłaszaj na adres [{{operator_email}}](mailto:{{operat
 
 ## Historia zmian
 
+- **1.1**: podkład mapy wśród ustawień, które serwis zapamiętuje w pamięci przeglądarki (§ 8 ust. 7); API serwisu i korzystające z niego programy, w tym wtyczka QGIS Goniec, wśród sposobów korzystania z serwisu (§ 4 ust. 2), a API w granicach limitu żądań drogą dla programów (§ 6 ust. 2).
 - **1.0**: pierwsza wersja.
 
 Poprzednie wersje regulaminu są w historii jego wzoru w repozytorium Nogat: <https://github.com/Daldek/Nogat/commits/develop/design/kit/nogat-terms.md>

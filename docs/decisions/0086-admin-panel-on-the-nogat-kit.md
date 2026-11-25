@@ -1,5 +1,10 @@
 # ADR-086: The admin panel on Nogat's kit: /admin/, the core API and Hydrograf's sections
 
+> **Amended by ADR-089 (2026-11-25):** the area map draws the first raster base map the
+> deployment allows (`gugik-osm` by default, none without one) through the kit's
+> `nogat-basemaps.js`, and the page's `img-src` admits `data:` beside its origin (Leaflet's
+> empty image of a removed tile).
+
 **Date:** 2026-11-14
 **Status:** accepted
 

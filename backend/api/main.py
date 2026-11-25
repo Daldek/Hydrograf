@@ -6,7 +6,9 @@ Configures the API with routers, middleware, and exception handlers.
 
 import asyncio
 import contextlib
+import json
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -16,6 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from api.endpoints import (
     admin,
+    basemaps,
     depressions,
     feedback,
     gui,
@@ -36,9 +39,11 @@ from api.errors import (
 )
 from api.traffic import Traffic, keep_traffic, limit_and_count
 from core import hydrolog_notices
+from core.basemaps import current_basemaps
 from core.catchment_graph import loaded_catchment_graph
 from core.config import get_settings, state_dir
 from core.database import get_db_session
+from core.errors import HydrografError
 from core.nogat_logging import AccessLog, ServerLog
 from core.terms import current_terms
 from core.version import get_version
@@ -57,11 +62,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler.
 
     Starts the logs with a summary of the settings (scalars only: no secret, admin
-    key, database URL or operator's details), installs the hook that turns
-    Hydrolog's warnings into the hydrograph's notices, starts loading the in-memory
-    catchment graph, fills the regulamin of the deployment and keeps the request limit
-    and the daily totals (ADR-084), whose last totals it stores at shutdown, before
-    the logs stop.
+    key, database URL or operator's details), then reads the base maps of the
+    deployment (ADR-089): a wrong setting stops the start, its error document, which
+    names the option and the value, the last line of standard error. It installs the
+    hook that turns Hydrolog's warnings into the hydrograph's notices, starts loading
+    the in-memory catchment graph, fills the regulamin of the deployment and keeps
+    the request limit and the daily totals (ADR-084), whose last totals it stores at
+    shutdown, before the logs stop.
     """
     # First: from here the warnings and errors of the process go to the app log. The
     # summary reads no file, so that nothing is printed before the log starts
@@ -75,6 +82,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "nogat_config": bool(settings.nogat_config),
         }
     )
+    try:
+        current_basemaps()
+    except HydrografError as error:
+        log.stop()
+        document = json.dumps(
+            error.document(), ensure_ascii=False, separators=(",", ":")
+        )
+        print(document, file=sys.stderr, flush=True)
+        raise
     # Hydrolog's warnings of a hydrograph also become the notices of its response
     # (E5b-06): the hook goes in after the log, whose captureWarnings replaces
     # warnings.showwarning, and passes every warning on to it
@@ -167,6 +183,7 @@ app.include_router(
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
 app.include_router(gui.router, prefix="/api", tags=["Ecosystem"])
+app.include_router(basemaps.router, prefix="/api", tags=["Ecosystem"])
 app.include_router(site.router, prefix="/api", tags=["Public service"])
 app.include_router(site.pages_router)
 app.include_router(

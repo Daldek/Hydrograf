@@ -22,7 +22,8 @@ the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON 
 of `NOGAT_CONFIG`, and without both there is no menu), the public service (`NOGAT_CONFIG`, the
 deployment's `nogat.toml`; `HYDROGRAF_REQUEST_LIMIT` and `HYDROGRAF_REQUEST_WINDOW`, 300
 requests in 60 s per client address by default; `HYDROGRAF_DATA_DIR`, the directory of the
-daily statistics, `/data` in Docker), the logs (`HYDROGRAF_STATE_DIR`, then `NOGAT_STATE_DIR`,
+daily statistics, `/data` in Docker), the base maps (`HYDROGRAF_BASEMAPS`, `NOGAT_BASEMAPS`;
+see [Base maps](#base-maps)), the logs (`HYDROGRAF_STATE_DIR`, then `NOGAT_STATE_DIR`,
 then `state_dir` of `[hydrograf]` or `[nogat]` in the file of `NOGAT_CONFIG`, by default
 `~/.local/state/nogat`; for Docker Compose `NOGAT_STATE_DIR` is the host's directory) and
 Docker Compose
@@ -58,6 +59,51 @@ writable by the container's user (UID 999) as `data/` is:
 `install -d -m 0777 ~/.local/state/nogat/hydrograf` (without `NOGAT_STATE_DIR` Compose
 mounts `./state/hydrograf` of the checkout, which needs the same; see
 [Service logs](#service-logs)).
+
+## Base maps
+
+The map offers the base maps of Nogat's kit, the entries of `frontend/nogat/nogat-basemaps.json`
+(`openfreemap` „OpenFreeMap szary”, the default; `gugik-osm` „OSM GUGiK szary (tylko
+Polska)”; `gugik-ortho` „Ortofotomapa GUGiK”), every entry by default (Nogat DEV-15.15,
+ADR-089). A deployment chooses in its `nogat.toml`, in `[hydrograf]` or, shared by the GUIs
+of the deployment, in `[nogat]` (the first section that has the key wins):
+
+```toml
+[hydrograf]
+# the catalogue's ids the map offers, in the catalogue's order; [] offers none
+basemaps = ["openfreemap", "gugik-ortho"]
+# a copy the deployment serves in a provider's place: the catalogue id to its address
+basemap_mirrors = { openfreemap = "https://tiles.example.org/planet" }
+
+# a base map of the deployment's own, after the catalogue's entries
+[[hydrograf.basemap_extra]]
+id = "powiat-ortho"                 # unique, not "none", not a catalogue id
+name = "Ortofotomapa powiatu"       # its label in the list
+kind = "wms"                        # xyz, wms or vector (a TileJSON)
+url = "https://maps.example.org/wms?SERVICE=WMS&VERSION=1.3.0&LAYERS=orto&FORMAT=image/png"
+attribution = "Ortofotomapa © Starostwo Powiatowe"
+grayscale = false                   # optional
+```
+
+For an API run on the host, `HYDROGRAF_BASEMAPS`, then `NOGAT_BASEMAPS` (ids joined by `,`,
+for example `HYDROGRAF_BASEMAPS=openfreemap,gugik-osm`) win over `basemaps` of the file; set
+but empty, they offer none. Docker Compose passes neither, so a deployment sets the keys in
+its `nogat.toml`; `basemap_mirrors` and `basemap_extra` are set only there. The API reads
+them once at start and answers them at `GET /api/basemaps`; a change needs a restart. An
+unknown id or a wrong value stops the API at start: it prints the error document
+`hydrograf-error/1` on standard error (`docker logs hydro_api`), with `validation_error`
+and `details` naming the option, the value, where it was read and why, for example
+`basemap_unknown` for an id the catalogue lacks; an unreadable catalogue stops it too
+(`basemap_catalogue_unreadable`). The regulamin keeps the block `osm` only while
+`openfreemap` or `gugik-osm` is offered.
+
+The Content-Security-Policy of `docker/nginx.conf` and `docker/nginx-ssl.conf.template` names
+the catalogue's origins, `https://tiles.openfreemap.org` and `https://mapy.geoportal.gov.pl`,
+whatever `basemaps` allows: nginx does not read `nogat.toml`. A deployment with a copy or an
+own base map adds its origin (`https://tiles.example.org`, `https://maps.example.org` above)
+to `img-src` and `connect-src` of the page's policy in the nginx file its nginx runs (Compose
+mounts `docker/nginx.conf` of the checkout at `/etc/nginx/nginx.conf`; an override of the
+instance may mount its own file there); without it the browser refuses its tiles.
 
 ## A second instance
 

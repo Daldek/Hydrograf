@@ -120,6 +120,10 @@ details:
 - `NOGAT_CONFIG`, the deployment's `nogat.toml`, whose table `[nogat.operator]` makes
   Hydrograf a [public service](#public-service), and `NOGAT_STATE_DIR`, the directory of the
   logs;
+- the base maps the map offers (Nogat DEV-15.15, ADR-089): `basemaps`, `basemap_mirrors` and
+  `basemap_extra` of that `nogat.toml` (`HYDROGRAF_BASEMAPS` or `NOGAT_BASEMAPS` for an API
+  run on the host); a wrong value stops the API at start, and a copy or an own base map
+  needs its origin in the deployment's nginx file;
 - a second instance beside the first on the same Docker host, with its own compose project
   and env file;
 - the service logs in `<state_dir>/hydrograf/logs/` (Nogat DEV-12.4 to DEV-12.9): 14 days,
@@ -130,7 +134,7 @@ details:
 Hydrograf is open to anyone without signing in (Nogat DEV-15.7 to DEV-15.12, ADR-084):
 
 - **Regulamin.** With `[nogat.operator]` in the file of `NOGAT_CONFIG` the API fills Nogat's
-  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.1.0) once per process with the
+  regulamin (`frontend/nogat/nogat-terms.html`, kit 1.3.0, regulamin 1.1) once per process with the
   operator and the entry `hydrograf` of the table `gui`, and serves it at `/regulamin.html`.
   The link „Regulamin” (in a new tab) is at the bottom of the left rail, under the guide's
   table of contents, in the welcome window and in the menu „Aplikacje”.
@@ -173,8 +177,8 @@ every request. No key is generated or logged: without one
 every admin route answers 401 with `admin_key_not_configured`. The access paths are
 `/admin`, `/admin/*` and `/api/admin/*`, nothing else; Cloudflare Access protects them
 besides the key. Every admin answer is `Cache-Control: no-store`; the page has CSP
-`'self'` (the tiles of GUGiK's OpenStreetMap of the area map excepted) and its requests
-stay under the request limit.
+`'self'` (its `img-src` admits the area map's base map, GUGiK's OpenStreetMap, and `data:`)
+and its requests stay under the request limit.
 
 A GET of `/api/admin/status` gives the app, its version, start and uptime, `data_dir`
 (`HYDROGRAF_DATA_DIR`) with its free disk, and three checks: `database` (PostGIS answers),
@@ -201,19 +205,22 @@ but `visitors`.
 | Closed depressions of the terrain | `GET /depressions` | DEM (GUGiK) |
 | Feedback: a text and the context of the view | `POST /feedback` | none |
 | The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` or the `nogat.toml` of `NOGAT_CONFIG` |
+| The base maps the map offers: the entries of Nogat's catalogue the deployment allows, then its own | `GET /basemaps` | `frontend/nogat/nogat-basemaps.json` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra` |
 | The address of the regulamin and the operator's e-mail, both null without an operator | `GET /terms` | the `nogat.toml` of `NOGAT_CONFIG` |
 | Count one file that the interface saved, for the daily statistics | `POST /downloads` | none |
 | Administration: reports, statistics, status, resources, DEM processing, cleanup, boundary and sewer upload | `/admin/*` with the `X-Admin-Key` header (see [Admin panel](#admin-panel)) | none |
 
-The background maps of the interface are OpenFreeMap (vector, drawn by MapLibre GL), the
-grey OpenStreetMap of GUGiK and the orthophoto of GUGiK; the flood hazard map (MZP) of Wody
+The base maps of the interface are those of Nogat's kit (`frontend/nogat/nogat-basemaps.json`,
+ADR-089): OpenFreeMap in the kit's grey style with Polish names (vector, drawn by MapLibre GL
+through Leaflet), the grey OpenStreetMap of GUGiK and the orthophoto of GUGiK, the browser
+keeping the choice; the flood hazard map (MZP) of Wody
 Polskie is an overlay from their WMS service. The results of external analyses (for
 example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
 vanilla JS with Leaflet, MapLibre GL and Chart.js, vendored in `frontend/vendor/` (no page
 loads a script, style or font from another site), in the Nogat visual identity
 (`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje”,
-the hand-off, the strip of sources, the regulamin template and the admin panel). Hydrograf uses
+the hand-off, the strip of sources, the base maps, the regulamin template and the admin panel). Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its
@@ -275,7 +282,7 @@ project, the shared store) exits with the code of the registry, listed in the
 | ISRIC SoilGrids | soil texture, input of the HSG groups | CC BY 4.0: the products with soil groups carry SG, „Źródło: ISRIC – World Soil Information, SoilGrids, licencja CC BY 4.0 (…); dane przetworzone” |
 | IMGW-PIB | PMAXTP maximum precipitation | the PMAXTP terms (https://klimat.imgw.pl/opady-maksymalne): the source with the PMAXTP page, the note that the data were processed and the monograph of the project, then the link to the terms. Every response, view, export and hand-off with PMAXTP data carries these lines |
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
-| OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
+| OpenStreetMap, OpenMapTiles, OpenFreeMap | the base maps OpenFreeMap szary and OSM GUGiK szary | ODbL: the credit of Nogat's catalogue in the map's corner, „OpenFreeMap © OpenMapTiles, dane © autorzy OpenStreetMap” or „© autorzy OpenStreetMap, GUGiK”, linked to the copyright pages |
 
 The lines of IMGW-PIB, GUGiK and ISRIC come from `backend/core/attribution.py` (Nogat DEV §20,
 ADR-083, ADR-085) in `attribution` and `terms_notice`; the strip under the map shows

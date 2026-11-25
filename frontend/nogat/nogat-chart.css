@@ -1,0 +1,383 @@
+/*
+ * Nogat GUI kit: charts over axes (DEV-15.16, ECO-090), the look of nogat-chart.js. Every rule
+ * is scoped by the chart's container .nogat-chart or by a class of its own prefix, and every
+ * token has its light fallback, so a GUI without tokens.css draws a chart in the light values
+ * (DEV-15.3); the derived colours are set on the container, not on :root. Colours are classes,
+ * so a theme switch needs no redraw. Built from Obserwator's css/charts.css. Copy byte for byte
+ * (DEV-15.6).
+ */
+
+/* The derived colours: the series by their classes s1 to s6, the rain bars. */
+.nogat-chart {
+  --series-1: var(--info, #1d4ed8);
+  --series-2: var(--warn, #d97706);
+  --series-3: var(--accent-green, #5f8a80);
+  --series-4: color-mix(in srgb, var(--info, #1d4ed8) 45%, var(--surface, #ffffff));
+  --series-5: var(--info-ink, #1e40af);
+  --series-6: color-mix(in srgb, var(--info, #1d4ed8) 50%, var(--bad, #dc2626));
+  --rain: color-mix(in srgb, var(--info, #1d4ed8) 26%, var(--surface, #ffffff));
+  --rain-eff: color-mix(in srgb, var(--info, #1d4ed8) 78%, var(--surface, #ffffff));
+  position: relative;
+  margin: 0 0 var(--space-3, 12px);
+  color: var(--text, #2b2b2b);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.nogat-chart .nogat-chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.nogat-chart.nogat-chart-wide { margin: 0; overflow-x: auto; }
+.nogat-chart .nogat-chart-svg:focus { outline: none; }
+.nogat-chart .nogat-chart-svg:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+/* Grid, axes, texts */
+.nogat-chart .grid line { stroke: var(--line, #e5e5e5); stroke-width: 1; }
+.nogat-chart .grid.v line { stroke-dasharray: 2 4; }
+.nogat-chart .axis { stroke: var(--line-2, #d4cfcf); stroke-width: 1; }
+.nogat-chart .tick {
+  fill: var(--text-3, #6b6565);
+  font: 10px var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.nogat-chart .tick.sub { font-size: 10px; }
+.nogat-chart .axis-label,
+.nogat-chart .note { font: 10px var(--font-sans, system-ui, sans-serif); }
+.nogat-chart .axis-label { fill: var(--text-3, #6b6565); }
+.nogat-chart .note { fill: var(--text-2, #4e4e4e); }
+.nogat-chart.nogat-chart-wide :is(.tick, .axis-label, .note) { font-size: var(--text-xs, 11px); }
+
+/* Series */
+.nogat-chart .ser {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition: opacity var(--transition, 0.2s ease);
+}
+.nogat-chart .ser.s1 { stroke: var(--series-1); stroke-width: 2.6; }
+.nogat-chart .ser.s2 { stroke: var(--series-2); }
+.nogat-chart .ser.s3 { stroke: var(--series-3); }
+.nogat-chart .ser.s4 { stroke: var(--series-4); stroke-dasharray: 7 4; stroke-width: 2.2; }
+.nogat-chart .ser.s5 { stroke: var(--series-5); stroke-dasharray: 7 4; stroke-width: 2.2; }
+.nogat-chart .ser.s6 { stroke: var(--series-6); stroke-dasharray: 2 3.5; stroke-width: 2.4; }
+.nogat-chart .ser.best { stroke-width: 3.2; }
+.nogat-chart .ser.active { stroke-width: 3.2; stroke-dasharray: none; }
+.nogat-chart .ser.dim { opacity: 0.35; }
+/*
+ * The fit methods of a probability plot: the line style of a curve and of its swatch, whose
+ * colour is the distribution's. L-moments solid, maximum likelihood dashed, moments dotted,
+ * least squares dash-dot; after .active and the dashed series classes, so every curve keeps
+ * its method's style.
+ */
+.nogat-chart .ser.fm-lmom,
+.nogat-chart .sw-stroke.fm-lmom line { stroke-dasharray: none; }
+.nogat-chart .ser.fm-mle,
+.nogat-chart .sw-stroke.fm-mle line { stroke-dasharray: 8 4; stroke-linecap: butt; }
+.nogat-chart .ser.fm-mom,
+.nogat-chart .sw-stroke.fm-mom line { stroke-dasharray: 0 5.5; stroke-linecap: round; }
+.nogat-chart .ser.fm-lsq,
+.nogat-chart .sw-stroke.fm-lsq line { stroke-dasharray: 10 3 2 3; stroke-linecap: butt; }
+.nogat-chart .q-area { fill: color-mix(in srgb, var(--series-1) 14%, transparent); stroke: none; }
+.nogat-chart .q-area.s2 { fill: color-mix(in srgb, var(--series-2) 16%, transparent); }
+.nogat-chart .q-area.s3 { fill: color-mix(in srgb, var(--series-3) 16%, transparent); }
+.nogat-chart .q-area.s4 { fill: color-mix(in srgb, var(--series-4) 20%, transparent); }
+/* A band (a min–max envelope): filled between its ends, under the lines */
+.nogat-chart .band { fill: color-mix(in srgb, var(--series-1) 18%, transparent); stroke: none; }
+.nogat-chart .band.s2 { fill: color-mix(in srgb, var(--series-2) 20%, transparent); }
+.nogat-chart .band.s3 { fill: color-mix(in srgb, var(--series-3) 20%, transparent); }
+.nogat-chart .band.s4 { fill: color-mix(in srgb, var(--series-4) 26%, transparent); }
+.nogat-chart .band.s5 { fill: color-mix(in srgb, var(--series-5) 18%, transparent); }
+.nogat-chart .band.s6 { fill: color-mix(in srgb, var(--series-6) 18%, transparent); }
+.nogat-chart .bars rect { fill: var(--series-1); }
+.nogat-chart .bars.s2 rect { fill: var(--series-2); }
+.nogat-chart .bars.s3 rect { fill: var(--series-3); }
+.nogat-chart .bars.s4 rect { fill: var(--series-4); }
+.nogat-chart .bars.bar-p rect { fill: var(--rain); }
+.nogat-chart .bars.bar-pe rect { fill: var(--rain-eff); }
+/* Points: plain rings, or their series colour's ring on a light fill; hollow, diamonds */
+.nogat-chart .emp > * {
+  fill: var(--surface, #ffffff);
+  stroke: var(--text, #2b2b2b);
+  stroke-width: 1.4;
+}
+.nogat-chart :is(.emp.s1 > *, .sw-dot.s1) { --ring: var(--series-1); }
+.nogat-chart :is(.emp.s2 > *, .sw-dot.s2) { --ring: var(--series-2); }
+.nogat-chart :is(.emp.s3 > *, .sw-dot.s3) { --ring: var(--series-3); }
+.nogat-chart :is(.emp.s4 > *, .sw-dot.s4) { --ring: var(--series-4); }
+.nogat-chart :is(.emp.s5 > *, .sw-dot.s5) { --ring: var(--series-5); }
+.nogat-chart :is(.emp.s6 > *, .sw-dot.s6) { --ring: var(--series-6); }
+.nogat-chart .emp:is(.s1, .s2, .s3, .s4, .s5, .s6) > * {
+  fill: color-mix(in srgb, var(--ring) 22%, var(--surface, #ffffff));
+  stroke: var(--ring);
+  stroke-width: 1.6;
+}
+.nogat-chart .emp > .hollow { fill: var(--surface, #ffffff); }
+.nogat-chart .emp > .diamond { stroke-linejoin: round; }
+.nogat-chart .rug line { stroke: var(--text, #2b2b2b); stroke-width: 1.4; }
+/* A span: a grey band over a range of x (a gap), under the series */
+.nogat-chart .span {
+  fill: color-mix(in srgb, var(--text-3, #6b6565) 14%, transparent);
+  stroke: none;
+}
+
+/* Horizontal bars on a band axis: ok, warn, bad, used */
+.nogat-chart .hbar { fill: var(--series-1); stroke-width: 0; }
+.nogat-chart .hbar.ok { fill: var(--ok, #16a34a); }
+.nogat-chart .hbar.warn { fill: var(--warn, #d97706); }
+.nogat-chart .hbar.bad {
+  fill: var(--bad-bg, #fee2e2);
+  stroke: var(--bad, #dc2626);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2;
+}
+.nogat-chart .hbar.used { stroke: var(--text, #2b2b2b); stroke-width: 2; stroke-dasharray: none; }
+.nogat-chart .bar-name {
+  fill: var(--text, #2b2b2b);
+  font: var(--weight-bold, 700) var(--text-sm, 12px) var(--font-sans, system-ui, sans-serif);
+}
+.nogat-chart .bar-sub {
+  fill: var(--text-3, #6b6565);
+  font: 10px var(--font-mono, ui-monospace, monospace);
+}
+.nogat-chart .bar-val {
+  fill: var(--text, #2b2b2b);
+  font: var(--weight-medium, 500) var(--text-sm, 12px) var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Marks */
+.nogat-chart .mark-line { stroke: var(--text-3, #6b6565); stroke-width: 1; stroke-dasharray: 2 2; }
+.nogat-chart .peak-line { stroke: var(--text-3, #6b6565); stroke-width: 1; stroke-dasharray: 3 3; }
+.nogat-chart .peak-line.ref { stroke: var(--text-2, #4e4e4e); stroke-dasharray: 6 4; }
+.nogat-chart .peak-dot { fill: var(--surface, #ffffff); stroke: var(--series-1); stroke-width: 2; }
+.nogat-chart .peak-dot.s2 { stroke: var(--series-2); }
+.nogat-chart .peak-dot.s3 { stroke: var(--series-3); }
+.nogat-chart .peak-dot.s4 { stroke: var(--series-4); }
+.nogat-chart .peak-dot.s5 { stroke: var(--series-5); }
+.nogat-chart .peak-dot.s6 { stroke: var(--series-6); }
+.nogat-chart .peak-label {
+  fill: var(--text, #2b2b2b);
+  font: var(--weight-bold, 700) var(--text-sm, 12px) var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.nogat-chart .peak-tag {
+  fill: var(--text, #2b2b2b);
+  font: var(--weight-bold, 700) var(--text-xs, 11px) var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface, #ffffff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.nogat-chart .peak-box { fill: var(--surface, #ffffff); stroke: var(--line-2, #d4cfcf); }
+
+/* The readout (pointer and keys) */
+.nogat-chart .readout-line { stroke: var(--text-2, #4e4e4e); stroke-width: 1; }
+.nogat-chart .readout-dot {
+  fill: var(--surface, #ffffff);
+  stroke: var(--series-1);
+  stroke-width: 2;
+}
+.nogat-chart .readout-dot.s2 { stroke: var(--series-2); }
+.nogat-chart .readout-dot.s3 { stroke: var(--series-3); }
+.nogat-chart .readout-dot.s4 { stroke: var(--series-4); }
+.nogat-chart .readout-dot.s5 { stroke: var(--series-5); }
+.nogat-chart .readout-dot.s6 { stroke: var(--series-6); }
+.nogat-chart .readout-box { fill: var(--surface, #ffffff); stroke: var(--line-2, #d4cfcf); }
+.nogat-chart .readout-head {
+  fill: var(--text, #2b2b2b);
+  font: var(--weight-bold, 700) var(--text-xs, 11px) var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.nogat-chart .readout-text {
+  fill: var(--text-2, #4e4e4e);
+  font: var(--text-xs, 11px) var(--font-sans, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.nogat-chart .nogat-chart-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * The zoom: a zoomable plot keeps one finger's vertical move for the page's scroll and takes
+ * the others (the readout, a pinch); the selection dragged over it; a pan's grip.
+ */
+.nogat-chart.nogat-chart-zoomable .nogat-chart-svg {
+  cursor: crosshair;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.nogat-chart.nogat-chart-panning .nogat-chart-svg { cursor: grabbing; }
+.nogat-chart .zoom-selection {
+  fill: color-mix(in srgb, var(--focus, #284b63) 14%, transparent);
+  stroke: var(--focus, #284b63);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+/*
+ * The range bar under a zoomable chart, one line at 390 px: „−”, „+”, „Cały zakres” and
+ * the range shown, cut with an ellipsis where it does not fit; before a zoom the lone „+”.
+ * The buttons are the GUI's .btn.sm, never smaller than 24 × 24 px (WCAG 2.2 SC 2.5.8).
+ */
+.nogat-chart .nogat-chart-zoom {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+  margin-top: var(--space-1, 4px);
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-xs, 11px);
+  font-variant-numeric: tabular-nums;
+}
+.nogat-chart .nogat-chart-zoom[hidden],
+.nogat-chart .nogat-chart-zoom [hidden] { display: none; }
+.nogat-chart .nogat-chart-zoom button { flex: none; min-width: 24px; min-height: 24px; }
+.nogat-chart .nogat-chart-zoom-range {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The legend */
+.nogat-chart .nogat-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1, 4px) var(--space-4, 16px);
+  margin-top: var(--space-2, 8px);
+  color: var(--text-2, #4e4e4e);
+  font-size: var(--text-xs, 11px);
+}
+.nogat-chart .nogat-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.nogat-chart .nogat-chart-legend .muted { color: var(--text-3, #6b6565); }
+.nogat-chart .nogat-chart-legend .legend-break { flex-basis: 100%; height: 0; }
+.nogat-chart .sw-line {
+  display: inline-block;
+  flex: none;
+  width: 22px;
+  height: 0;
+  border-top: 3px solid var(--series-1);
+  vertical-align: middle;
+}
+.nogat-chart .sw-line.s1 { border-top-color: var(--series-1); }
+.nogat-chart .sw-line.s2 { border-top-color: var(--series-2); }
+.nogat-chart .sw-line.s3 { border-top-color: var(--series-3); }
+.nogat-chart .sw-line.s4 { border-top: 3px dashed var(--series-4); }
+.nogat-chart .sw-line.s5 { border-top: 3px dashed var(--series-5); }
+.nogat-chart .sw-line.s6 { border-top: 3px dotted var(--series-6); }
+.nogat-chart .sw-line.best { border-top-width: 4px; }
+.nogat-chart .sw-line.active { border-top-width: 4px; border-top-style: solid; }
+.nogat-chart .sw-line.dim { opacity: 0.45; }
+/* A line swatch drawn as the curves are: its series class's colour, its fit method's style */
+.nogat-chart svg.sw-stroke {
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 6px;
+  overflow: visible;
+  color: var(--text-2, #4e4e4e);
+  vertical-align: middle;
+}
+.nogat-chart .sw-stroke line { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.nogat-chart .sw-stroke.s1 { color: var(--series-1); }
+.nogat-chart .sw-stroke.s2 { color: var(--series-2); }
+.nogat-chart .sw-stroke.s3 { color: var(--series-3); }
+.nogat-chart .sw-stroke.s4 { color: var(--series-4); }
+.nogat-chart .sw-stroke.s5 { color: var(--series-5); }
+.nogat-chart .sw-stroke.s6 { color: var(--series-6); }
+.nogat-chart .sw {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--series-1);
+}
+.nogat-chart .sw.s2 { background: var(--series-2); }
+.nogat-chart .sw.s3 { background: var(--series-3); }
+.nogat-chart .sw.s4 { background: var(--series-4); }
+.nogat-chart .sw.bar-p { background: var(--rain); }
+.nogat-chart .sw.bar-pe { background: var(--rain-eff); }
+.nogat-chart .sw.ok { background: var(--ok, #16a34a); }
+.nogat-chart .sw.warn { background: var(--warn, #d97706); }
+.nogat-chart .sw.bad {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bad-bg, #fee2e2),
+    var(--bad-bg, #fee2e2) 2px,
+    var(--bad, #dc2626) 2px,
+    var(--bad, #dc2626) 3px
+  );
+}
+.nogat-chart .sw.used { background: transparent; border: 2px solid var(--text, #2b2b2b); }
+.nogat-chart .sw.span { background: color-mix(in srgb, var(--text-3, #6b6565) 14%, transparent); }
+.nogat-chart .sw-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--text, #2b2b2b);
+  border-radius: 50%;
+  background: var(--surface, #ffffff);
+}
+.nogat-chart .sw-dot:is(.s1, .s2, .s3, .s4, .s5, .s6) {
+  border-color: var(--ring);
+  background: color-mix(in srgb, var(--ring) 22%, var(--surface, #ffffff));
+}
+.nogat-chart .sw-dot.hollow { background: var(--surface, #ffffff); }
+.nogat-chart .sw-dot.diamond { border-radius: 1px; transform: rotate(45deg) scale(0.85); }
+.nogat-chart .sw-rug {
+  display: inline-block;
+  flex: none;
+  width: 0;
+  height: 10px;
+  border-left: 1.5px solid var(--text, #2b2b2b);
+}
+.nogat-chart .sw.band {
+  background: color-mix(in srgb, var(--series-1) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--series-1) 45%, transparent);
+}
+.nogat-chart .sw.band.s2 {
+  background: color-mix(in srgb, var(--series-2) 28%, transparent);
+  border-color: color-mix(in srgb, var(--series-2) 50%, transparent);
+}
+.nogat-chart .sw.band.s3 {
+  background: color-mix(in srgb, var(--series-3) 28%, transparent);
+  border-color: color-mix(in srgb, var(--series-3) 50%, transparent);
+}
+.nogat-chart .sw.band.s4 {
+  background: color-mix(in srgb, var(--series-4) 34%, transparent);
+  border-color: color-mix(in srgb, var(--series-4) 55%, transparent);
+}
+.nogat-chart .sw.band.s5 {
+  background: color-mix(in srgb, var(--series-5) 26%, transparent);
+  border-color: color-mix(in srgb, var(--series-5) 45%, transparent);
+}
+.nogat-chart .sw.band.s6 {
+  background: color-mix(in srgb, var(--series-6) 26%, transparent);
+  border-color: color-mix(in srgb, var(--series-6) 45%, transparent);
+}
+
+/*
+ * Up to 860 px a wide chart of fixed size keeps 560 px and scrolls sideways; a zoomable one is
+ * drawn at its container's width (`nogat-chart-fit`), since `touch-action: pan-y` leaves no
+ * finger to scroll it and a pinch shows any part larger.
+ */
+@media (max-width: 860px) {
+  .nogat-chart.nogat-chart-wide:not(.nogat-chart-fit) .nogat-chart-svg { min-width: 560px; }
+}

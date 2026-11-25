@@ -3,13 +3,15 @@
 
 Every relative reference `src="js/x.js"` / `href="css/y.css"` of a page (no CDN) gets
 `?v=<the first 10 characters of the SHA-256 of the file>`, and so does every relative
-import of an own ES module in `js/` (`from '../nogat/nogat-handoff.js'` of `js/nogat.js`,
-which imports Nogat's kit: ADR-082). A module is versioned before the pages, so its
-version covers those of the modules it imports. A changed file changes its address, so
-the browsers and the Cloudflare cache fetch the new version at once, without clearing a
-cache. nginx sends the HTML pages with `Cache-Control: no-cache`, so the new addresses
-arrive with the first reload (docs/ARCHITECTURE.md §5.2, "Front-end asset cache"). The
-copies of the kit in `nogat/` import nothing and are never rewritten.
+static or dynamic import of the own scripts in `js/` and `admin/` (`from
+'../nogat/nogat-handoff.js'` of `js/nogat.js` and `import('../nogat/nogat-basemaps.js')`
+of `admin/processing.js`, which load Nogat's kit: ADR-082, ADR-089). A script is
+versioned before the pages, so its version covers those of the modules it imports. A
+changed file changes its address, so the browsers and the Cloudflare cache fetch the new
+version at once, without clearing a cache. nginx sends the HTML pages with
+`Cache-Control: no-cache`, so the new addresses arrive with the first reload
+(docs/ARCHITECTURE.md §5.2, "Front-end asset cache"). The copies of the kit in `nogat/`
+import nothing and are never rewritten.
 
 Usage (from the root of the repository):
     python3 scripts/bump_asset_versions.py           # rewrite the versions
@@ -25,7 +27,8 @@ from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 PAGES = ("index.html", "admin/index.html", "instrukcja/index.html")
-SCRIPTS = FRONTEND / "js"
+# The own scripts, whose imports are versioned (the pages' other files import nothing)
+SCRIPT_DIRS = (FRONTEND / "js", FRONTEND / "admin")
 
 # A relative path to a .js/.css file with an optional earlier version.
 ASSET_REF = re.compile(
@@ -69,7 +72,7 @@ def script_text(path: Path, texts: dict[Path, str | None]) -> str:
 
 def served(path: Path, texts: dict[Path, str | None]) -> bytes:
     """The content of a file as the pages get it: an own script with its imports versioned."""
-    if path.suffix == ".js" and path.is_relative_to(SCRIPTS):
+    if path.suffix == ".js" and any(path.is_relative_to(d) for d in SCRIPT_DIRS):
         return script_text(path, texts).encode("utf-8")
     return path.read_bytes()
 
@@ -89,7 +92,7 @@ def main() -> int:
     check = "--check" in sys.argv[1:]
     texts: dict[Path, str | None] = {}
     stale = []
-    for script in sorted(SCRIPTS.rglob("*.js")):
+    for script in sorted(s for d in SCRIPT_DIRS for s in d.rglob("*.js")):
         text = script_text(script, texts).encode("utf-8")
         if text != script.read_bytes():
             stale.append(script.relative_to(FRONTEND).as_posix())
