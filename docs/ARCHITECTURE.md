@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.26
-**Date:** 2026-11-22
+**Version:** 2.27
+**Date:** 2026-11-25
 **Status:** Approved
 
 ---
@@ -792,7 +792,7 @@ Details: `core/watershed_service.py`
 - `zonal_bincount`, `zonal_min`, `zonal_max`, `zonal_elevation_histogram` (`np.bincount`, scipy): `generate_depressions.py` and the reference of `zonal_summary` in the tests
 
 #### 2.4.7 Hydrolog library (external)
-**Responsibilities:** (delegated to `hydrolog`, pinned by its commit `146a96b` of `hotfix/0.9.1` (0.9.1, Nogat's release set candidate-13) in `backend/pyproject.toml`, REL-5.3; range `>=0.9.0,<0.10`)
+**Responsibilities:** (delegated to `hydrolog`, pinned by its tag `v0.9.1` (0.9.1, the release round of 2026-11-24) in `backend/pyproject.toml`, REL-5.3; range `>=0.9.0,<0.10`)
 - Hyetograph generation (Beta, Block, Euler II)
 - SCS CN model (effective precipitation)
 - Unit hydrograph: SCS, Nash IUH, Snyder
@@ -2294,12 +2294,13 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.26
-**Date of the last update:** 2026-11-24
+**Document version:** 2.27
+**Date of the last update:** 2026-11-25
 **Status:** Approved for implementation
 
 **Change history:**
-- 2.26 (2026-11-24): §2.4.7 Hydrolog pinned by its commit `146a96b` (0.9.1) of Nogat's release set candidate-13; the header and the footer 2.26
+- 2.27 (2026-11-25): §2.4.7 Hydrolog pinned by its tag `v0.9.1` (Hydrograf 0.6.1); the header and the footer 2.27
+- 2.26 (2026-11-24): §2.4.7 Hydrolog pinned by its commit `1b25a91` (0.9.1) of Nogat's release set candidate-13; the header and the footer 2.26
 - 2.25 (2026-11-22): the release audit of 0.6.0 against the code: §2.1 `core/_errors.py` the registry of the Nogat standard 1.1; §2.2.1 the example `version` 0.6.0; §2.2.3 the message IDs of Hydrolog's refusals, and no code fence left open after the block; §2.4.7 Hydrolog pinned by its tag `v0.9.0`, the equal-area slope among its tasks; §4.1 the names of the downloads of `rain-export.js` and of the statistics of `nogat-admin.js` (Nogat DEV-19.21); §4.2.0 76 entries keyed by a field, a control or a kind, 68 with a section of the guide, the notices of a value outside the applicability range; the header and the footer 2.25 like this history (the footer said 2.23)
 - 2.24 (2026-11-21): the sources strip folded on a phone (Nogat ECO-080, step 4 of Nogat's plan `2026-11-21-phone-sources-strip`): §4.1 `nogat-terms-operator.md` among the kit's copies; §4.2.0 the strip is one line up to 860 px, „więcej” unfolds it; the header 2.24 like this history
 - 2.23 (2026-11-21): Hydrolog 0.9.0 (ADR-088; Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): §2.1 `core/formula_versions.py`, `core/hydrolog_refusals.py` and the equal-area slope of `core/divide_flow_path.py`; §2.2.3 the notice `outside_applicability`, `hydrolog_version` and `formula_versions`, the whole-step refusals, Hydrolog's refusals by the standard's reasons, Lutz and Snyder on the longest flow path, Euler II from the PMAXTP curve; §2.5 the equal-area slope on the filled DEM beside the flow path lines; §4.1 87 info texts; §4.2.0 the advanced mode's 16 fields with the equal-area slope; the header 2.23 like this history

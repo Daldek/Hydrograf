@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.24
-**Date:** 2026-11-21
+**Version:** 1.25
+**Date:** 2026-11-25
 **Status:** Approved
 
 ---
@@ -423,7 +423,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `ffcaa23` of `hotfix/3.2.1`, 3.2.1, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at tag `v3.2.1`, 3.2.1, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -533,10 +533,10 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 0.9.1 (commit `146a96b` of `hotfix/0.9.1`, Nogat's release set candidate-13, range `>=0.9.0,<0.10`; hydrological calculations)
-- Kartograf 0.9.0.dev0 (commit `05052b3` of `develop`, Nogat's release set candidate-13, range `>=0.9.0.dev0,<0.10`; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.2.1 (IMGWTools until its v3.0.0; commit `ffcaa23` of `hotfix/3.2.1`, Nogat's release set candidate-13, range `>=3.1.0,<4`, package `obserwator`; design precipitation from IMGW)
-- `develop` (0.6.1.dev0) pins these commits of the release round of 2026-11-24 (REL-5.3, REL-5.6); the release commit replaces them with the tags `v0.9.1`, `v0.9.0` and `v3.2.1` and narrows Kartograf's range to `>=0.9.0,<0.10`. Hydrograf 0.6.0 pinned the tags Hydrolog `v0.9.0`, Kartograf `v0.8.2` and Obserwator `v3.1.0`; during its round it pinned the commits Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0) of their `develop`; Hydrograf 0.5.2 pinned Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1`
+- Hydrolog 0.9.1 (tag `v0.9.1`, range `>=0.9.0,<0.10`; hydrological calculations)
+- Kartograf 0.9.0 (tag `v0.9.0`, range `>=0.9.0,<0.10`; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.2.1 (IMGWTools until its v3.0.0; tag `v3.2.1`, range `>=3.1.0,<4`, package `obserwator`; design precipitation from IMGW)
+- Hydrograf 0.6.1 pins these tags of the release round of 2026-11-24 (REL-5.3, REL-5.6); during the round it pinned the commits Kartograf `05052b3`, Obserwator `1ffe40d` and Hydrolog `1b25a91` (Nogat's release set candidate-13). Hydrograf 0.6.0 pinned the tags Hydrolog `v0.9.0`, Kartograf `v0.8.2` and Obserwator `v3.1.0`; during its round it pinned the commits Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0) of their `develop`; Hydrograf 0.5.2 pinned Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1`
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -969,14 +969,15 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.24
-**Date of the last update:** 2026-11-24
-**Current version:** v0.6.0 (`backend/pyproject.toml`): the adaptation to Hydrolog 0.9.0, with Obserwator 3.1.0 and Kartograf 0.8.2; `develop` is 0.6.1.dev0 with the producers of Nogat's release set candidate-13
+**Document version:** 1.25
+**Date of the last update:** 2026-11-25
+**Current version:** v0.6.1 (`backend/pyproject.toml`): the tags Kartograf `v0.9.0`, Obserwator `v3.2.1` and Hydrolog `v0.9.1` of the release round of 2026-11-24
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
-- 1.24 (2026-11-24): the pins of Nogat's release set candidate-13: Kartograf `05052b3` (0.9.0.dev0, range `>=0.9.0.dev0,<0.10`), Obserwator `ffcaa23` (3.2.1) and Hydrolog `146a96b` (0.9.1) in 3.1.4 and 5.1; `develop` 0.6.1.dev0; the header 1.24 like this history (it said 1.21)
+- 1.25 (2026-11-25): the release state of Hydrograf 0.6.1: the tags Kartograf `v0.9.0` (range `>=0.9.0,<0.10`), Obserwator `v3.2.1` and Hydrolog `v0.9.1` in 3.1.4 and 5.1, the current version v0.6.1
+- 1.24 (2026-11-24): the pins of Nogat's release set candidate-13: Kartograf `05052b3` (0.9.0.dev0, range `>=0.9.0.dev0,<0.10`), Obserwator `1ffe40d` (3.2.1) and Hydrolog `1b25a91` (0.9.1) in 3.1.4 and 5.1; `develop` 0.6.1.dev0; the header 1.24 like this history (it said 1.21)
 - 1.23 (2026-11-22): the release state of Hydrograf 0.6.0: the tags Hydrolog `v0.9.0`, Obserwator `v3.1.0` and Kartograf `v0.8.2` with their ranges in 3.1.4 and 5.1, the current version v0.6.0; Lutz's and Snyder's L the longest flow path, Euler II from the PMAXTP depth–duration curve and the whole time steps in 2.1.3; the file name of the statistics in 2.1.4
 - 1.22 (2026-11-22): the pins of Nogat's release set candidate-11: Hydrolog `64f6e21` (0.9.0.dev6) and Obserwator `4bf0ce3` (3.1.0.dev0), Kartograf the tag `v0.8.2`
 - 1.21 (2026-11-21): the producers of the release round of 2026-11-21 (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers`, step 2): Hydrolog `dbbbdb5` (0.9.0.dev5) and Obserwator `1a11df5` (3.1.0.dev0), Kartograf the tag `v0.8.2`; Hydrograf 0.5.0 to 0.5.2 pinned tags, 0.5.2 Kartograf `v0.8.2`, Obserwator `v3.0.1` and Hydrolog `v0.8.1` of Nogat's release set candidate-10; the equal-area slope of the longest flow path in 2.1.2; v0.5.2 the latest release
