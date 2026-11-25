@@ -350,7 +350,7 @@
                 return candidate.kind === 'raster' && Array.isArray(candidate.blocks);
             });
             if (!entry) return;
-            var kit = await import('../nogat/nogat-basemaps.js?v=20f6db6ae1');
+            var kit = await import('../nogat/nogat-basemaps.js?v=f9df0ea391');
             function onFailure() {
                 notice.textContent = kit.BASEMAP_TEXTS.failed + ': ' + entry.label +
                     '. Prostokąt można narysować także bez podkładu.';

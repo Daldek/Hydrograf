@@ -1948,23 +1948,6 @@
         };
     }
 
-    /**
-     * Keep MapLibre's credit to what the map draws: once no source has a credit left, its
-     * control only hides (`maplibregl-attrib-empty`) and keeps the words it showed last,
-     * those of a base map that failed or was taken off. The control's own listeners come
-     * first, added with it by the map.
-     */
-    function clearHiddenCredit(created) {
-        var credit = created.getContainer().querySelector('.maplibregl-ctrl-attrib');
-        var words = credit && credit.querySelector('.maplibregl-ctrl-attrib-inner');
-        if (!words) return;
-        function clear() {
-            if (credit.classList.contains('maplibregl-attrib-empty')) words.replaceChildren();
-        }
-        created.on('sourcedata', clear);
-        created.on('styledata', clear);
-    }
-
     /** A map without rotation or pitch on #map; throws without WebGL 2. */
     function create(container) {
         var created = new maplibregl.Map({
@@ -1983,7 +1966,6 @@
         });
         created.touchZoomRotate.disableRotation();
         created.keyboard.disableRotation();
-        clearHiddenCredit(created);
         // With a listener MapLibre logs nothing itself: a tile that does not load (a
         // missing DEM tile at the data's edge, a provider's failure the kit reports)
         // leaves the map as it is; anything else is a fault of this page

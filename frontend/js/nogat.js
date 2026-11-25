@@ -32,7 +32,7 @@ import {
     maplibreBasemap,
     removeMaplibreBasemap,
     repaintMaplibreBasemap,
-} from '../nogat/nogat-basemaps.js?v=20f6db6ae1';
+} from '../nogat/nogat-basemaps.js?v=f9df0ea391';
 import { chartFormat, drawChart, toPng } from '../nogat/nogat-chart.js?v=f4a3724044';
 import * as handoff from '../nogat/nogat-handoff.js?v=ee555c209f';
 import { fillSources } from '../nogat/nogat-sources.js?v=47514bf6ce';

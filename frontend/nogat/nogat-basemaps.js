@@ -379,6 +379,30 @@ function clear(map) {
     if (layer.id.startsWith(`${SOURCE}-`)) map.removeLayer(layer.id);
   }
   if (map.getSource(SOURCE)) map.removeSource(SOURCE);
+  forgetCredit(map);
+}
+
+/** The MapLibre maps whose attribution control the kit watches. */
+const watchedCredit = new WeakSet();
+
+/**
+ * Empty the words of a MapLibre map's AttributionControl whenever it has no credited source
+ * left: MapLibre 6.14.0 then only hides the control (`maplibregl-attrib-empty`) and keeps
+ * the last base map's credit in its inner element, where it still reads.
+ *
+ * @param {object} map a MapLibre map
+ */
+function forgetCredit(map) {
+  const control = map.getContainer().querySelector(".maplibregl-ctrl-attrib");
+  const inner = control?.querySelector(".maplibregl-ctrl-attrib-inner");
+  if (!inner) return;
+  const empty = () => {
+    if (control.classList.contains("maplibregl-attrib-empty")) inner.replaceChildren();
+  };
+  empty();
+  if (watchedCredit.has(map)) return;
+  watchedCredit.add(map);
+  new MutationObserver(empty).observe(control, { attributes: true, attributeFilter: ["class"] });
 }
 
 /**
