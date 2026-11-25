@@ -2,7 +2,7 @@
 
 Nogat's plan 2026-11-24-shared-base-maps, step 4 (DEV-15.13, DEV-15.15; ADR-089): the
 layers panel's group „Podkłady kartograficzne” holds the kit's switcher, a radio group
-„Podkład kartograficzny” with the entries of GET /api/basemaps in the catalogue's
+„Podkład kartograficzny” with the entries of GET /api/v1/basemaps in the catalogue's
 order (``frontend/nogat/nogat-basemaps.json``) and „bez podkładu” last, opening on
 OpenFreeMap, which the map asks for its TileJSON and tiles only (the names in the
 site's own Noto Sans) and credits in the map's corner as the catalogue writes it. A
@@ -60,12 +60,12 @@ def _credit(page: Page) -> Locator:
 
 
 def _answer_basemaps(page: Page, entries: list[dict[str, Any]]) -> None:
-    """Answer GET /api/basemaps with ``entries``, as a deployment that allows them."""
+    """Answer GET /api/v1/basemaps with ``entries`` as a deployment that allows them."""
 
     def answer(route: Route) -> None:
         route.fulfill(status=200, json=entries)
 
-    page.route(re.compile(r"/api/basemaps$"), answer)
+    page.route(re.compile(r"/api/v1/basemaps$"), answer)
 
 
 def _brightness(page: Page) -> float:

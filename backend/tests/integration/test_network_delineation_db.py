@@ -1,18 +1,21 @@
-"""The network endpoints over PostGIS: the real queries (ADR-080, ADR-081).
+"""The network commands over PostGIS: the real queries (ADR-080, ADR-081).
 
 The synthetic DEM of the network tests (``tests.fixtures.pipeline_run``,
 ``river_network_dem``: a main river along column 85 with three tributaries) is
 processed by ``process_dem`` into a private migrated database, with its rasters saved
 and sub-catchments of 1 ha and of the 20 ha the points snap to; the land cover and
 soil groups of the unit tests and two BDOT10k stretches of the main river are inserted
-into ``land_cover``, ``soil_hsg`` and ``bdot_streams``. The endpoints run on that
-database as the API does: ``get_db``, ``loaded_catchment_graph`` and every query of the
-measures and of the preview are the real ones. Plan tests 19 to 21 of
+into ``land_cover``, ``soil_hsg`` and ``bdot_streams``. The commands run on that
+database as the API does: ``network delineate`` as a job, whose session
+(``core.database.get_db_session``) is bound to it like ``get_db``, ``network preview``
+on its route; ``loaded_catchment_graph`` and every query of the measures and of the
+preview are the real ones. Plan tests 19 to 21 of
 ``2026-11-10-network-delineation.md``, and the preview of
 ``2026-11-11-network-preview.md`` through the real union of the sub-catchments.
 """
 
 import json
+import time
 from collections.abc import Iterator
 from importlib.resources import files
 from pathlib import Path
@@ -50,6 +53,7 @@ from tests.fixtures.pipeline_run import (
     river_network_dem,
     soil_layout,
 )
+from tests.job_runner import run_job
 from tests.scratch_db import scratch_database
 from utils.geometry import transform_pl1992_to_wgs84
 
@@ -70,8 +74,8 @@ NETWORK = Draft202012Validator(
         .read_text(encoding="utf-8")
     )
 )
-URL = "/api/delineate-network"
-PREVIEW_URL = "/api/delineate-network/preview"
+COMMAND = "network delineate"
+PREVIEW_URL = "/api/v1/network/preview"
 OUTLET = (219, 85)  # the closing section A: the outlet cell of the grid, on the river
 # The last cell of each tributary above its confluence with the main river, (row,
 # column): a click there moves to the confluence, a node of the network (N3)
@@ -231,11 +235,42 @@ def run_dir(engine: Engine, tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     with database.get_db_session() as db:
         update_stream_real_flags_all(db, [NETWORK_UNIT_THRESHOLD_M2])
+    _flush_statistics(engine)
     return directory
 
 
-def _post(run_dir: Path, url: str, request: dict[str, Any]) -> dict[str, Any]:
-    """POST a request to an endpoint of the API on the database and its run."""
+def _flush_statistics(engine: Engine) -> None:
+    """Make the counts of the run's writes part of ``network_version`` now.
+
+    A backend adds the counts of its transactions to the statistics when it goes
+    idle, at most once a second (otherwise ten seconds later), and when it exits: a
+    version read before then changes under the tests, and the API reloads the graph
+    and answers 503 meanwhile. Closing the pool ends the writers' backends, which
+    flush their counts before they leave ``pg_stat_activity``.
+    """
+    engine.dispose()
+    others = text(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+        "AND backend_type = 'client backend' AND pid <> pg_backend_pid()"
+    )
+    deadline = time.monotonic() + 30
+    while True:
+        # A new transaction each time: a transaction keeps the activity it read first
+        with engine.connect() as connection:
+            if not connection.execute(others).scalar():
+                return
+        assert time.monotonic() < deadline, "the backends of the run did not end"
+        time.sleep(0.05)
+
+
+def _network(
+    run_dir: Path, request: dict[str, Any], *, preview: bool = False
+) -> dict[str, Any]:
+    """The network of a request on the database and its run, delineated or previewed.
+
+    The full run is a job of ``network delineate``, whose sessions (``get_db_session``,
+    no ``get_db`` override here) open on the database ``engine`` bound.
+    """
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("DEM_DIR", str(run_dir))
         # The graph of another database must not answer for this one; a request
@@ -245,12 +280,16 @@ def _post(run_dir: Path, url: str, request: dict[str, Any]) -> dict[str, Any]:
             cg_module.loaded_catchment_graph(db)
         assert cg_module.wait_for_catchment_graph(timeout_s=60) is not None
         get_settings.cache_clear()
+        client = TestClient(app)
         try:
-            response = TestClient(app).post(url, json=request)
+            if preview:
+                response = client.post(PREVIEW_URL, json=request)
+            else:
+                response = run_job(client, COMMAND, request)
         finally:
             get_settings.cache_clear()
     assert response.status_code == 200, response.text
-    body: dict[str, Any] = response.json()
+    body: dict[str, Any] = response.json()["result"]
     return body
 
 
@@ -278,7 +317,7 @@ INSIDE_UNITS = {
 @pytest.fixture(scope="module")
 def mouths(run_dir: Path) -> dict[str, Any]:
     """The network of A at the outlet and P1 to P3 at the mouths of T1 to T3."""
-    return _post(run_dir, URL, MOUTHS)
+    return _network(run_dir, MOUTHS)
 
 
 @pytest.fixture(scope="module", params=["mouths", "inside units"])
@@ -287,7 +326,7 @@ def full_and_preview(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """A network delineated and previewed."""
     body = MOUTHS if request.param == "mouths" else INSIDE_UNITS
-    return _post(run_dir, URL, body), _post(run_dir, PREVIEW_URL, body)
+    return _network(run_dir, body), _network(run_dir, body, preview=True)
 
 
 def _layout_areas(

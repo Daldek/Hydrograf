@@ -7,7 +7,9 @@ answers the queries of the measures and of the preview (the polygons of the
 sub-catchments united by element, their stream lines). The preview must name every
 element, reach and node as the full run does, give the same areas and reach lengths,
 and draw outlines that follow the elements of the full run. The cases of the plan
-``2026-11-11-network-nodes.md`` run as networks of both.
+``2026-11-11-network-nodes.md`` run as networks of both. The preview answers on its
+route ``POST /api/v1/network/preview``, the full run as a job of ``network delineate``
+(``tests.job_runner``); both carry the network in the envelope's ``result``.
 """
 
 from typing import Any
@@ -39,10 +41,11 @@ from tests.fixtures.pipeline_run import (
     run_pipeline,
     soil_layout,
 )
+from tests.job_runner import run_job
 from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
-FULL = "/api/delineate-network"
-PREVIEW = "/api/delineate-network/preview"
+FULL = "network delineate"
+PREVIEW = "/api/v1/network/preview"
 OUTLET = (219, 85)  # the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river (row,
 # column): a click there moves to the confluence, a node of the network (N3)
@@ -184,11 +187,11 @@ NETWORKS = {
 
 
 def full_and_preview(client, body):
-    full = client.post(FULL, json=body)
+    full = run_job(client, FULL, body)
     preview = client.post(PREVIEW, json=body)
     assert full.status_code == 200, full.text
     assert preview.status_code == 200, preview.text
-    return full.json(), preview.json()
+    return full.json()["result"], preview.json()["result"]
 
 
 def structure(body):
@@ -388,7 +391,7 @@ class TestTheCasesOfThePlan:
         preview = client.post(PREVIEW, json=request(run, outlet, **points))
 
         assert preview.status_code == 200, preview.text
-        assert structure(preview.json()) == network
+        assert structure(preview.json()["result"]) == network
 
     @pytest.mark.parametrize(
         ("outlet", "points"),
@@ -404,7 +407,8 @@ class TestTheCasesOfThePlan:
     def test_a_point_within_50_m_of_a_confluence_lies_at_it(
         self, client, run, outlet, points
     ):
-        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+        response = client.post(PREVIEW, json=request(run, outlet, **points))
+        preview = response.json()["result"]
 
         (at_node,) = [p for p in preview["points"] if p["at_node"]]
         assert run_cell(at_node) == AT_T1
@@ -451,7 +455,7 @@ class TestTheCasesOfThePlan:
             assert response.status_code == 200, response.text
             canonical = dict(zip(handles, ("A", "P1", "P2", "P3"), strict=True))
             canonical[None] = None
-            tree = structure(response.json())
+            tree = structure(response.json()["result"])
             return {
                 "points": [(canonical[h], *rest) for h, *rest in tree["points"]],
                 "subcatchments": [
@@ -473,7 +477,7 @@ class TestTheCasesOfThePlan:
 
         def network(order):
             body = request(run, OUTLET, **{key: points[key] for key in order})
-            tree = structure(client.post(PREVIEW, json=body).json())
+            tree = structure(client.post(PREVIEW, json=body).json()["result"])
             tree["points"].sort()
             return tree
 
@@ -532,7 +536,8 @@ class TestPointsInsideUnits:
         self, client, run
     ):
         outlet, points = NETWORKS["at the mouths"]
-        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+        response = client.post(PREVIEW, json=request(run, outlet, **points))
+        preview = response.json()["result"]
 
         assert not any(p["inside_unit"] for p in preview["points"])
         assert not any(s["outline_approximate"] for s in preview["subcatchments"])
@@ -541,7 +546,8 @@ class TestPointsInsideUnits:
         self, client, run
     ):
         outlet, points = NETWORKS["a gauge and two points in one unit"]
-        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+        response = client.post(PREVIEW, json=request(run, outlet, **points))
+        preview = response.json()["result"]
 
         assert {p["id"]: p["inside_unit"] for p in preview["points"]} == {
             "A": False,
@@ -583,7 +589,7 @@ class TestComposition:
     def test_its_errors_are_those_of_the_full_run(self, client, run, outlet, points):
         body = request(run, outlet, **points)
 
-        full = client.post(FULL, json=body, headers={"Accept-Language": "pl"})
+        full = run_job(client, FULL, body, headers={"Accept-Language": "pl"})
         preview = client.post(PREVIEW, json=body, headers={"Accept-Language": "pl"})
 
         assert preview.status_code == full.status_code
@@ -622,7 +628,8 @@ class TestComposition:
         outlet, points = NETWORKS["at the mouths"]
         monkeypatch.setattr(api.endpoints.network, "HYDROGRAPH_AREA_LIMIT_KM2", 0.5)
 
-        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+        response = client.post(PREVIEW, json=request(run, outlet, **points))
+        preview = response.json()["result"]
 
         large = [s["id"] for s in preview["subcatchments"] if s["area_km2"] > 0.5]
         assert large
@@ -640,7 +647,8 @@ class TestComposition:
             lambda *_args: (0.0001, "minimum", None, None),
         )
 
-        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+        response = client.post(PREVIEW, json=request(run, outlet, **points))
+        preview = response.json()["result"]
 
         notices = {n["ids"][0]: n["reach"] for n in preview["notices"]}
         assert set(notices) == {r["id"] for r in preview["reaches"]}

@@ -1,7 +1,7 @@
 /**
  * Hydrograf Terms — the regulamin of a public deployment (DEV-15.7, DEV-15.8, DEV-15.12).
  *
- * One GET /api/terms: {url, operator_email}, both null on a local run, every line of the
+ * One GET /api/v1/terms: {url, operator_email}, both null on a local run, every line of the
  * service's data, {attribution, terms_notice} (PMAXTP's, GUGiK's and ISRIC's), and the
  * lines of each kind of data of the map's layers, `layers`. With a url the link
  * „Regulamin” (#terms-link: at the bottom of the map's rail, under the guide's table of
@@ -62,7 +62,7 @@
         return out;
     }
 
-    var ready = fetch('/api/terms')
+    var ready = fetch('/api/v1/terms')
         .then(function (response) { return response.ok ? response.json() : NONE; })
         .catch(function () { return NONE; })
         .then(function (body) {

@@ -7,11 +7,12 @@ terenu” each click or tap on the map adds a vertex: the drawing tools („Ryso
 profilu terenu”) count them (``#draw-count``) and the map draws the overlay ``draw``
 of ``Hydrograf.map.describe()``. Backspace and „Cofnij” take the last vertex back, Esc
 and „Anuluj” drop the line; a double click, „Rysuj profil” or a tap within 20 px of
-the last vertex (``FINISH_TAP_PX``) end it: POST /api/terrain-profile asks for the
-profile along the vertices (compared with the places clicked), the drawer „Profil
-terenu” shows its chart and the map the overlay ``profile-line``. A pointer over the
-chart puts the overlay ``profile-marker`` on the line, farther along it the farther
-right the pointer is, and takes it off when the pointer leaves.
+the last vertex (``FINISH_TAP_PX``) end it: POST /api/v1/terrain/profile (the command
+``terrain profile``) asks for the profile along the vertices (compared with the places
+clicked), the drawer „Profil terenu” shows its chart and the map the overlay
+``profile-line``. A pointer over the chart puts the overlay ``profile-marker`` on the
+line, farther along it the farther right the pointer is, and takes it off when the
+pointer leaves.
 """
 
 import json
@@ -26,7 +27,7 @@ from playwright.sync_api import Locator, Page, expect
 from tests.e2e.browser import Sent, Tab, describe, open_map, overlay_ids, screen_point
 from tests.e2e.test_watershed import js_fixed
 
-PROFILE = re.compile(r"/api/terrain-profile$")
+PROFILE = re.compile(r"/api/v1/terrain/profile$")
 # Vertices of the lines drawn, cells (row, column) of the DEM: across the catchment
 # from the north-west to the south-east, clear of the tools over the map's top
 LINE = ((60, 20), (110, 80), (150, 150))
@@ -81,7 +82,7 @@ def tap_place(page: Page, place: Place, offset: tuple[float, float] = (0, 0)) ->
 
 
 def sent_line(sent: Sent) -> list[Place]:
-    """The vertices (longitude, latitude) of a request of POST /api/terrain-profile."""
+    """The vertices (longitude, latitude) of a request of ``terrain profile``."""
     body = json.loads(sent.post_data or "{}")
     return [(float(lng), float(lat)) for lng, lat in body["geometry"]["coordinates"]]
 
@@ -113,7 +114,7 @@ def finish_line(tab: Tab, finish: Callable[[], None]) -> list[Place]:
     assert [s.method for s in sent] == ["POST"], sent
     drawer = profile_drawer(page)
     expect(drawer.get_by_role("img", name="Profil terenu")).to_be_visible()
-    length_km = js_fixed(response.json()["distances_m"][-1] / 1000, 2)
+    length_km = js_fixed(response.json()["result"]["distances_m"][-1] / 1000, 2)
     expect(drawer).to_contain_text(f"Długość {length_km} km")
     ids = overlay_ids(page)
     assert "profile-line" in ids and "draw" not in ids, ids

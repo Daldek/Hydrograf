@@ -23,7 +23,7 @@ def _noop_auth():
 @pytest.fixture
 def app():
     test_app = FastAPI()
-    test_app.include_router(router, prefix="/api/admin")
+    test_app.include_router(router, prefix="/api/v1/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
     test_app.dependency_overrides.clear()
@@ -46,7 +46,7 @@ def _sizes_of(size_mb):
 
 
 class TestResources:
-    """Tests for GET /api/admin/resources."""
+    """Tests for GET /api/v1/admin/resources."""
 
     @pytest.fixture(autouse=True)
     def _sizes(self):
@@ -79,7 +79,7 @@ class TestResources:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/resources")
+        response = client.get("/api/v1/admin/resources")
         assert response.status_code == 200
 
         data = response.json()
@@ -111,7 +111,7 @@ class TestResources:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/resources")
+        response = client.get("/api/v1/admin/resources")
         data = response.json()
 
         proc = data["process"]
@@ -145,7 +145,7 @@ class TestResources:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/resources")
+        response = client.get("/api/v1/admin/resources")
         data = response.json()
 
         pool_data = data["db_pool"]
@@ -177,7 +177,7 @@ class TestResources:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/resources")
+        response = client.get("/api/v1/admin/resources")
         data = response.json()
 
         cg_data = data["catchment_graph"]
@@ -208,7 +208,7 @@ class TestResources:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/resources")
+        response = client.get("/api/v1/admin/resources")
         data = response.json()
 
         assert data["db_size_mb"] == 100.0
@@ -219,7 +219,7 @@ class TestResources:
         mock_cg.return_value = MagicMock(loaded=False)
         app.dependency_overrides[get_db] = lambda: _make_mock_db(db_size_bytes=42)
 
-        data = TestClient(app).get("/api/admin/resources").json()
+        data = TestClient(app).get("/api/v1/admin/resources").json()
 
         assert data["tables"] == dict.fromkeys(DB_TABLES, 42)
 
@@ -229,7 +229,7 @@ class TestResources:
         mock_cg.return_value = MagicMock(loaded=False)
         app.dependency_overrides[get_db] = lambda: _make_mock_db()
 
-        data = TestClient(app).get("/api/admin/resources").json()
+        data = TestClient(app).get("/api/v1/admin/resources").json()
 
         assert data["disk"] == {
             "frontend_data_mb": 5.0,
@@ -249,7 +249,7 @@ class TestResources:
         walking = _sizes_of(lambda path: None if path == FRONTEND_TILES else 5.0)
 
         with patch("api.endpoints.admin._DIR_SIZES", walking):
-            data = TestClient(app).get("/api/admin/resources").json()
+            data = TestClient(app).get("/api/v1/admin/resources").json()
 
         assert data["disk"] == {
             "frontend_data_mb": 5.0,

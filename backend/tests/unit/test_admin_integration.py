@@ -1,10 +1,10 @@
 """Every admin route refuses a request without the right key (Nogat DEV-15.13, ADR-086).
 
-The routes are those the application documents under `/api/admin/`, so a new route is
-checked as soon as it exists: with no key on the server, without the header and with a
-wrong one, each answers the problem `unauthorized` with the reason of DEV-15.13 and,
-like every admin answer, `Cache-Control: no-store`. Neither the server's key nor a
-guess reaches a log.
+The routes are those the application documents under `/admin/` of the API's base
+`/api/v1` (the OpenAPI paths are relative to it), so a new route is checked as soon as
+it exists: with no key on the server, without the header and with a wrong one, each
+answers the problem `unauthorized` with the reason of DEV-15.13 and, like every admin
+answer, `Cache-Control: no-store`. Neither the server's key nor a guess reaches a log.
 """
 
 import json
@@ -12,15 +12,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from api import API_BASE
 from api.main import app
 from core.config import get_settings
 
 KEY = "the-operators-admin-key"
 
 ADMIN_ROUTES = sorted(
-    (method.upper(), path.replace("{feedback_id}", "1"))
+    (method.upper(), API_BASE + path.replace("{feedback_id}", "1"))
     for path, operations in app.openapi()["paths"].items()
-    if path.startswith("/api/admin/")
+    if path.startswith("/admin/")
     for method in operations
 )
 
@@ -39,11 +40,11 @@ def server_key(monkeypatch):
 
 def test_the_core_routes_of_dev_15_13_are_admin_routes():
     assert {
-        ("GET", "/api/admin/feedback"),
-        ("PATCH", "/api/admin/feedback/1"),
-        ("DELETE", "/api/admin/feedback/1"),
-        ("GET", "/api/admin/stats"),
-        ("GET", "/api/admin/status"),
+        ("GET", "/api/v1/admin/feedback"),
+        ("PATCH", "/api/v1/admin/feedback/1"),
+        ("DELETE", "/api/v1/admin/feedback/1"),
+        ("GET", "/api/v1/admin/stats"),
+        ("GET", "/api/v1/admin/status"),
     } <= set(ADMIN_ROUTES)
 
 
@@ -74,13 +75,13 @@ def test_every_admin_route_refuses_without_the_key(
 def test_no_key_reaches_a_log(server_key, log_records, caplog):
     client = TestClient(app)
     server_key(KEY)
-    client.get("/api/admin/stats", headers={"X-Admin-Key": KEY})
-    client.get("/api/admin/stats", headers={"X-Admin-Key": "a-wrong-key"})
+    client.get("/api/v1/admin/stats", headers={"X-Admin-Key": KEY})
+    client.get("/api/v1/admin/stats", headers={"X-Admin-Key": "a-wrong-key"})
     server_key("")
-    client.get("/api/admin/stats", headers={"X-Admin-Key": KEY})
+    client.get("/api/v1/admin/stats", headers={"X-Admin-Key": KEY})
 
     logged = json.dumps(log_records()) + caplog.text
 
-    assert "/api/admin/stats" in logged
+    assert "/api/v1/admin/stats" in logged
     assert KEY not in logged
     assert "a-wrong-key" not in logged

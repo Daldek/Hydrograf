@@ -1,8 +1,8 @@
 """
-Integration tests for hydrograph generation endpoint.
+Integration tests for ``hydrograph generate``, run as a job (ADR-091).
 
 The full path (no ``morphometry``) delineates the watershed with the code of
-``POST /api/delineate-watershed``; the tests mock:
+``GET /api/v1/watershed/delineate``; the tests mock:
 - loaded_catchment_graph() -> CatchmentGraph with traverse/aggregate
 - get_stream_info_by_segment_idx() -> stream segment dict
 - merge_catchment_boundaries() -> MultiPolygon boundary
@@ -25,6 +25,7 @@ from api.main import app
 from core.attribution import SOILGRIDS_SOURCE
 from core.database import get_db
 from models.schemas import HsgCategory, HsgStats
+from tests.job_runner import run_job
 
 # Module paths for patching: the hydrograph merges the boundary of the sub-catchments
 # the delineation selects, and the delineation builds the watershed
@@ -212,7 +213,7 @@ class _HappyPathContext:
 
 
 class TestGenerateHydrographEndpoint:
-    """Tests for POST /api/generate-hydrograph."""
+    """Tests for the job of ``hydrograph generate`` (POST /api/v1/jobs)."""
 
     # Default request payload used across most tests
     _DEFAULT_PAYLOAD = {
@@ -223,10 +224,7 @@ class TestGenerateHydrographEndpoint:
     }
 
     def _post(self, client, payload=None):
-        return client.post(
-            "/api/generate-hydrograph",
-            json=payload or self._DEFAULT_PAYLOAD,
-        )
+        return run_job(client, "hydrograph generate", payload or self._DEFAULT_PAYLOAD)
 
     # ---- 1. test_success_returns_200 ----
 
@@ -253,7 +251,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             assert "watershed" in data
             assert "precipitation" in data
             assert "hydrograph" in data
@@ -273,7 +271,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             hydro = data["hydrograph"]
 
             assert "times_min" in hydro
@@ -299,9 +297,9 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext() as mocks:
                 stats = mocks["cg"].return_value.aggregate_stats.return_value
                 stats["area_km2"] = 10.004321
-                small = self._post(client).json()
+                small = self._post(client).json()["result"]
                 stats["area_km2"] = 10.0
-                rounded = self._post(client).json()
+                rounded = self._post(client).json()["result"]
 
             watershed = small["handoff"]["payload"]["nodes"][0]["watershed"]
             assert watershed["area_km2"] == 10.004321
@@ -323,7 +321,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             wb = data["water_balance"]
 
             assert "total_precip_mm" in wb
@@ -349,7 +347,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             meta = data["metadata"]
 
             assert "tc_min" in meta
@@ -375,7 +373,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             morph = data["watershed"]["morphometry"]
 
             assert morph is not None
@@ -415,7 +413,7 @@ class TestGenerateHydrographEndpoint:
                 response = self._post(client, payload)
 
             assert response.status_code == 200, response.text
-            data = response.json()
+            data = response.json()["result"]
             meta = data["metadata"]
             morph = data["watershed"]["morphometry"]
             handed = data["handoff"]["payload"]["nodes"][0]["watershed"]
@@ -445,7 +443,7 @@ class TestGenerateHydrographEndpoint:
                 response = self._post(client)
 
             assert response.status_code == 200, response.text
-            data = response.json()
+            data = response.json()["result"]
             assert (SOILGRIDS_SOURCE in data["attribution"]) == with_soil_groups
             assert data["handoff"]["attribution"] == data["attribution"]
         finally:
@@ -675,7 +673,7 @@ class TestGenerateHydrographEndpoint:
                         },
                     )
                     assert response.status_code == 200, f"Failed for tc_method={method}"
-                    assert response.json()["metadata"]["tc_method"] == method
+                    assert response.json()["result"]["metadata"]["tc_method"] == method
         finally:
             app.dependency_overrides.clear()
 
@@ -704,7 +702,8 @@ class TestGenerateHydrographEndpoint:
                     assert response.status_code == 200, (
                         f"Failed for hietogram_type={htype}"
                     )
-                    assert response.json()["metadata"]["hietogram_type"] == htype
+                    result = response.json()["result"]
+                    assert result["metadata"]["hietogram_type"] == htype
         finally:
             app.dependency_overrides.clear()
 
@@ -729,7 +728,7 @@ class TestGenerateHydrographEndpoint:
                 )
 
             assert response.status_code == 200
-            data = response.json()
+            data = response.json()["result"]
             assert data["precipitation"]["timestep_min"] == 10.0
         finally:
             app.dependency_overrides.clear()
@@ -745,7 +744,7 @@ class TestGenerateHydrographEndpoint:
             with _HappyPathContext():
                 response = self._post(client)
 
-            data = response.json()
+            data = response.json()["result"]
             precip = data["precipitation"]
 
             assert precip["total_mm"] == 45.0  # Mocked value
@@ -759,22 +758,65 @@ class TestGenerateHydrographEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# TestScenariosEndpoint (unchanged -- no DB or watershed dependency)
+# TestSynchronousRoute: the long command is served only as a job (AGI-6.10)
+# ---------------------------------------------------------------------------
+
+
+class TestSynchronousRoute:
+    """Tests for POST /api/v1/hydrograph/generate."""
+
+    URL = "/api/v1/hydrograph/generate"
+
+    def test_valid_body_is_refused_as_run_as_job(self, client):
+        """A valid body gets 409: the command runs only as a job."""
+        with patch(f"{_HG}.point_depth") as depth:
+            response = client.post(
+                self.URL, json=TestGenerateHydrographEndpoint._DEFAULT_PAYLOAD
+            )
+
+        assert response.status_code == 409
+        assert response.headers["content-type"] == "application/problem+json"
+        problem = response.json()
+        assert problem["code"] == "conflict"
+        assert problem["details"]["reason"] == "run_as_job"
+        assert problem["command"] == "hydrograph generate"
+        depth.assert_not_called()
+
+    def test_invalid_body_is_400_naming_the_field(self, client):
+        """The route still checks the body: the problem points into it."""
+        response = client.post(
+            self.URL,
+            json={**TestGenerateHydrographEndpoint._DEFAULT_PAYLOAD, "duration": "96h"},
+        )
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/duration"]
+        assert problem["command"] == "hydrograph generate"
+
+
+# ---------------------------------------------------------------------------
+# TestScenariosEndpoint (no DB or watershed dependency)
 # ---------------------------------------------------------------------------
 
 
 class TestScenariosEndpoint:
-    """Tests for GET /api/scenarios endpoint."""
+    """Tests for GET /api/v1/hydrograph/scenarios."""
+
+    URL = "/api/v1/hydrograph/scenarios"
 
     def test_scenarios_returns_200(self, client):
         """Test scenarios endpoint returns 200."""
-        response = client.get("/api/scenarios")
+        response = client.get(self.URL)
         assert response.status_code == 200
+        assert response.json()["command"] == "hydrograph scenarios"
+        assert response.json()["result"]["schema"] == "hydrograf-scenarios/1"
 
     def test_scenarios_response_structure(self, client):
         """Test scenarios response has correct structure."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get(self.URL)
+        data = response.json()["result"]
 
         assert "durations" in data
         assert "probabilities" in data
@@ -784,8 +826,8 @@ class TestScenariosEndpoint:
 
     def test_scenarios_valid_durations(self, client):
         """Test scenarios returns valid durations."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get(self.URL)
+        data = response.json()["result"]
 
         expected = [
             "5min",
@@ -809,8 +851,8 @@ class TestScenariosEndpoint:
 
     def test_scenarios_valid_probabilities(self, client):
         """Test scenarios returns valid probabilities."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get(self.URL)
+        data = response.json()["result"]
 
         assert len(data["probabilities"]) == 27
         assert data["probabilities"][0] == 0.01
@@ -818,7 +860,7 @@ class TestScenariosEndpoint:
 
     def test_scenarios_area_limit(self, client):
         """Test scenarios returns area limit."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get(self.URL)
+        data = response.json()["result"]
 
         assert data["area_limit_km2"] == 250.0

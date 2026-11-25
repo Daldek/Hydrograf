@@ -1,5 +1,6 @@
 """
-Tests of the deployment's GUIs for the app menu (HYDROGRAF_GUI, GET /api/gui, ADR-082).
+Tests of the deployment's GUIs for the app menu (HYDROGRAF_GUI, GET /api/v1/gui,
+ADR-082).
 
 The value is the table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) as a JSON object;
 the settings refuse one the menu cannot use, and the route serves it as it is, `{}`
@@ -81,7 +82,7 @@ class TestGuiRoute:
     def _get(self, monkeypatch, value):
         settings = Settings(hydrograf_gui=value)
         monkeypatch.setattr(api.endpoints.gui, "get_settings", lambda: settings)
-        return TestClient(app).get("/api/gui")
+        return TestClient(app).get("/api/v1/gui")
 
     def test_route_serves_the_table(self, monkeypatch):
         response = self._get(monkeypatch, TABLE)

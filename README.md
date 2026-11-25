@@ -78,31 +78,32 @@ Development without Docker for the API:
 docker compose up -d db
 cd backend
 uv run alembic upgrade head
-uv run uvicorn api.main:app --reload   # API on :8000, OpenAPI at /docs and /openapi.json
+uv run uvicorn api.main:app --reload   # API on :8000, OpenAPI at /docs and /api/v1/openapi.json
 ```
 
 ### First request
 
 ```bash
-curl -s -X POST http://localhost:8080/api/delineate-watershed \
-  -H 'Content-Type: application/json' \
-  -d '{"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000}'
+curl -s 'http://localhost:8080/api/v1/watershed/delineate?latitude=52.23&longitude=21.01&threshold_m2=10000'
 ```
 
-The answer holds `mode` (`precomputed` with a threshold, `precise` without), `watershed`
-(`boundary_geojson`, `outlet`, `morphometry`, `land_cover_stats`, `hsg_stats` and the flow
-paths), `stream` (the selected segment) and `upstream_segment_indices` (the segments above
-it). A hydrograph for the same point:
+The answer is the envelope `hydrograf-result/1`, whose `result` holds `mode` (`precomputed`
+with a threshold, `precise` without), `watershed` (`boundary_geojson`, `outlet`,
+`morphometry`, `land_cover_stats`, `hsg_stats` and the flow paths), `stream` (the selected
+segment) and `upstream_segment_indices` (the segments above it). A hydrograph for the same
+point runs as a job:
 
 ```bash
-curl -s -X POST http://localhost:8080/api/generate-hydrograph \
+curl -s -X POST http://localhost:8080/api/v1/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"latitude": 52.23, "longitude": 21.01, "duration": "1h", "probability": 10}'
+  -d '{"command": "hydrograph generate", "options": {"latitude": 52.23, "longitude": 21.01, "duration": "1h", "probability": 10}}'
 ```
 
-The answer holds `precipitation` (total and effective depths), `hydrograph` (`times_min`,
-`discharge_m3s`, `peak_discharge_m3s`, `time_to_peak_min`, `total_volume_m3`),
-`water_balance` and `metadata` (the time of concentration and the methods used).
+The answer is the job (`nogat-job/1`); `GET /api/v1/jobs/<id>` follows it until it ends and
+`GET /api/v1/jobs/<id>/result` gives the envelope, whose `result` holds `precipitation`
+(total and effective depths), `hydrograph` (`times_min`, `discharge_m3s`,
+`peak_discharge_m3s`, `time_to_peak_min`, `total_volume_m3`), `water_balance` and `metadata`
+(the time of concentration and the methods used).
 
 ## Deploy
 
@@ -191,18 +192,18 @@ but `visitors`.
 
 ## Capabilities
 
-| Task | Route (prefix `/api`) | Data source |
+| Task | Route (prefix `/api/v1`) | Data source |
 |---|---|---|
-| Delineate a watershed and compute its parameters | `POST /delineate-watershed` | DEM and BDOT10k (GUGiK), SoilGrids |
-| Preview of the sub-catchments of a delineation, for the animation of the interface | `POST /delineate-watershed/preview` | preprocessed data |
-| Network of subcatchments, reaches and junctions at a closing section and control points above it, with its hand-off to Hydrolog | `POST /delineate-network` | preprocessed data, saved rasters, DEM (GUGiK) |
-| The same network composed on the catchment graph in a fraction of a second, before its characteristics: snapped points, ids, areas, outlines, reach lengths | `POST /delineate-network/preview` | preprocessed data, saved rasters around the points |
-| Design hydrograph and water balance, with AMC I to III and your own rainfall series | `POST /generate-hydrograph`, `GET /scenarios` | PMAXTP (IMGW-PIB) or your own series |
-| Terrain profile along a line, with the water levels of the analysis results | `POST /terrain-profile` | DEM (GUGiK), analysis results (`frontend/data/results/`) |
-| Everything known at one point of the map: coordinates, terrain, stream, land cover with its CN, soil group, sub-catchment, water of the analysis results | `GET /identify-point` | preprocessed data, analysis results |
-| Optional layers that hold data (storm sewer) | `GET /layers` | database |
-| Vector tiles of streams, catchments, land cover, sewer network | `GET /tiles/{layer}/{z}/{x}/{y}.pbf`, `GET /tiles/thresholds` | preprocessed data |
-| Closed depressions of the terrain | `GET /depressions` | DEM (GUGiK) |
+| Delineate a watershed and compute its parameters | `GET /watershed/delineate` | DEM and BDOT10k (GUGiK), SoilGrids |
+| Preview of the sub-catchments of a delineation, for the animation of the interface | `GET /watershed/preview` | preprocessed data |
+| Network of subcatchments, reaches and junctions at a closing section and control points above it, with its hand-off to Hydrolog | `POST /jobs` with `network delineate` | preprocessed data, saved rasters, DEM (GUGiK) |
+| The same network composed on the catchment graph in a fraction of a second, before its characteristics: snapped points, ids, areas, outlines, reach lengths | `POST /network/preview` | preprocessed data, saved rasters around the points |
+| Design hydrograph and water balance, with AMC I to III and your own rainfall series | `POST /jobs` with `hydrograph generate`, `GET /hydrograph/scenarios` | PMAXTP (IMGW-PIB) or your own series |
+| Terrain profile along a line, with the water levels of the analysis results | `POST /terrain/profile` | DEM (GUGiK), analysis results (`frontend/data/results/`) |
+| Everything known at one point of the map: coordinates, terrain, stream, land cover with its CN, soil group, sub-catchment, water of the analysis results | `GET /point/identify` | preprocessed data, analysis results |
+| Optional layers that hold data (storm sewer) | `GET /layers/availability` | database |
+| Vector tiles of streams, catchments, land cover, sewer network, served outside the API at `/api/tiles/{layer}/{z}/{x}/{y}.pbf`; the thresholds of the streams and sub-catchments | `GET /layers/thresholds` | preprocessed data |
+| Closed depressions of the terrain | `GET /depressions/list` | DEM (GUGiK) |
 | Feedback: a text and the context of the view | `POST /feedback` | none |
 | The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` or the `nogat.toml` of `NOGAT_CONFIG` |
 | The base maps the map offers: the entries of Nogat's catalogue the deployment allows, then its own | `GET /basemaps` | `frontend/nogat/nogat-basemaps.json` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra` |

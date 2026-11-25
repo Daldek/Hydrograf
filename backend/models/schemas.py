@@ -1,8 +1,9 @@
 """
-Pydantic models for API request/response schemas.
+Pydantic models of the options and the domain documents of the commands (ADR-091).
 
-Defines data structures for watershed delineation and hydrograph
-generation API endpoints.
+The options of each command of ``api.catalog`` are one model here (the query of a GET
+route, the body of a POST route), and its result is the model of its domain document,
+which the envelope ``hydrograf-result/1`` carries as ``result``.
 """
 
 import math
@@ -19,6 +20,7 @@ from pydantic import (
 )
 
 from core.constants import DEFAULT_THRESHOLD_M2
+from core.precipitation import DURATION_MIN_TO_STR, VALID_PROBABILITIES
 
 # The providers' lines of a response with GUGiK or SoilGrids data (core/attribution.py)
 DATA_ATTRIBUTION = (
@@ -31,6 +33,10 @@ DATA_TERMS_NOTICE = (
     "The links to the terms of the same providers (Nogat DEV-20.7), shown right after "
     "`attribution`; empty: G and SG need none"
 )
+
+
+class NoOptions(BaseModel):
+    """The options of a command that takes none."""
 
 
 class DelineateRequest(BaseModel):
@@ -62,6 +68,16 @@ class DelineateRequest(BaseModel):
             "catchments (fast). If omitted, performs precise on-the-fly delineation."
         ),
         examples=[10000],
+    )
+
+
+class DelineateQuery(DelineateRequest):
+    """The options of ``watershed delineate``, in the query of its GET route."""
+
+    include_hypsometric_curve: bool = Field(
+        False,
+        description="Add the hypsometric curve in the precise mode (without "
+        "threshold_m2); the precomputed mode always adds it",
     )
 
 
@@ -445,7 +461,7 @@ class WatershedResponse(BaseModel):
         None,
         description="PMAXTP grid points weighing the watershed's design depth: the "
         "areas of their Thiessen polygons inside it (ADR-069); send them back as "
-        "`pmaxtp_grid` of POST /api/generate-hydrograph with `morphometry`; null "
+        "`pmaxtp_grid` of `hydrograph generate` with `morphometry`; null "
         "without grid data around the watershed",
     )
     formula_versions: dict[str, int] = Field(
@@ -522,11 +538,6 @@ class DelineateResponse(BaseModel):
         "threshold); in the precise mode, whose boundary starts at the clicked cell, "
         "the end of the point's segment at 10 000 m2 moved onto the boundary",
     )
-    notices: list[DelineateNotice] = Field(
-        default_factory=list,
-        description="Notices about the result: outlet_far_from_point when "
-        "`snap_distance_m` is above 500 m; empty without them",
-    )
     handoff: dict[str, Any] | None = Field(
         None,
         description=(
@@ -543,7 +554,7 @@ class DelineateResponse(BaseModel):
 class DelineatePreviewRequest(DelineateRequest):
     """Request for the delineation preview.
 
-    Same input as precomputed mode of POST /api/delineate-watershed, so
+    Same input as precomputed mode of ``watershed delineate``, so
     threshold_m2 is required: precise mode has no preview.
     """
 
@@ -1239,7 +1250,7 @@ class HydrographRequest(BaseModel):
         None,
         description="Pre-computed morphometry (skips watershed delineation); its "
         "area_km2 has the limit of a delineated catchment (area_limit_km2 of "
-        "GET /api/scenarios, 422 above it)",
+        "`hydrograph scenarios`, 422 above it)",
     )
     amc: Literal["I", "II", "III"] = Field(
         "II",
@@ -1420,7 +1431,14 @@ class HydrographMetadata(BaseModel):
 
 
 class HydrographNotice(BaseModel):
-    """A warning of Hydrolog about the computation of a hydrograph (E5b-06)."""
+    """A warning of Hydrolog about the computation of a hydrograph (E5b-06).
+
+    The envelope's ``notices`` carry them, identical ones once, in the order Hydrolog
+    gave them: a value outside the applicability range of the method of the time of
+    concentration, of the unit hydrograph (the area, Ct and Cp, N and K, the time step
+    against its time to peak), of Lutz's estimation or of the AMC conversion of the
+    CN, or outside a range that awaits a published source.
+    """
 
     level: Literal["info", "warning"] = Field(
         ..., description="The level of the code in Hydrolog's registry of notices"
@@ -1461,8 +1479,6 @@ class HydrographResponse(BaseModel):
         The lines the terms of the providers of its data require (Nogat DEV §20)
     terms_notice : list[str]
         The links to the terms of the same providers (Nogat DEV-20.7)
-    notices : list[HydrographNotice]
-        Hydrolog's warnings about the computation, in Polish
     hydrolog_version : str
         The version of Hydrolog that computed it
     formula_versions : dict[str, int]
@@ -1508,17 +1524,6 @@ class HydrographResponse(BaseModel):
             "DEV-20.7): for PMAXTP data the link to the PMAXTP terms, for IMGW-PIB's "
             "archives that to the terms of danepubliczne.imgw.pl; shown right after "
             "`attribution`; ČHMÚ's data, G and SG need none"
-        ),
-    )
-    notices: list[HydrographNotice] = Field(
-        default_factory=list,
-        description=(
-            "Hydrolog's warnings about this computation, identical ones once, in "
-            "the order it gave them: a value outside the applicability range of the "
-            "method of the time of concentration, of the unit hydrograph (the "
-            "area, Ct and Cp, N and K, the time step against its time to peak), of "
-            "Lutz's estimation or of the AMC conversion of the CN, or outside a "
-            "range that awaits a published source; empty without warnings"
         ),
     )
     hydrolog_version: str = Field(
@@ -1997,4 +2002,149 @@ class Basemap(BaseModel):
     blocks: list[str] | None = Field(
         None,
         description="The blocks of the regulamin its data needs (`osm`, `gugik`)",
+    )
+
+
+# ===================== COMMAND MODELS (ADR-091) =====================
+
+
+class ScenariosResponse(BaseModel):
+    """What ``hydrograph generate`` accepts: its durations, methods and limits."""
+
+    durations: list[str] = Field(
+        ..., description="PMAXTP rainfall durations, `5min` to `72h`, shortest first"
+    )
+    probabilities: list[float] = Field(
+        ..., description="PMAXTP exceedance probabilities [%], smallest first"
+    )
+    tc_methods: list[str] = Field(
+        ..., description="Methods of the time of concentration"
+    )
+    hietogram_types: list[str] = Field(..., description="Hyetographs of a design storm")
+    uh_models: list[str] = Field(..., description="Unit hydrograph models")
+    snyder_defaults: dict[str, float] = Field(
+        ..., description="Snyder's coefficients Ct and Cp when the request gives none"
+    )
+    nash_estimation_methods: list[str] = Field(
+        ..., description="Estimations of Nash's n and K"
+    )
+    amc: list[str] = Field(..., description="Antecedent moisture conditions")
+    custom_precipitation_max_steps: int = Field(
+        ..., description="Most steps of an own rainfall series"
+    )
+    area_limit_km2: float = Field(
+        ..., description="Largest catchment of a hydrograph (SCS-CN) [km2]"
+    )
+
+
+class LayerAvailability(BaseModel):
+    """Which optional layers of the map hold data on this server."""
+
+    sewer: bool = Field(
+        ..., description="The sewer network or its nodes hold at least one row"
+    )
+
+
+class LayerThresholds(BaseModel):
+    """The flow accumulation thresholds of the precomputed networks [m2]."""
+
+    streams: list[int] = Field(
+        ..., description="Thresholds of the stream network [m2], smallest first"
+    )
+    catchments: list[int] = Field(
+        ...,
+        description="Thresholds of the sub-catchments [m2], smallest first: the "
+        "values of `threshold_m2` of a precomputed delineation",
+    )
+
+
+class DepressionsQuery(BaseModel):
+    """The options of ``depressions list``, in the query of its GET route."""
+
+    min_volume: float = Field(0, ge=0, description="Minimum volume [m3]")
+    max_volume: float = Field(1e9, ge=0, description="Maximum volume [m3]")
+    min_area: float = Field(100, ge=0, description="Minimum area [m2]")
+    max_area: float = Field(1e9, ge=0, description="Maximum area [m2]")
+    bbox: str | None = Field(
+        None,
+        description="Bounding box 'minlon,minlat,maxlon,maxlat' (WGS84)",
+        examples=["16.9,52.3,17.4,52.6"],
+    )
+
+
+class DepressionsResponse(BaseModel):
+    """Terrain depressions as a GeoJSON FeatureCollection (WGS84)."""
+
+    type: Literal["FeatureCollection"] = Field(..., description="GeoJSON type")
+    features: list[dict[str, Any]] = Field(
+        ...,
+        description="At most 500 polygons, the largest volume first, each with "
+        "`id`, `volume_m3`, `area_m2`, `max_depth_m` and `mean_depth_m`",
+    )
+
+
+# The durations [min] and exceedance probabilities [%] of PMAXTP's tables
+_DURATION_MIN = Literal[tuple(sorted(DURATION_MIN_TO_STR))]  # type: ignore[valid-type]
+_PROBABILITY_PERCENT = Literal[tuple(sorted(VALID_PROBABILITIES))]  # type: ignore[valid-type]
+
+
+class DesignDepthRequest(BaseModel):
+    """The options of ``precipitation depth``: a catchment and a PMAXTP scenario."""
+
+    boundary: dict[str, Any] = Field(
+        ...,
+        description="The catchment as a GeoJSON Polygon or MultiPolygon, or a Feature "
+        "of one, in WGS84: `result.watershed.boundary_geojson` of `watershed "
+        "delineate`",
+    )
+    duration_min: _DURATION_MIN = Field(  # type: ignore[valid-type]
+        ..., description="Rainfall duration [min], a duration of PMAXTP's tables"
+    )
+    probability_percent: _PROBABILITY_PERCENT = Field(  # type: ignore[valid-type]
+        ...,
+        description="Exceedance probability [%], a probability of PMAXTP's tables",
+    )
+
+
+class DesignDepthResponse(BaseModel):
+    """A catchment's PMAXTP design depth: its Thiessen mean over the grid (ADR-069)."""
+
+    pmaxtp_depth_mm: float = Field(
+        ...,
+        ge=0,
+        description="The catchment's mean PMAXTP depth [mm], unrounded: the depth "
+        "`hydrograph generate` uses for the same watershed and scenario, before any "
+        "areal reduction factor",
+    )
+    duration_min: int = Field(..., description="Rainfall duration [min]")
+    probability_percent: float = Field(..., description="Exceedance probability [%]")
+    interpolation: Literal["thiessen"] = Field(
+        ...,
+        description="thiessen: the mean over the Thiessen polygons of the grid points "
+        "inside the boundary",
+    )
+    area_km2: float = Field(..., ge=0, description="Area of the boundary [km2]")
+    pmaxtp_points: list[PmaxtpPoint] = Field(
+        ..., description="The grid points with their depths, weights and areas"
+    )
+    attribution: list[str] = Field(
+        ...,
+        description="PMAXTP's lines (Nogat DEV §20, ADR-083): the source with the "
+        "address of the PMAXTP page, the note that the data were processed and the "
+        "monograph of the project",
+    )
+    terms_notice: list[str] = Field(
+        ..., description="The link to the PMAXTP terms (Nogat DEV-20.7)"
+    )
+
+
+class CommandsSchemaQuery(BaseModel):
+    """The options of ``commands schema``, in the query of its GET route."""
+
+    command: str | None = Field(
+        None,
+        pattern=r"^[a-z][a-z0-9-]* [a-z][a-z0-9-]*$",
+        description="The command to describe, `<group> <verb>`; every command "
+        "without it",
+        examples=["watershed delineate"],
     )

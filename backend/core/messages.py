@@ -208,6 +208,59 @@ MESSAGES: Final[dict[str, Message]] = {
         "This deployment serves no terms of use.",
         "To wdrożenie nie udostępnia regulaminu.",
     ),
+    # --- The catalog and the jobs of /api/v1 (ADR-091) ---
+    "unknown_command": Message(
+        "Hydrograf has no command {command}.",
+        "Hydrograf nie ma polecenia {command}.",
+        "Commands: {allowed}.",
+        "Polecenia: {allowed}.",
+    ),
+    "run_as_job": Message(
+        "{command} runs only as a job: its run can outlast a request.",
+        "{command} działa tylko jako zadanie: obliczenie może trwać dłużej niż "
+        "żądanie.",
+        'Start it with POST /api/v1/jobs {{"command": "{command}", "options": '
+        "{{…}}}} and follow jobs/<id>.",
+        'Uruchom je przez POST /api/v1/jobs {{"command": "{command}", "options": '
+        "{{…}}}} i śledź jobs/<id>.",
+    ),
+    "not_a_job": Message(
+        "{command} is not served as a job.",
+        "{command} nie jest uruchamiane jako zadanie.",
+        "Call its route {path}; jobs run {allowed}.",
+        "Wywołaj jego trasę {path}; jako zadania działają: {allowed}.",
+    ),
+    "job_limit": Message(
+        "{limit} of your jobs are running already.",
+        "Trwają już {limit} Twoje obliczenia.",
+        "Wait until one ends, or cancel one, then start the next.",
+        "Poczekaj, aż jedno się skończy, albo anuluj je i uruchom następne.",
+    ),
+    "job_expired": Message(
+        "This server keeps no job {job_id}: a job is kept an hour after it ends and "
+        "a restart of the server forgets the ended ones.",
+        "Ten serwer nie przechowuje zadania {job_id}: zadanie jest przechowywane "
+        "godzinę po zakończeniu, a restart serwera usuwa zakończone.",
+        "Start the job again.",
+        "Uruchom zadanie ponownie.",
+    ),
+    "job_running": Message(
+        "The job {job_id} has not ended yet.",
+        "Zadanie {job_id} jeszcze się nie zakończyło.",
+        "Ask for its result once GET jobs/{job_id} shows that it ended.",
+        "Poproś o wynik, gdy GET jobs/{job_id} pokaże, że się zakończyło.",
+    ),
+    "job_interrupted": Message(
+        "The job {job_id} was interrupted by a restart of the server and has no "
+        "result.",
+        "Zadanie {job_id} przerwał restart serwera; nie ma wyniku.",
+        "Start the job again.",
+        "Uruchom zadanie ponownie.",
+    ),
+    "job_failed": Message(
+        "The job could not be run.",
+        "Nie udało się wykonać zadania.",
+    ),
     # --- Settings of the deployment ---
     "basemap_catalogue_unreadable": Message(
         "The kit's catalogue of base maps cannot be read: {path}.",
@@ -539,6 +592,34 @@ MESSAGES: Final[dict[str, Message]] = {
     "depressions_failed": Message(
         "The depressions could not be read.",
         "Nie udało się odczytać zagłębień terenu.",
+    ),
+    # --- The design depth of a catchment (ADR-069, ADR-091) ---
+    "boundary_invalid": Message(
+        "boundary is not a valid GeoJSON Polygon or MultiPolygon in WGS84: {cause}.",
+        "boundary nie jest poprawnym wielokątem GeoJSON (Polygon, MultiPolygon) w "
+        "WGS84: {cause}.",
+        "Send result.watershed.boundary_geojson of watershed delineate.",
+        "Wyślij result.watershed.boundary_geojson z watershed delineate.",
+    ),
+    "boundary_too_large": Message(
+        "The boundary ({area_km2:.1f} km²) exceeds the limit of a design depth, "
+        "{limit_km2} km².",
+        "Obszar ({area_km2:.1f} km²) przekracza limit opadu miarodajnego "
+        "({limit_km2} km²).",
+        "Send the boundary of one catchment.",
+        "Wyślij granicę jednej zlewni.",
+    ),
+    "no_design_depth_data": Message(
+        "The PMAXTP grid has no data for the boundary at {duration_min} min and "
+        "{probability_percent} %.",
+        "Siatka PMAXTP nie ma danych dla tego obszaru przy {duration_min} min i "
+        "{probability_percent} %.",
+        "Send a boundary inside the area of this server's PMAXTP grid.",
+        "Wyślij granicę w obszarze siatki PMAXTP tego serwera.",
+    ),
+    "design_depth_failed": Message(
+        "The design depth could not be computed.",
+        "Nie udało się obliczyć opadu miarodajnego.",
     ),
     # --- Point identification ---
     "no_data_at_point": Message(

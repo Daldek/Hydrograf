@@ -22,7 +22,8 @@ The API runs under uvicorn on that database and data root (the admin key
 ``ADMIN_KEY``, no request limit to speak of), and a server of the tests' own serves
 ``frontend/`` and the data as ``docker/nginx.conf`` routes them: the pages through the
 API (``X-Accel-Redirect``) with the two ``Content-Security-Policy`` values read from
-that file, ``/api/`` proxied to the API.
+that file, the API (``/api/v1/``) and the map's tiles (``/api/tiles/``) proxied to the
+API with the client's address appended to ``X-Forwarded-For``.
 """
 
 import http.client
@@ -631,7 +632,7 @@ def _wait_ready(base: str, process: subprocess.Popen[bytes], log_path: Path) -> 
         time.sleep(0.2)
     while True:
         check_alive()
-        status, body = _get(f"{base}/api/admin/status", {"X-Admin-Key": ADMIN_KEY})
+        status, body = _get(f"{base}/api/v1/admin/status", {"X-Admin-Key": ADMIN_KEY})
         if status == 200:
             checks = {c["name"]: c["status"] for c in json.loads(body)["checks"]}
             if checks.get("catchment_graph") == "ok":
@@ -711,7 +712,7 @@ class _PagesHandler(BaseHTTPRequestHandler):
 
     def _route(self) -> None:
         path = urlsplit(self.path).path
-        if path.startswith("/api/") or path == "/health":
+        if path.startswith(("/api/v1/", "/api/tiles/")) or path == "/health":
             status, headers, body = self._proxy(self.path)
             self._send(status, headers + self._server_headers(), body)
         elif path == "/admin":
@@ -768,8 +769,15 @@ class _PagesHandler(BaseHTTPRequestHandler):
     ) -> tuple[int, list[tuple[str, str]], bytes]:
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
-        headers = {k: v for k, v in self.headers.items() if k.lower() not in _HOP}
-        headers["X-Real-IP"] = self.client_address[0]
+        # nginx's $proxy_add_x_forwarded_for: the client's address after any it was sent
+        sent = ", ".join(self.headers.get_all("X-Forwarded-For") or [])
+        client = self.client_address[0]
+        headers = {
+            k: v
+            for k, v in self.headers.items()
+            if k.lower() not in _HOP and k.lower() != "x-forwarded-for"
+        }
+        headers["X-Forwarded-For"] = f"{sent}, {client}" if sent else client
         connection = http.client.HTTPConnection(
             self.server.api_host, self.server.api_port, timeout=120
         )

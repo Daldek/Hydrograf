@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Nogat/schemas/exchange/server-1.schema.json",
+  "title": "nogat-server/1",
+  "description": "What a server serves, at `GET /api/v1/server` of a tool's own server and of Latarnik alike, so that a client needs one address and one request (AGI-6.7; S4 of docs/plans/2026-11-24-qgis-plugin.md and of docs/plans/2026-11-24-latarnik.md, ECO-094, ECO-095): one entry in `services` on a tool's own server, one per routed service and one for Latarnik itself on Latarnik, which builds each routed entry from the tool's own with `api` mapped to `/<tool>/v<major>` and refreshes it every minute. A client uses the services whose `tool` it knows and an `api` major it speaks, skips the rest and refuses a known service with no such major, naming both versions; a capability absent from `capabilities` is not served. Projects copy this file like schemas/agent/ (ECO-050). Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
+  "type": "object",
+  "required": ["schema", "services"],
+  "properties": {
+    "schema": {"const": "nogat-server/1"},
+    "services": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/service"}
+    },
+    "release_set": {
+      "description": "Latarnik only: the release set its services were verified as (REL §6), e.g. `v0.3.0`",
+      "type": "string",
+      "minLength": 1
+    },
+    "flows": {
+      "description": "Latarnik only: the names of the flows that `GET /api/v1/flows` describes",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "reference": {
+      "description": "A URL reference: relative to the document's own address for a service on the same host, absolute for one on another host",
+      "type": "string",
+      "format": "uri-reference",
+      "minLength": 1
+    },
+    "lines": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "service": {
+      "type": "object",
+      "required": ["tool", "version", "api", "capabilities"],
+      "properties": {
+        "tool": {
+          "description": "The project in lower case as `<project>` of the standard, `latarnik` for Latarnik's own entry",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "version": {
+          "description": "The version of the service's package, as its `/health` reports it",
+          "type": "string",
+          "minLength": 1
+        },
+        "api": {
+          "description": "Each served major of the API and its base: `{\"1\": \"/api/v1\"}` on a tool's own server, `{\"1\": \"/obserwator/v1\"}` behind Latarnik; a new major is listed beside the old one while both are served",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {"pattern": "^[1-9][0-9]*$"},
+          "additionalProperties": {"$ref": "#/$defs/reference"}
+        },
+        "capabilities": {
+          "description": "What the service serves, in the tool's own words (Obserwator: `stations`, `current`, `series`, `hec-table`, `hec-dss`, `analyses`; Kartograf: `catalog`, its command catalog and the queries without paths, `plan`, the plans of its data commands, `script`, `script generate`), each only when served; a client hides what is absent",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+        },
+        "ogcapi": {
+          "description": "The landing page of the service's OGC API – Features, where it serves one",
+          "$ref": "#/$defs/reference"
+        },
+        "gui": {
+          "description": "The address of the service's GUI, from `[nogat.gui]` of `nogat.toml` (DEV-15.4, DEV-18.1), where it has one",
+          "$ref": "#/$defs/reference"
+        },
+        "instance": {
+          "description": "The deployment as its operator describes it (Obserwator's `[obserwator.instance]`): the title shown to a person and the featured provider",
+          "type": "object",
+          "properties": {
+            "title": {"type": "string", "minLength": 1},
+            "featured_provider": {"type": "string", "minLength": 1}
+          }
+        },
+        "terms": {
+          "description": "The regulamin the service serves (DEV-15.7) and its version (REL-1.4), which a client confirms once per server and version before any data request; absent where it serves none",
+          "type": "object",
+          "required": ["url", "version"],
+          "properties": {
+            "url": {"$ref": "#/$defs/reference"},
+            "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}
+          }
+        },
+        "attribution": {
+          "description": "The attribution lines of the providers the service serves (DEV-20.6), in the order of DEV-20.4",
+          "$ref": "#/$defs/lines"
+        },
+        "terms_notice": {
+          "description": "The terms lines of those providers (DEV-20.7)",
+          "$ref": "#/$defs/lines"
+        },
+        "state": {
+          "description": "Latarnik only, on each routed entry: `ok`; `other_version`, routed but used by no flow; `unreachable`, the last refresh did not reach it and its routes answer `source_unavailable`",
+          "enum": ["ok", "other_version", "unreachable"]
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema": "nogat-server/1",
+      "services": [
+        {
+          "tool": "obserwator",
+          "version": "3.6.0",
+          "api": {"1": "/api/v1"},
+          "capabilities": ["stations", "current", "series", "hec-table"],
+          "ogcapi": "/ogcapi/",
+          "gui": "/",
+          "instance": {"title": "Obserwator", "featured_provider": "imgw"},
+          "terms": {"url": "/regulamin.html", "version": "1.1"},
+          "attribution": [
+            "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy"
+          ],
+          "terms_notice": [
+            "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "nogat-server/1",
+      "release_set": "v0.3.0",
+      "flows": ["point-design-hydrograph"],
+      "services": [
+        {
+          "tool": "latarnik",
+          "version": "0.1.0",
+          "api": {"1": "/api/v1"},
+          "capabilities": ["jobs", "flows"],
+          "gui": "/",
+          "terms": {"url": "/regulamin.html", "version": "1.1"}
+        },
+        {
+          "tool": "obserwator",
+          "version": "3.6.0",
+          "api": {"1": "/obserwator/v1"},
+          "capabilities": ["stations", "current", "series"],
+          "ogcapi": "https://obserwator.example.org/ogcapi/",
+          "gui": "https://obserwator.example.org/",
+          "state": "ok"
+        },
+        {
+          "tool": "kartograf",
+          "version": "0.10.0",
+          "api": {"1": "/kartograf/v1"},
+          "capabilities": ["catalog", "plan", "script"],
+          "state": "ok"
+        },
+        {
+          "tool": "hydrograf",
+          "version": "0.7.0",
+          "api": {"1": "/hydrograf/v1"},
+          "capabilities": ["watershed", "hydrograph"],
+          "gui": "https://hydrograf.example.org/",
+          "state": "other_version"
+        },
+        {
+          "tool": "hydrolog",
+          "version": "0.10.0",
+          "api": {"1": "/hydrolog/v1", "2": "/hydrolog/v2"},
+          "capabilities": ["analyses"],
+          "state": "unreachable"
+        }
+      ]
+    }
+  ]
+}

@@ -1,62 +1,40 @@
 """
-Depressions (blue spots) endpoint.
+The command ``depressions list`` (ADR-091).
 
-Provides API endpoint for querying terrain depressions with
-optional filtering by volume and area.
+Terrain depressions (blue spots), filtered by volume and area.
 """
 
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.database import get_db
+from api.envelope import Outcome
 from core.errors import InternalError
+from models.schemas import DepressionsQuery, DepressionsResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 
-@router.get("/depressions")
-def get_depressions(
-    response: Response,
-    min_volume: float = Query(0, ge=0, description="Minimum volume [m3]"),
-    max_volume: float = Query(1e9, ge=0, description="Maximum volume [m3]"),
-    min_area: float = Query(100, ge=0, description="Minimum area [m2]"),
-    max_area: float = Query(1e9, ge=0, description="Maximum area [m2]"),
-    bbox: str | None = Query(
-        None,
-        description="Bounding box 'minlon,minlat,maxlon,maxlat' (WGS84)",
-    ),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
+def list_depressions(options: DepressionsQuery, db: Session) -> Outcome:
     """
-    Get terrain depressions as GeoJSON FeatureCollection.
+    Get terrain depressions as a GeoJSON FeatureCollection: ``depressions list``.
 
-    Returns depressions filtered by volume and area ranges,
-    optionally within a bounding box.
+    Returns depressions filtered by volume and area ranges, optionally within a
+    bounding box (a malformed one is ignored), at most 500, the largest first.
 
     Parameters
     ----------
-    min_volume : float
-        Minimum depression volume [m3]
-    max_volume : float
-        Maximum depression volume [m3]
-    min_area : float
-        Minimum depression area [m2]
-    max_area : float
-        Maximum depression area [m2]
-    bbox : str, optional
-        Bounding box in WGS84 (minlon,minlat,maxlon,maxlat)
+    options : DepressionsQuery
+        The ranges of volume [m3] and area [m2] and the bounding box (WGS84).
     db : Session
         Database session
 
     Returns
     -------
-    dict
-        GeoJSON FeatureCollection with depression polygons
+    Outcome
+        ``DepressionsResponse`` and ``Cache-Control: public, max-age=3600``.
     """
     try:
         # SECURITY: All conditions use parameterized values (:param_name).
@@ -68,14 +46,14 @@ def get_depressions(
             "d.area_m2 <= :max_area",
         ]
         params: dict[str, Any] = {
-            "min_volume": min_volume,
-            "max_volume": max_volume,
-            "min_area": min_area,
-            "max_area": max_area,
+            "min_volume": options.min_volume,
+            "max_volume": options.max_volume,
+            "min_area": options.min_area,
+            "max_area": options.max_area,
         }
 
-        if bbox:
-            parts = bbox.split(",")
+        if options.bbox:
+            parts = options.bbox.split(",")
             if len(parts) == 4:
                 try:
                     minlon, minlat, maxlon, maxlat = [float(p) for p in parts]
@@ -131,11 +109,10 @@ def get_depressions(
                 }
             )
 
-        response.headers["Cache-Control"] = "public, max-age=3600"
-        return {
-            "type": "FeatureCollection",
-            "features": features,
-        }
+        return Outcome(
+            DepressionsResponse(type="FeatureCollection", features=features),
+            cache_control="public, max-age=3600",
+        )
 
     except Exception as e:
         logger.error(f"Error fetching depressions: {e}", exc_info=True)

@@ -25,18 +25,19 @@ SCHEMA = json.loads(
 )
 FORWARDED_ID = "0123456789abcdef0123456789abcdef"
 CLIENT = "203.0.113.77"
+# Through the tunnel: nginx appends its peer, the proxy on the host, to the client
+THROUGH_TUNNEL = f"{CLIENT}, 172.18.0.1"
 
 
 def test_a_request_writes_one_valid_access_record_and_sends_no_request_id(
     log_records,
 ):
     response = TestClient(app, client=("172.18.0.3", 50000)).get(
-        "/api/gui",
+        "/api/v1/gui",
         headers={
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0",
             "X-Request-ID": FORWARDED_ID,
-            "X-Real-IP": "172.18.0.1",
-            "CF-Connecting-IP": CLIENT,
+            "X-Forwarded-For": THROUGH_TUNNEL,
         },
     )
 
@@ -47,7 +48,7 @@ def test_a_request_writes_one_valid_access_record_and_sends_no_request_id(
     assert (record["app"], record["method"], record["path"]) == (
         "hydrograf",
         "GET",
-        "/api/gui",
+        "/api/v1/gui",
     )
     assert (record["status"], record["agent"]) == (200, "browser")
     assert record["request_id"] not in (FORWARDED_ID, FORWARDED_ID[:16])

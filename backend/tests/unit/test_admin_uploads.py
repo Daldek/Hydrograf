@@ -29,7 +29,7 @@ def db():
 def client(db):
     app = FastAPI()
     install_error_handlers(app)
-    app.include_router(admin.router, prefix="/api/admin")
+    app.include_router(admin.router, prefix="/api/v1/admin")
     app.dependency_overrides[verify_admin_key] = lambda: None
     app.dependency_overrides[get_db] = lambda: db
     return TestClient(app)
@@ -52,8 +52,12 @@ PIPE = LineString([(16.95, 52.45), (16.96, 52.46)])
 
 @pytest.fixture(
     params=[
-        ("/api/admin/bootstrap/upload-boundary", "BOUNDARY_DIR", "MAX_UPLOAD_SIZE_MB"),
-        ("/api/admin/sewer/upload", "DATA_SEWER", "MAX_SEWER_UPLOAD_MB"),
+        (
+            "/api/v1/admin/bootstrap/upload-boundary",
+            "BOUNDARY_DIR",
+            "MAX_UPLOAD_SIZE_MB",
+        ),
+        ("/api/v1/admin/sewer/upload", "DATA_SEWER", "MAX_SEWER_UPLOAD_MB"),
     ],
     ids=["boundary", "sewer"],
 )
@@ -138,7 +142,7 @@ class TestUploadBoundary:
 
         response = upload(
             client,
-            "/api/admin/bootstrap/upload-boundary",
+            "/api/v1/admin/bootstrap/upload-boundary",
             "zlewnia.geojson",
             geojson(CATCHMENT),
         )
@@ -168,7 +172,7 @@ class TestUploadSewer:
         self, client, geometries, kind, geometry_types
     ):
         response = upload(
-            client, "/api/admin/sewer/upload", "net.geojson", geojson(*geometries)
+            client, "/api/v1/admin/sewer/upload", "net.geojson", geojson(*geometries)
         )
 
         body = response.json()
@@ -192,7 +196,7 @@ class TestUploadSewer:
 
         response = upload(
             client,
-            "/api/admin/sewer/upload",
+            "/api/v1/admin/sewer/upload",
             "net.gpkg",
             package.read_bytes(),
             "application/geopackage+sqlite3",
@@ -218,7 +222,7 @@ class TestSewerConfig:
 
     def test_a_source_outside_the_project_is_forbidden(self, client, project):
         response = client.put(
-            "/api/admin/sewer/config",
+            "/api/v1/admin/sewer/config",
             json={"enabled": True, "source_path": "../../etc/passwd"},
         )
 
@@ -228,7 +232,7 @@ class TestSewerConfig:
 
     def test_a_source_that_does_not_exist_is_not_found(self, client, project):
         response = client.put(
-            "/api/admin/sewer/config",
+            "/api/v1/admin/sewer/config",
             json={"enabled": True, "source_path": "data/sewer/gone.gpkg"},
         )
 
@@ -237,7 +241,7 @@ class TestSewerConfig:
 
     def test_settings_are_merged_into_the_config_file(self, client, project):
         client.put(
-            "/api/admin/sewer/config",
+            "/api/v1/admin/sewer/config",
             json={
                 "enabled": True,
                 "source_path": "data/sewer/net.gpkg",
@@ -247,7 +251,7 @@ class TestSewerConfig:
             },
         )
         response = client.put(
-            "/api/admin/sewer/config",
+            "/api/v1/admin/sewer/config",
             json={"enabled": False, "field_mapping": {"material": "MAT"}},
         )
 
@@ -265,7 +269,7 @@ class TestSewerConfig:
         }
 
     def test_enabling_asks_for_a_pipeline_run(self, client, project):
-        response = client.put("/api/admin/sewer/config", json={"enabled": True})
+        response = client.put("/api/v1/admin/sewer/config", json={"enabled": True})
 
         assert response.json()["message"] == "Sewer enabled"
         assert response.json()["next_step"]
@@ -286,7 +290,7 @@ class TestSewerStatus:
             [("inlet", 3), ("outlet", 2)],
         ]
 
-        body = client.get("/api/admin/sewer/status").json()
+        body = client.get("/api/v1/admin/sewer/status").json()
 
         assert body["loaded"] is True
         assert (body["nodes"], body["edges"]) == (5, 4)
@@ -304,7 +308,7 @@ class TestSewerStatus:
             SimpleNamespace(scalar=lambda: 0),
         ]
 
-        body = client.get("/api/admin/sewer/status").json()
+        body = client.get("/api/v1/admin/sewer/status").json()
 
         assert body["loaded"] is False
         assert body["node_types"] == {}
@@ -314,7 +318,7 @@ class TestSewerStatus:
     ):
         db.execute.side_effect = RuntimeError('relation "sewer_nodes" does not exist')
 
-        response = client.get("/api/admin/sewer/status")
+        response = client.get("/api/v1/admin/sewer/status")
 
         assert response.status_code == 200
         assert response.json()["loaded"] is False
@@ -330,7 +334,7 @@ class TestSewerDelete:
         locked.chmod(0o400)
         monkeypatch.setattr(admin, "DATA_SEWER", sewer)
 
-        response = client.delete("/api/admin/sewer")
+        response = client.delete("/api/v1/admin/sewer")
 
         assert response.status_code == 200
         assert response.json()["pipeline_dirty"] is True
@@ -346,7 +350,7 @@ class TestSewerDelete:
     ):
         monkeypatch.setattr(admin, "DATA_SEWER", tmp_path / "never_created")
 
-        response = client.delete("/api/admin/sewer")
+        response = client.delete("/api/v1/admin/sewer")
 
         assert response.status_code == 200
         db.commit.assert_called_once()

@@ -285,7 +285,7 @@
 
     /**
      * The rectangle drawn on a Leaflet map in a dialog, over the first raster base map of
-     * the kit's catalogue that the deployment allows (GET /api/basemaps: GUGiK's grey
+     * the kit's catalogue that the deployment allows (GET /api/v1/basemaps: GUGiK's grey
      * OpenStreetMap by default, none without one), drawn by the kit's leafletBasemap with
      * its credit (Nogat DEV-15.13, DEV-15.15; ADR-089).
      */
@@ -315,7 +315,7 @@
         async function showBasemap() {
             var entries;
             try {
-                var response = await fetch('/api/basemaps');
+                var response = await fetch('/api/v1/basemaps');
                 entries = response.ok ? await response.json() : [];
             } catch (error) {
                 entries = [];

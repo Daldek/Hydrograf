@@ -1,8 +1,12 @@
 /**
  * Hydrograf API client module.
  *
- * Handles communication with the backend API.
- * Uses relative URLs (same-origin via nginx proxy).
+ * Handles communication with the backend API under /api/v1 (relative URLs, same
+ * origin via nginx). A command of the catalog answers the envelope hydrograf-result/1:
+ * the former body as its `result`, the notices of the delineation and of the
+ * hydrograph as its `notices`; the functions that call a command resolve to the
+ * envelope. The long commands, `hydrograph generate` and `network delineate`, run as
+ * jobs (runJob).
  */
 (function () {
     'use strict';
@@ -99,14 +103,91 @@
         throw error;
     }
 
+    // A job's state is asked for JOB_FIRST_POLL_MS after its start (a short computation
+    // has ended by then), then every JOB_POLL_MS [ms]
+    var JOB_FIRST_POLL_MS = 300;
+    var JOB_POLL_MS = 1000;
+
+    /** The rejection of a run that was aborted or whose job ended cancelled. */
+    function abortError() {
+        return new DOMException('Obliczenie zostało anulowane.', 'AbortError');
+    }
+
+    /** Resolve after `ms`; an aborted `signal` rejects at once with an AbortError. */
+    function pause(ms, signal) {
+        return new Promise(function (resolve, reject) {
+            function abort() {
+                clearTimeout(timer);
+                reject(abortError());
+            }
+            var timer = setTimeout(function () {
+                if (signal) signal.removeEventListener('abort', abort);
+                resolve();
+            }, ms);
+            if (!signal) return;
+            if (signal.aborted) abort();
+            else signal.addEventListener('abort', abort, { once: true });
+        });
+    }
+
     /**
-     * Get terrain profile along a line.
+     * Run a long command of the catalog as a job (nogat-job/1): POST /api/v1/jobs with
+     * the command and its options, GET /api/v1/jobs/<id> until the job has ended (first
+     * after JOB_FIRST_POLL_MS, then every JOB_POLL_MS), then GET /api/v1/jobs/<id>/result.
+     * An answer that is not OK rejects as handleError does: a refused start (invalid
+     * options, 429 while two jobs of the client are active), a job the server no longer
+     * knows, the problem document of a job that failed.
+     *
+     * An aborted `signal` cancels the job (POST /api/v1/jobs/<id>/cancel, best effort, so
+     * that it stops counting against the client's limit) and rejects with an AbortError,
+     * as a job that ended cancelled does. The start itself is never aborted: the id of
+     * every job the server creates is known, so the job can be cancelled.
+     *
+     * @param {string} command - The command, e.g. 'hydrograph generate'
+     * @param {Object} options - Its options, the body of its route
+     * @param {AbortSignal} [signal] - Cancels the job
+     * @returns {Promise<Object>} the envelope of the job's result
+     */
+    async function runJob(command, options, signal) {
+        var url = null;
+        try {
+            if (signal && signal.aborted) throw abortError();
+            const started = await apiFetch('/api/v1/jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command, options: options }),
+            });
+            if (!started.ok) await handleError(started);
+            var job = await started.json();
+            url = '/api/v1/jobs/' + job.id;
+            var wait = JOB_FIRST_POLL_MS;
+            while (job.state === 'queued' || job.state === 'running') {
+                await pause(wait, signal);
+                wait = JOB_POLL_MS;
+                const polled = await apiFetch(url, { signal: signal, cache: 'no-store' });
+                if (!polled.ok) await handleError(polled);
+                job = await polled.json();
+            }
+            const answer = await apiFetch(url + '/result', { signal: signal });
+            if (!answer.ok) await handleError(answer);
+            var envelope = await answer.json();
+            if (envelope.status === 'cancelled') throw abortError();
+            return envelope;
+        } catch (err) {
+            if (!signal || !signal.aborted) throw err;
+            if (url) apiFetch(url + '/cancel', { method: 'POST' }).catch(function () {});
+            throw abortError();
+        }
+    }
+
+    /**
+     * Get terrain profile along a line (`terrain profile`).
      *
      * @param {Object} lineGeojson - GeoJSON LineString geometry
      * @param {number} nSamples - Number of sample points
      * @param {Array<string>} [resultIds] - Analysis results whose water level is sampled too
-     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m, water_levels,
-     *     attribution, terms_notice }
+     * @returns {Promise<Object>} the envelope; its result { distances_m, elevations_m,
+     *     total_length_m, water_levels, attribution, terms_notice }
      */
     async function getTerrainProfile(lineGeojson, nSamples, resultIds) {
         var ids = resultIds || [];
@@ -116,28 +197,32 @@
 
         var payload = { geometry: lineGeojson, n_samples: nSamples || 100 };
         if (ids.length) payload.result_ids = ids;
-        const response = await apiFetch('/api/terrain-profile', {
+        const response = await apiFetch('/api/v1/terrain/profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
 
         if (!response.ok) await handleError(response);
-        var data = await response.json();
-        _cacheSet(key, data);
-        return data;
+        var envelope = await response.json();
+        _cacheSet(key, envelope);
+        return envelope;
     }
 
     /**
-     * Generate hydrograph for given parameters.
+     * Generate hydrograph for given parameters (`hydrograph generate`, a job).
      * With opts.custom_precipitation ({ timestep_min, depths_mm, derived_from?,
      * attribution?, terms_notice? }: derived_from 'pmaxtp', 'imgw' or 'chmu', the
      * lines those of the series' file, unchanged) the PMAXTP design storm is
      * replaced and duration/probability may be null. With
      * opts.morphometry, opts.pmaxtp_grid (the delineation's) makes the PMAXTP
-     * depth the watershed mean instead of the value at the point.
+     * depth the watershed mean instead of the value at the point. An aborted
+     * `signal` cancels the job (runJob).
+     *
+     * @returns {Promise<Object>} the envelope: the hydrograph as its result, Hydrolog's
+     *     warnings about it as its notices
      */
-    async function generateHydrograph(lat, lng, duration, probability, opts) {
+    async function generateHydrograph(lat, lng, duration, probability, opts, signal) {
         var payload = {
             latitude: lat,
             longitude: lng,
@@ -163,30 +248,34 @@
             if (opts.tc_retardance != null) payload.tc_retardance = opts.tc_retardance;
         }
 
-        const response = await apiFetch('/api/generate-hydrograph', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) await handleError(response);
-        return response.json();
+        return runJob('hydrograph generate', payload, signal);
     }
 
     /**
-     * Get available hydrograph scenarios.
+     * Get available hydrograph scenarios (`hydrograph scenarios`): the envelope.
      */
     async function getScenarios() {
-        const response = await apiFetch('/api/scenarios');
+        const response = await apiFetch('/api/v1/hydrograph/scenarios');
         if (!response.ok) await handleError(response);
         return response.json();
     }
 
     /**
-     * Optional layers available on this server, e.g. { sewer: false }.
+     * Optional layers available on this server (`layers availability`): the envelope,
+     * its result e.g. { sewer: false }.
      */
     async function getLayers() {
-        const response = await apiFetch('/api/layers');
+        const response = await apiFetch('/api/v1/layers/availability');
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
+     * Thresholds [m²] of the stream networks and sub-catchments in the database
+     * (`layers thresholds`): the envelope, its result { streams, catchments }.
+     */
+    async function getThresholds() {
+        const response = await apiFetch('/api/v1/layers/thresholds');
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -196,13 +285,13 @@
      * catalogue it allows, then its own, in the catalogue's shape; [] for none.
      */
     async function getBasemaps() {
-        const response = await apiFetch('/api/basemaps');
+        const response = await apiFetch('/api/v1/basemaps');
         if (!response.ok) await handleError(response);
         return response.json();
     }
 
     /**
-     * Delineate watershed at a given point.
+     * Delineate watershed at a given point (`watershed delineate`).
      *
      * With threshold → precomputed mode (snap to stream network).
      * Without threshold → precise mode (on-the-fly delineation).
@@ -210,87 +299,69 @@
      * @param {number} lat - Latitude (WGS84)
      * @param {number} lng - Longitude (WGS84)
      * @param {number} [threshold] - Flow accumulation threshold [m2] (optional)
-     * @returns {Promise<Object>} { mode, stream, watershed, upstream_segment_indices, display_threshold_m2 }
+     * @returns {Promise<Object>} the envelope; its result { mode, stream, watershed,
+     *     upstream_segment_indices, display_threshold_m2 }, the delineation's notices
      */
     async function delineateWatershed(lat, lng, threshold) {
         var key = _cacheKey('dw', lat, lng, threshold || 0);
         var cached = _cacheGet(key);
         if (cached) return cached;
 
-        var body = {
-            latitude: lat,
-            longitude: lng,
-        };
-        if (threshold) {
-            body.threshold_m2 = threshold;
-        }
-
-        var url = '/api/delineate-watershed?include_hypsometric_curve=true';
-        const response = await apiFetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        const params = new URLSearchParams({ latitude: lat, longitude: lng });
+        if (threshold) params.set('threshold_m2', threshold);
+        params.set('include_hypsometric_curve', 'true');
+        const response = await apiFetch('/api/v1/watershed/delineate?' + params.toString());
 
         if (!response.ok) await handleError(response);
-        var data = await response.json();
-        _cacheSet(key, data);
-        return data;
+        var envelope = await response.json();
+        _cacheSet(key, envelope);
+        return envelope;
     }
 
     /**
      * Sub-catchments a precomputed delineation will merge, one feature per BFS
-     * depth from the outlet, for the animation while it is computed.
+     * depth from the outlet, for the animation while it is computed (`watershed preview`).
      *
      * @param {number} lat - Latitude (WGS84)
      * @param {number} lng - Longitude (WGS84)
      * @param {number} threshold - Flow accumulation threshold [m2]
-     * @returns {Promise<Object>} { threshold_m2, segment_count, catchments }
+     * @returns {Promise<Object>} the envelope; its result { threshold_m2, segment_count, catchments }
      */
     async function previewWatershed(lat, lng, threshold) {
-        const response = await apiFetch('/api/delineate-watershed/preview', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latitude: lat, longitude: lng, threshold_m2: threshold }),
-        });
+        const params = new URLSearchParams({ latitude: lat, longitude: lng, threshold_m2: threshold });
+        const response = await apiFetch('/api/v1/watershed/preview?' + params.toString());
 
         if (!response.ok) await handleError(response);
         return response.json();
     }
 
     /**
-     * Network of subcatchments, reaches and junctions at a closing section and
-     * the points above it („Wybierz zlewnię” → „Sieć zlewni”, POST /api/delineate-network).
+     * Network of subcatchments, reaches and junctions at a closing section and the
+     * points above it („Wybierz zlewnię” → „Sieć zlewni”, `network delineate`, a job).
      *
      * @param {Object} body - { outlet: { id, latitude, longitude, name? },
      *     points: [{ id, latitude, longitude, name? }], threshold_m2 }
-     * @returns {Promise<Object>} { area_km2, area_check, boundary_geojson, points,
-     *     subcatchments, reaches, junctions, notices, handoff }
+     * @param {AbortSignal} [signal] - cancels the job (runJob)
+     * @returns {Promise<Object>} the envelope; its result { area_km2, area_check,
+     *     boundary_geojson, points, subcatchments, reaches, junctions, notices, handoff }
      */
-    async function delineateNetwork(body) {
-        const response = await apiFetch('/api/delineate-network', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-
-        if (!response.ok) await handleError(response);
-        return response.json();
+    async function delineateNetwork(body, signal) {
+        return runJob('network delineate', body, signal);
     }
 
     /**
-     * Preview of the network of the same request („Wybierz zlewnię” → „Sieć zlewni”, POST
-     * /api/delineate-network/preview): the snapped points, the tree with the area of
-     * every element and the length of every reach, the outlines of the elements; no
-     * parameters, no hand-off.
+     * Preview of the network of the same request („Wybierz zlewnię” → „Sieć zlewni”,
+     * `network preview`): the snapped points, the tree with the area of every element
+     * and the length of every reach, the outlines of the elements; no parameters, no
+     * hand-off.
      *
      * @param {Object} body - as for delineateNetwork
      * @param {AbortSignal} [signal] - aborts the request
-     * @returns {Promise<Object>} { threshold_m2, unit_threshold_m2, area_km2, points,
-     *     subcatchments, reaches, junctions, notices }
+     * @returns {Promise<Object>} the envelope; its result { threshold_m2, unit_threshold_m2,
+     *     area_km2, points, subcatchments, reaches, junctions, notices }
      */
     async function previewNetwork(body, signal) {
-        const response = await apiFetch('/api/delineate-network/preview', {
+        const response = await apiFetch('/api/v1/network/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -302,14 +373,15 @@
     }
 
     /**
-     * What Hydrograf knows at a point (mode "Identyfikuj").
+     * What Hydrograf knows at a point (mode "Identyfikuj", `point identify`).
      *
      * @param {number} lat - Latitude (WGS84)
      * @param {number} lng - Longitude (WGS84)
      * @param {number} threshold - Flow accumulation threshold of the flow lines [m2]
      * @param {Array<string>} resultIds - Analysis results on the map whose water is read
-     * @returns {Promise<Object>} { coordinates, elevation_m, slope_percent, water, stream,
-     *     water_body, land_cover, soil_hsg, depression, subcatchment, attribution, terms_notice }
+     * @returns {Promise<Object>} the envelope; its result { coordinates, elevation_m,
+     *     slope_percent, water, stream, water_body, land_cover, soil_hsg, depression,
+     *     subcatchment, attribution, terms_notice }
      */
     async function identifyPoint(lat, lng, threshold, resultIds) {
         var ids = resultIds || [];
@@ -320,12 +392,12 @@
         const params = new URLSearchParams({ latitude: lat, longitude: lng });
         if (threshold !== undefined && threshold !== null) params.set('threshold_m2', threshold);
         ids.forEach(function (id) { params.append('result_ids', id); });
-        const response = await apiFetch('/api/identify-point?' + params.toString());
+        const response = await apiFetch('/api/v1/point/identify?' + params.toString());
 
         if (!response.ok) await handleError(response);
-        var data = await response.json();
-        _cacheSet(key, data);
-        return data;
+        var envelope = await response.json();
+        _cacheSet(key, envelope);
+        return envelope;
     }
 
     /**
@@ -336,7 +408,7 @@
      * @returns {Promise<Object>} { id, status }
      */
     async function submitFeedback(payload) {
-        const response = await apiFetch('/api/feedback', {
+        const response = await apiFetch('/api/v1/feedback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -353,7 +425,7 @@
      */
     function countDownload() {
         try {
-            fetch('/api/downloads', { method: 'POST', keepalive: true }).catch(function () {});
+            fetch('/api/v1/downloads', { method: 'POST', keepalive: true }).catch(function () {});
         } catch { /* no fetch, or refused synchronously: the count is not essential */ }
     }
 
@@ -381,6 +453,7 @@
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
         getLayers: getLayers,
+        getThresholds: getThresholds,
         getBasemaps: getBasemaps,
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,

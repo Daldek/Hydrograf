@@ -1,4 +1,4 @@
-"""GET /api/admin/status: the server and its checks (Nogat DEV-15.13, ADR-086).
+"""GET /api/v1/admin/status: the server and its checks (Nogat DEV-15.13, ADR-086).
 
 The answer has the fields of DEV-15.13 and the three checks the README names:
 `database`, `catchment_graph` and `data_dir`, each `ok`, `warning` or `failed`.
@@ -24,7 +24,7 @@ from core.version import get_version
 def app():
     test_app = FastAPI()
     install_error_handlers(test_app)
-    test_app.include_router(admin.router, prefix="/api/admin")
+    test_app.include_router(admin.router, prefix="/api/v1/admin")
     test_app.dependency_overrides[verify_admin_key] = lambda: None
     test_app.dependency_overrides[get_db] = lambda: MagicMock()
     return test_app
@@ -49,7 +49,7 @@ def graph(monkeypatch):
 
 
 def _status(app):
-    response = TestClient(app).get("/api/admin/status")
+    response = TestClient(app).get("/api/v1/admin/status")
     assert response.status_code == 200
     return response.json()
 

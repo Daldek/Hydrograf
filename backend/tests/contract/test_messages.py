@@ -78,7 +78,7 @@ def test_every_message_of_the_catalogue_is_used():
         for _, call in _raised_errors()
         if call.args and isinstance(call.args[0], ast.Constant)
     }
-    # Messages that the handlers of api/errors.py and the request limit of
+    # Messages that the handlers of api/errors.py and the request and job limits of
     # api/traffic.py use by ID, not through a class.
     handled = {
         "invalid_request",
@@ -87,6 +87,7 @@ def test_every_message_of_the_catalogue_is_used():
         "http_error",
         "internal_error",
         "request_limit",
+        "job_limit",
     }
 
     assert set(MESSAGES) - used - handled == set()

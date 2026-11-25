@@ -2,11 +2,11 @@
  * Hydrograf hand-off to Hydrolog (results panel, ADR-068, ADR-080, ADR-082).
  *
  * The API writes the current watershed as a hand-off nogat-handoff/1: the delineation
- * without rainfall and result (`handoff` of POST /api/delineate-watershed), each
- * hydrograph with its rainfall, runoff and result for comparison (`handoff` of POST
- * /api/generate-hydrograph), and the network of „Wybierz zlewnię” → „Sieć zlewni”
- * without rainfall and the sections of its reaches (`handoff` of POST
- * /api/delineate-network). The section serves the view the panel shows: the network
+ * without rainfall and result (`handoff` of the result of `watershed delineate`), each
+ * hydrograph with its rainfall, runoff and result for comparison (`handoff` of the
+ * result of `hydrograph generate`), and the network of „Wybierz zlewnię” → „Sieć zlewni”
+ * without rainfall and the sections of its reaches (`handoff` of the result of
+ * `network delineate`). The section serves the view the panel shows: the network
  * in the option „Sieć zlewni”, the watershed otherwise. "Kopiuj do Hydrologa" puts the
  * hand-off of what the panel shows on the clipboard and "Plik przekazania" downloads it as
  * hydrograf_handoff_<subject>.json (Nogat DEV-19.21); Hydrolog opens both with "Wczytaj z

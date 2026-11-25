@@ -167,9 +167,10 @@
         };
         var ids = shown.map(function (r) { return r.id; });
 
-        Hydrograf.api.getTerrainProfile(lineGeojson, 100, ids).then(function (result) {
+        Hydrograf.api.getTerrainProfile(lineGeojson, 100, ids).then(function (answer) {
             // A newer line, a redraw or a closed drawer took its place
             if (request !== _request) return;
+            var result = answer.result;
             // Ensure drawer is visible BEFORE rendering the chart
             var drawer = document.getElementById('profile-drawer');
             if (drawer) drawer.hidden = false;

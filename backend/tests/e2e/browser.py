@@ -15,7 +15,9 @@ The map is read through ``Hydrograf.map.describe()`` (``describe``): the overlay
 from the bottom up with their opacity, the network's points and the view in degrees
 and as a scale, never as a zoom number, so that the tests hold for any library that
 draws the map. Colours are read as the nearest of named colours (``nearest``), never
-as exact pixels: antialiasing moves a pixel's value.
+as exact pixels: antialiasing moves a pixel's value. A long command of the API runs as
+a job (nogat-job/1), which the page polls: ``job_started`` tells the answer to its
+start, ``job_result`` waits for the answer of its result.
 """
 
 import io
@@ -23,11 +25,12 @@ import json
 import math
 import re
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from PIL import Image
 from playwright.sync_api import (
@@ -37,6 +40,7 @@ from playwright.sync_api import (
     Frame,
     Page,
     Request,
+    Response,
     Route,
     ViewportSize,
 )
@@ -103,6 +107,7 @@ FAILED_RESOURCE = "Failed to load resource"
 # How long the page has had no request in flight when it counts as settled
 QUIET_S = 0.5
 SETTLE_TIMEOUT_S = 30.0
+JOBS = "/api/v1/jobs"
 
 Rgb = tuple[int, int, int]
 
@@ -277,6 +282,39 @@ def open_tab(
         yield tab
     finally:
         context.close()
+
+
+# --- the API's jobs ------------------------------------------------------------------
+
+
+def job_started(command: str) -> Callable[[Response], bool]:
+    """Whether an answer is the one to the start of a job of ``command``."""
+
+    def started(response: Response) -> bool:
+        request = response.request
+        return (
+            request.method == "POST"
+            and urlsplit(response.url).path == JOBS
+            and (request.post_data_json or {}).get("command") == command
+        )
+
+    return started
+
+
+def job_result(page: Page, started: Response) -> Response:
+    """The answer of the result of the job whose start ``started`` answered.
+
+    The page polls the job until it ends, then asks GET /api/v1/jobs/<id>/result: its
+    answer is the command's, the envelope or the problem document. A refused start
+    (not 202) is its own answer.
+    """
+    if started.status != 202:
+        return started
+    path = f"{JOBS}/{started.json()['id']}/result"
+    answered: Response = page.wait_for_event(
+        "response", lambda response: urlsplit(response.url).path == path
+    )
+    return answered
 
 
 # --- the map -------------------------------------------------------------------------

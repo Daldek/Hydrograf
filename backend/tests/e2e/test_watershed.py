@@ -2,24 +2,24 @@
 
 Nogat's plan 2026-11-24-hydrograf-maplibre, step 1, the bullet „a click delineates:
 the preview, then the boundary, outlet, main channel and flow paths with their
-legend, the view fitted; the outlet's tooltip”. In the mode „Wybierz zlewnię”, option
 „Jedna zlewnia”, a click on the main river between the mouths of T2 and T1 asks
-POST /api/delineate-watershed/preview and POST /api/delineate-watershed together.
-The second is held by ``page.route`` until the preview is drawn (overlay ``preview``
-of ``Hydrograf.map.describe()``), then let through: its answer replaces the preview by
-the overlays ``watershed``, ``outlet``, ``main-channel``, ``longest-flow-path`` and
-``divide-flow-path`` (where the answer has them), drawn above the streams (M4's
-order). The answer is the reference of the rest: the rows of the map's legend
-„Zlewnia” (title and labels by their text), the view (``describe()``'s bounds)
-fitted to the boundary, the tooltip a hover over the outlet shows and the parameters
-of the results panel „Zlewnia”.
+GET /api/v1/watershed/preview and GET /api/v1/watershed/delineate together (the
+commands ``watershed preview`` and ``watershed delineate``, the place and the threshold
+as the query). The second is held by ``page.route`` until the preview is drawn
+(overlay ``preview`` of ``Hydrograf.map.describe()``), then let through: its answer
+replaces the preview by the overlays ``watershed``, ``outlet``, ``main-channel``,
+``longest-flow-path`` and ``divide-flow-path`` (where the answer has them), drawn above
+the streams (M4's order). The answer's result is the reference of the rest: the rows of
+the map's legend „Zlewnia” (title and labels by their text), the view
+(``describe()``'s bounds) fitted to the boundary, the tooltip a hover over the outlet
+shows and the parameters of the results panel „Zlewnia”.
 """
 
-import json
 import math
 import re
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from playwright.sync_api import Locator, Page, Route, expect
@@ -27,6 +27,8 @@ from playwright.sync_api import Locator, Page, Route, expect
 from tests.e2e.browser import (
     Tab,
     describe,
+    job_result,
+    job_started,
     open_map,
     overlay_ids,
     screen_point,
@@ -39,8 +41,8 @@ from tests.e2e.site import MAIN_RIVER_COL, THRESHOLDS_M2
 CLICK_CELL = (140, MAIN_RIVER_COL)
 # The map asks with the threshold of its streams' layer, the largest by default
 DEFAULT_THRESHOLD_M2 = THRESHOLDS_M2[-1]
-DELINEATION = re.compile(r"/api/delineate-watershed(\?|$)")
-PREVIEW = r"/api/delineate-watershed/preview$"
+DELINEATION = re.compile(r"/api/v1/watershed/delineate\?")
+PREVIEW = r"/api/v1/watershed/preview\?"
 # The overlays of a delineated watershed
 PARTS = ("watershed", "outlet", "main-channel", "longest-flow-path", "divide-flow-path")
 # Their rows of the legend „Zlewnia”; the main channel's by its kinds of segment
@@ -67,6 +69,11 @@ def js_fixed(value: float, digits: int) -> str:
     """JavaScript's ``value.toFixed(digits)``: of two nearest, the larger."""
     step = Decimal(1).scaleb(-digits)
     return str(Decimal(value).quantize(step, rounding=ROUND_HALF_UP))
+
+
+def query(url: str) -> dict[str, str]:
+    """The options of a GET request of a command: its query, each value as sent."""
+    return {name: values[0] for name, values in parse_qs(urlsplit(url).query).items()}
 
 
 def mercator_y(lat: float) -> float:
@@ -106,7 +113,7 @@ def view_share(view: dict[str, Any], boundary: dict[str, Any]) -> float:
 
 
 def expected_parts(watershed: dict[str, Any]) -> set[str]:
-    """The overlays of the watershed of an answer of POST /api/delineate-watershed."""
+    """The overlays of the watershed of a result of ``watershed delineate``."""
     geojson = {
         "main-channel": watershed["main_stream_geojson"],
         "longest-flow-path": watershed["longest_flow_path_geojson"],
@@ -139,17 +146,21 @@ def click_cell(tab: Tab, cell: tuple[int, int]) -> Place:
 
 
 def delineate(tab: Tab) -> dict[str, Any]:
-    """Delineate by a click on CLICK_CELL; the API's answer, once drawn."""
+    """Delineate by a click on CLICK_CELL; the result of the answer, once drawn."""
     page = tab.page
-    with page.expect_response(DELINEATION) as answered:
+    with (
+        page.expect_response(job_started("hydrograph generate")) as started,
+        page.expect_response(DELINEATION) as answered,
+    ):
         click_cell(tab, CLICK_CELL)
     response = answered.value
     assert response.ok, f"delineation failed: {response.status} {response.text()}"
     wait_for_overlay(page, "watershed")
-    # The hydrograph the page asks for next, the tiles of the fitted view
+    # The hydrograph the page asks for next, to its end; the tiles of the fitted view
+    job_result(page, started.value)
     tab.settle()
     wait_view(page)
-    answer: dict[str, Any] = response.json()
+    answer: dict[str, Any] = response.json()["result"]
     return answer
 
 
@@ -176,20 +187,20 @@ def test_delineation_click_shows_preview_until_result_replaces_it(tab: Tab) -> N
 
     wait_for_overlay(page, "preview")
     previews = tab.sent_since(mark, PREVIEW)
-    assert [sent.method for sent in previews] == ["POST"], previews
-    asked = json.loads(previews[0].post_data or "{}")
-    assert asked["threshold_m2"] == DEFAULT_THRESHOLD_M2, asked
-    place = (asked["longitude"], asked["latitude"])
+    assert [sent.method for sent in previews] == ["GET"], previews
+    asked = query(previews[0].url)
+    assert float(asked["threshold_m2"]) == DEFAULT_THRESHOLD_M2, asked
+    place = (float(asked["longitude"]), float(asked["latitude"]))
     assert place == pytest.approx(clicked, abs=CLICKED_DEG), (place, clicked)
     assert len(held) == 1, "the delineation was not asked with its preview"
-    assert held[0].request.post_data_json == asked
+    assert query(held[0].request.url) == {**asked, "include_hypsometric_curve": "true"}
     during = overlay_ids(page)
     assert not set(during) & set(PARTS), during
     assert during.index("streams") < during.index("preview"), during
 
     with page.expect_response(DELINEATION) as answered:
         held[0].continue_()
-    parts = expected_parts(answered.value.json()["watershed"])
+    parts = expected_parts(answered.value.json()["result"]["watershed"])
     wait_for_overlay(page, "watershed")
 
     after = overlay_ids(page)

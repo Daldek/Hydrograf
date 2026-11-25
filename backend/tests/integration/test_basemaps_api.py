@@ -1,5 +1,5 @@
 """
-GET /api/basemaps and the start of the API (api/endpoints/basemaps.py, api/main.py;
+GET /api/v1/basemaps and the start of the API (api/endpoints/basemaps.py, api/main.py;
 Nogat DEV-15.15, ADR-089).
 
 The page gets the catalogue's entries as the kit writes them and the deployment's own
@@ -42,7 +42,7 @@ def deployment(tmp_path, monkeypatch):
 def test_default_answer_is_the_catalogue(deployment):
     deployment()
 
-    response = TestClient(app).get("/api/basemaps")
+    response = TestClient(app).get("/api/v1/basemaps")
 
     assert response.status_code == 200
     assert response.json() == catalogue()
@@ -57,7 +57,7 @@ def test_an_own_base_map_has_no_blocks_zooms_or_bounds(deployment):
         hydrograf_basemaps="",
     )
 
-    response = TestClient(app).get("/api/basemaps")
+    response = TestClient(app).get("/api/v1/basemaps")
 
     assert response.json() == [
         {

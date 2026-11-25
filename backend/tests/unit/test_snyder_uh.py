@@ -464,7 +464,7 @@ class TestHydrographGeneratorSnyder:
 
 
 class TestScenariosUhModels:
-    """Tests that /api/scenarios includes uh_models and snyder_defaults."""
+    """Tests that the hydrograph scenarios include uh_models and snyder_defaults."""
 
     @pytest.fixture
     def client(self):
@@ -476,22 +476,22 @@ class TestScenariosUhModels:
 
     def test_scenarios_includes_uh_models(self, client):
         """Scenarios response includes uh_models list."""
-        response = client.get("/api/scenarios")
+        response = client.get("/api/v1/hydrograph/scenarios")
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert "uh_models" in data
 
     def test_scenarios_uh_models_values(self, client):
         """uh_models contains both 'scs' and 'snyder'."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get("/api/v1/hydrograph/scenarios")
+        data = response.json()["result"]
         assert "scs" in data["uh_models"]
         assert "snyder" in data["uh_models"]
 
     def test_scenarios_includes_snyder_defaults(self, client):
         """Scenarios response includes snyder_defaults with ct and cp."""
-        response = client.get("/api/scenarios")
-        data = response.json()
+        response = client.get("/api/v1/hydrograph/scenarios")
+        data = response.json()["result"]
         assert "snyder_defaults" in data
         defaults = data["snyder_defaults"]
         assert "ct" in defaults

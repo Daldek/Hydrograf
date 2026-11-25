@@ -11,19 +11,19 @@
  * problem names a point as the map does. The network comes in two stages:
  *
  * - The preview. A short pause after every change of the points or of the threshold of
- *   the streams on the map, POST /api/delineate-network/preview answers in a fraction
- *   of a second: every marker moves to the stream cell it snapped to („w węźle sieci”
- *   on a point drawn to a confluence within 50 m) and takes its node's id, and the
- *   network is drawn: the elements filled by kind (dopływ, przyrzecze) with their ids,
- *   dashed where the outline follows a whole unit that the characteristics split (the
- *   point inside it is marked), the reaches as lines with theirs and the nodes as dots.
- *   The closing section alone is a network. The panel lists the tree from the closing
- *   section upward with the area of every element, the whole area in the row of the
- *   closing section, and the length of every reach. An error (a point outside the
- *   catchment, off the streams, two points on one node) marks the points it names at
- *   once. Names do not change the preview.
- * - The characteristics. „Oblicz charakterystyki” sends the points to POST
- *   /api/delineate-network: the boundary of the whole catchment (outlined as „Zlewnia
+ *   the streams on the map, `network preview` (POST /api/v1/network/preview) answers
+ *   in a fraction of a second: every marker moves to the stream cell it snapped to („w
+ *   węźle sieci” on a point drawn to a confluence within 50 m) and takes its node's id,
+ *   and the network is drawn: the elements filled by kind (dopływ, przyrzecze) with
+ *   their ids, dashed where the outline follows a whole unit that the characteristics
+ *   split (the point inside it is marked), the reaches as lines with theirs and the
+ *   nodes as dots. The closing section alone is a network. The panel lists the tree
+ *   from the closing section upward with the area of every element, the whole area in
+ *   the row of the closing section, and the length of every reach. An error (a point
+ *   outside the catchment, off the streams, two points on one node) marks the points
+ *   it names at once. Names do not change the preview.
+ * - The characteristics. „Oblicz charakterystyki” sends the points to `network delineate`,
+ *   a job of the API: the boundary of the whole catchment (outlined as „Zlewnia
  *   (całość)”), the parameters of every element, the slopes of the reaches, the check
  *   of B5 and the hand-off of the network (js/handoff.js).
  *   They show while they answer the places of the points; after a point is added,
@@ -37,14 +37,14 @@
  * zlewnię”, js/app.js, a reach's in a table of its own), in the preview a short summary.
  * Clicks on the map always place points, so a gauge can be placed on a drawn reach.
  * Leaving the option takes the network off the map and „Wyczyść” removes the points, the
- * preview and the characteristics.
+ * preview and the characteristics, and cancels the job of the characteristics on its way.
  */
 (function () {
     'use strict';
 
     window.Hydrograf = window.Hydrograf || {};
 
-    // Limits of POST /api/delineate-network (models/schemas.py)
+    // Limits of the options of `network delineate` (models/schemas.py)
     var MAX_POINTS = 30;
     var MIN_THRESHOLD_M2 = 10000;
     var DEFAULT_THRESHOLD_M2 = 100000;
@@ -69,12 +69,12 @@
         active: false,      // the option is on
         outlet: null,       // the closing section: { id, lat, lng, name, marker, snap, row }
         points: [],         // the points above it: the same, in the order of their ids (byId)
-        result: null,       // the characteristics (POST /api/delineate-network)
+        result: null,       // the characteristics (the result of `network delineate`)
         resultKey: '',      // the request they answer, with the snapped places and the names
         resultPlaces: '',   // the places they answer, snapped, without the names
         request: 0,         // number of the latest run; answers to older ones are dropped
         loading: false,     // the characteristics are being computed
-        preview: null,      // the latest preview (POST /api/delineate-network/preview)
+        preview: null,      // the latest preview (the result of `network preview`)
         previewKey: '',     // the places it answers, snapped, without the names
         previewRequest: 0,  // number of the latest preview request; answers to older ones are dropped
         previewPending: false,  // the preview of the current points is due or on its way
@@ -86,6 +86,7 @@
 
     var previewTimer = null;    // the pause before the next preview request
     var previewAbort = null;    // AbortController of the preview request on its way
+    var runAbort = null;        // AbortController of the job of the characteristics on its way
     var markers = null;         // L.LayerGroup of the point markers
     var drawn = null;           // the layers of the network shown: { data, full, group, labels, … }
     var legend = null;          // L.Control of the map legend
@@ -470,8 +471,9 @@
         var request = ++state.previewRequest;
         var abort = new AbortController();
         previewAbort = abort;
-        Hydrograf.api.previewNetwork(body, abort.signal).then(function (data) {
+        Hydrograf.api.previewNetwork(body, abort.signal).then(function (answer) {
             if (request !== state.previewRequest) return;
+            var data = answer.result;
             moveToSnapped(data, sent);
             state.preview = data;
             state.previewKey = answerKey(body, data);
@@ -512,8 +514,11 @@
         Hydrograf.app.setNetworkStatus({ loading: true, error: '' });
         render();
 
-        Hydrograf.api.delineateNetwork(body).then(function (data) {
+        var abort = new AbortController();
+        runAbort = abort;
+        Hydrograf.api.delineateNetwork(body, abort.signal).then(function (answer) {
             if (request !== state.request) return;
+            var data = answer.result;
             moveToSnapped(data, sent);
             state.result = data;
             state.resultKey = answerKey(body, data);
@@ -525,6 +530,7 @@
             Hydrograf.app.showPanel();
         }).then(function () {
             if (request !== state.request) return;
+            runAbort = null;
             state.loading = false;
             setDraggable(true);
             Hydrograf.app.setNetworkStatus({ loading: false });
@@ -548,11 +554,23 @@
         });
     }
 
+    /**
+     * Drop the characteristics on their way: their job is cancelled, so that it no longer
+     * counts against the two jobs a client may run, and their answer is ignored.
+     */
+    function cancelRun() {
+        state.request += 1;
+        state.loading = false;
+        if (runAbort) {
+            runAbort.abort();
+            runAbort = null;
+        }
+    }
+
     /** „Wyczyść” and the bin of the panel: no points, no preview, no characteristics, nothing pending. */
     function clear() {
         cancelPreview();
-        state.request += 1;
-        state.loading = false;
+        cancelRun();
         allPoints().forEach(function (p) { markers.removeLayer(p.marker); });
         state.outlet = null;
         state.points = [];

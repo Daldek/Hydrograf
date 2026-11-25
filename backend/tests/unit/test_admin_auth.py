@@ -15,7 +15,7 @@ def _build_probe_app() -> FastAPI:
     app = FastAPI()
     install_error_handlers(app)
 
-    @app.get("/api/admin/probe", dependencies=[Depends(verify_admin_key)])
+    @app.get("/api/v1/admin/probe", dependencies=[Depends(verify_admin_key)])
     def probe():
         return {"ok": True}
 
@@ -32,7 +32,7 @@ class TestExpectedKeyNotClientSettable:
 
     def test_expected_key_absent_from_openapi(self):
         schema = _build_probe_app().openapi()
-        params = schema["paths"]["/api/admin/probe"]["get"].get("parameters", [])
+        params = schema["paths"]["/api/v1/admin/probe"]["get"].get("parameters", [])
         names = {p["name"] for p in params}
         assert "expected_key" not in names
 
@@ -43,13 +43,15 @@ class TestExpectedKeyNotClientSettable:
         client = TestClient(_build_probe_app())
 
         bypass = client.get(
-            "/api/admin/probe?expected_key=pwned",
+            "/api/v1/admin/probe?expected_key=pwned",
             headers={"X-Admin-Key": "pwned"},
         )
         assert bypass.status_code == 401
         assert bypass.json()["details"]["reason"] == "admin_key_invalid"
 
-        legit = client.get("/api/admin/probe", headers={"X-Admin-Key": "real-secret"})
+        legit = client.get(
+            "/api/v1/admin/probe", headers={"X-Admin-Key": "real-secret"}
+        )
         assert legit.status_code == 200
 
 

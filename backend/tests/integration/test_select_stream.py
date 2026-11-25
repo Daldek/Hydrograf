@@ -1,7 +1,7 @@
 """
 Integration tests for precomputed-mode delineation (formerly select-stream).
 
-Tests the POST /api/delineate-watershed endpoint with threshold_m2 provided,
+Tests the GET /api/v1/watershed/delineate route with threshold_m2 provided,
 which uses CatchmentGraph BFS and ST_Union boundary (precomputed mode).
 """
 
@@ -136,7 +136,7 @@ def _patch_all(cg=None, segment=None, boundary=None, morph=None):
 
 
 class TestPrecomputedDelineation:
-    """Tests for POST /api/delineate-watershed with threshold_m2 (precomputed mode)."""
+    """Tests for GET /api/v1/watershed/delineate with threshold_m2 (precomputed)."""
 
     def test_success_returns_200(self, client):
         """Test successful precomputed delineation returns 200."""
@@ -144,9 +144,9 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
@@ -161,16 +161,16 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
                 },
             )
 
-        data = response.json()
+        data = response.json()["result"]
         assert data["mode"] == "precomputed"
 
     def test_response_has_watershed(self, client):
@@ -179,16 +179,16 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
                 },
             )
 
-        data = response.json()
+        data = response.json()["result"]
         assert "watershed" in data
         assert data["watershed"] is not None
         assert "boundary_geojson" in data["watershed"]
@@ -202,16 +202,16 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
                 },
             )
 
-        data = response.json()
+        data = response.json()["result"]
         morph = data["watershed"]["morphometry"]
         assert morph is not None
         assert "area_km2" in morph
@@ -228,16 +228,16 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
                 },
             )
 
-        data = response.json()
+        data = response.json()["result"]
         assert "upstream_segment_indices" in data
         assert isinstance(data["upstream_segment_indices"], list)
         assert len(data["upstream_segment_indices"]) > 0
@@ -259,9 +259,9 @@ class TestPrecomputedDelineation:
             for p in patches:
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.0,
                     "longitude": 21.0,
                     "threshold_m2": 10000,
@@ -275,9 +275,9 @@ class TestPrecomputedDelineation:
     def test_graph_not_loaded_returns_503(self, client):
         """No catchment graph (empty tables or a failed load) returns 503."""
         with patch(f"{_WS}.loaded_catchment_graph", return_value=None):
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
@@ -288,9 +288,9 @@ class TestPrecomputedDelineation:
 
     def test_invalid_coordinates_returns_400(self, client):
         """Test that latitude=200 returns 400."""
-        response = client.post(
-            "/api/delineate-watershed",
-            json={
+        response = client.get(
+            "/api/v1/watershed/delineate",
+            params={
                 "latitude": 200.0,
                 "longitude": 21.0,
                 "threshold_m2": 10000,
@@ -305,9 +305,9 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
@@ -315,7 +315,7 @@ class TestPrecomputedDelineation:
             )
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert data["display_threshold_m2"] == 10000
 
     def test_stream_info_present(self, client):
@@ -324,16 +324,16 @@ class TestPrecomputedDelineation:
             for p in _patch_all():
                 stack.enter_context(p)
 
-            response = client.post(
-                "/api/delineate-watershed",
-                json={
+            response = client.get(
+                "/api/v1/watershed/delineate",
+                params={
                     "latitude": 52.23,
                     "longitude": 21.01,
                     "threshold_m2": 10000,
                 },
             )
 
-        data = response.json()
+        data = response.json()["result"]
         assert data["stream"] is not None
         assert data["stream"]["segment_idx"] == 12
         assert data["stream"]["strahler_order"] == 2

@@ -1,5 +1,5 @@
 """
-The pages of the public service and GET /api/terms (api/endpoints/site.py; ADR-084),
+The pages of the public service and GET /api/v1/terms (api/endpoints/site.py; ADR-084),
 whose provider lines the welcome window shows on every deployment, with or without an
 operator.
 
@@ -20,7 +20,11 @@ from core.attribution import PMAXTP, SOILGRIDS_SOURCE
 from core.database import get_db
 from core.terms import Terms
 
-TERMS = Terms(page="<!doctype html><h1>Regulamin</h1>", operator_email="op@example.pl")
+TERMS = Terms(
+    page="<!doctype html><h1>Regulamin</h1>",
+    operator_email="op@example.pl",
+    version="1.1",
+)
 
 
 def _gugik(products: str) -> str:
@@ -106,7 +110,7 @@ def test_regulamin_of_a_public_deployment(client, terms, pmaxtp):
     assert response.headers["content-type"] == "text/html; charset=utf-8"
     assert response.headers["cache-control"] == "no-cache"
     assert response.text == TERMS.page
-    assert client.get("/api/terms").json() == {
+    assert client.get("/api/v1/terms").json() == {
         "url": "/regulamin.html",
         "operator_email": "op@example.pl",
         **LINES,
@@ -121,7 +125,7 @@ def test_without_an_operator_there_is_no_regulamin(client, terms, pmaxtp):
 
     assert response.status_code == 404
     assert response.json()["details"]["reason"] == "terms_not_configured"
-    assert client.get("/api/terms").json() == {
+    assert client.get("/api/v1/terms").json() == {
         "url": None,
         "operator_email": None,
         **LINES,
@@ -133,7 +137,7 @@ def test_an_instance_without_pmaxtp_names_no_pmaxtp_line(client, terms, pmaxtp):
     terms(TERMS)
     pmaxtp(False)
 
-    info = client.get("/api/terms").json()
+    info = client.get("/api/v1/terms").json()
 
     assert info["attribution"] == [_gugik("NMT, BDOT10k"), SOILGRIDS_SOURCE]
     assert info["terms_notice"] == []
@@ -144,7 +148,7 @@ def test_the_pmaxtp_lines_stay_when_the_database_cannot_tell(client, terms, pmax
     terms(TERMS)
     pmaxtp(None)
 
-    info = client.get("/api/terms").json()
+    info = client.get("/api/v1/terms").json()
 
     assert info["attribution"] == LINES["attribution"]
     assert info["terms_notice"] == LINES["terms_notice"]

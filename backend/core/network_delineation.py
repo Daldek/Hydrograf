@@ -1186,7 +1186,7 @@ def _element_watershed(
     accumulation, the drainage indices of its units, and from its boundary the
     perimeter, the shape indices, the land cover, the soil groups and the PMAXTP
     weights, as ``build_morph_dict_from_graph`` and the response builder of
-    ``POST /api/delineate-watershed`` put them together. The cells are measured in
+    ``watershed delineate`` put them together. The cells are measured in
     ``frame``, the rows and columns of the window around them, where ``member``
     holds them and ``outlet`` lies; the arrays of the frame are freed on return.
     """

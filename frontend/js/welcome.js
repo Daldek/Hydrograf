@@ -6,7 +6,7 @@
  * Under it the full provider lines of the service's PMAXTP data and their terms, the
  * content of the dialog of the view's strip (Nogat DEV-20.5), ending on a public
  * deployment with „Regulamin serwisu” (new tab; the welcome window's link to the
- * regulamin, DEV-15.7): GET /api/terms (Hydrograf.terms) gives them, the kit's
+ * regulamin, DEV-15.7): GET /api/v1/terms (Hydrograf.terms) gives them, the kit's
  * fillSources (js/nogat.js) writes them.
  */
 (function () {

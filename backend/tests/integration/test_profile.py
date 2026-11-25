@@ -68,10 +68,10 @@ def dem_settings(tmp_path):
 
 
 def _post(client, settings, coordinates=LINE, **extra):
-    """POST /api/terrain-profile of a LineString with the DEM of ``settings``."""
+    """POST /api/v1/terrain/profile of a LineString with the DEM of ``settings``."""
     with patch("api.endpoints.profile.get_settings", return_value=settings):
         return client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={
                 "geometry": {"type": "LineString", "coordinates": coordinates},
                 **extra,
@@ -80,14 +80,14 @@ def _post(client, settings, coordinates=LINE, **extra):
 
 
 class TestTerrainProfileEndpoint:
-    """Tests for POST /api/terrain-profile."""
+    """Tests for POST /api/v1/terrain/profile."""
 
     def test_distances_and_elevations_lengths_match(self, client, dem_settings):
         """Test that distances and elevations arrays have same length."""
         response = _post(client, dem_settings, n_samples=5)
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert len(data["distances_m"]) == len(data["elevations_m"])
         assert len(data["distances_m"]) == 5
 
@@ -95,13 +95,13 @@ class TestTerrainProfileEndpoint:
         """Test that total_length_m is positive for a real line."""
         response = _post(client, dem_settings, n_samples=5)
 
-        data = response.json()
+        data = response.json()["result"]
         assert data["total_length_m"] > 0
 
     def test_non_linestring_returns_400(self, client):
         """Test that non-LineString geometry returns 400."""
         response = client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={
                 "geometry": {
                     "type": "Point",
@@ -117,7 +117,7 @@ class TestTerrainProfileEndpoint:
     def test_too_few_coordinates_returns_400(self, client):
         """Test that LineString with < 2 coordinates returns 400."""
         response = client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={
                 "geometry": {
                     "type": "LineString",
@@ -143,7 +143,7 @@ class TestTerrainProfileEndpoint:
         """Test that missing DEM file returns 503."""
         with patch("os.path.exists", return_value=False):
             response = client.post(
-                "/api/terrain-profile",
+                "/api/v1/terrain/profile",
                 json={
                     "geometry": {
                         "type": "LineString",
@@ -160,7 +160,7 @@ class TestTerrainProfileEndpoint:
     def test_n_samples_too_low_returns_400(self, client):
         """Test that n_samples < 2 returns 400."""
         response = client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={
                 "geometry": {
                     "type": "LineString",
@@ -175,7 +175,7 @@ class TestTerrainProfileEndpoint:
     def test_n_samples_too_high_returns_400(self, client):
         """Test that n_samples > 1000 returns 400."""
         response = client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={
                 "geometry": {
                     "type": "LineString",
@@ -190,7 +190,7 @@ class TestTerrainProfileEndpoint:
     def test_missing_geometry_returns_400(self, client):
         """Test that missing geometry returns 400."""
         response = client.post(
-            "/api/terrain-profile",
+            "/api/v1/terrain/profile",
             json={"n_samples": 5},
         )
 
@@ -201,7 +201,7 @@ class TestTerrainProfileEndpoint:
         response = _post(client, dem_settings)
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert len(data["distances_m"]) == 100  # default n_samples
 
     def test_multi_point_linestring(self, client, dem_settings):
@@ -231,14 +231,14 @@ class TestTerrainProfileEndpoint:
         """Test that the first distance value is 0."""
         response = _post(client, dem_settings, n_samples=5)
 
-        data = response.json()
+        data = response.json()["result"]
         assert data["distances_m"][0] == 0.0
 
     def test_distances_monotonically_increasing(self, client, dem_settings):
         """Test that distances are monotonically increasing."""
         response = _post(client, dem_settings, n_samples=5)
 
-        data = response.json()
+        data = response.json()["result"]
         distances = data["distances_m"]
         for i in range(1, len(distances)):
             assert distances[i] > distances[i - 1]
@@ -247,7 +247,7 @@ class TestTerrainProfileEndpoint:
         """503 error must not contain server filesystem paths (CR8)."""
         with patch("os.path.exists", return_value=False):
             response = client.post(
-                "/api/terrain-profile",
+                "/api/v1/terrain/profile",
                 json={
                     "geometry": {
                         "type": "LineString",
@@ -290,7 +290,7 @@ class TestTerrainProfileDemSamples:
         response = _post(client, settings, coordinates=coords, n_samples=n_samples)
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         gaps = [i == 30 or i >= self.CELLS for i in range(n_samples)]
         assert data["dem_gaps"] == gaps
         assert data["elevations_m"] == [
@@ -299,7 +299,7 @@ class TestTerrainProfileDemSamples:
 
 
 class TestTerrainProfileWaterLevels:
-    """Water levels of analysis results in POST /api/terrain-profile."""
+    """Water levels of analysis results in POST /api/v1/terrain/profile."""
 
     X0, Y_TOP, CELL, NODATA = 500000.0, 600000.0, 5.0, -9999.0
 
@@ -359,7 +359,7 @@ class TestTerrainProfileWaterLevels:
         ]
         with patch("api.endpoints.profile.get_settings", return_value=settings):
             return client.post(
-                "/api/terrain-profile",
+                "/api/v1/terrain/profile",
                 json={
                     "geometry": {"type": "LineString", "coordinates": coords},
                     "n_samples": 4,
@@ -372,14 +372,16 @@ class TestTerrainProfileWaterLevels:
         response = self._post(client, settings, result_ids=["sfincs", "unknown"])
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert data["elevations_m"] == [100.0, 100.0, 100.0, 0.0]
         assert data["water_levels"] == [
             {"result_id": "sfincs", "levels_m": [101.5, None, 102.0, None]}
         ]
 
     def test_lines_of_the_results_whose_water_the_profile_shows(self, client, settings):
-        data = self._post(client, settings, result_ids=["sfincs", "unknown"]).json()
+        data = self._post(client, settings, result_ids=["sfincs", "unknown"]).json()[
+            "result"
+        ]
 
         # The results' lines, then G of the NMT of the elevations, no dates known
         assert (data["attribution"], data["terms_notice"]) == (
@@ -388,7 +390,7 @@ class TestTerrainProfileWaterLevels:
         )
 
     def test_without_water_levels_only_the_nmt_line(self, client, settings):
-        data = self._post(client, settings).json()
+        data = self._post(client, settings).json()["result"]
 
         assert (data["attribution"], data["terms_notice"]) == ([ELEVATION_LINE], [])
 
@@ -399,7 +401,7 @@ class TestTerrainProfileWaterLevels:
         response = self._post(client, settings)
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert data["dem_gaps"] == [False, False, True, False]
         assert data["elevations_m"] == [0.0, 12.5, 0.0, 12.5]
 

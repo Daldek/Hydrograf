@@ -1,4 +1,4 @@
-"""Integration tests for GET /api/identify-point (offline).
+"""Integration tests for GET /api/v1/point/identify (offline).
 
 Rasters, the results manifest and the water bodies file are synthetic files; the
 answers of the PostGIS queries are stubbed (their SQL runs in
@@ -205,7 +205,7 @@ def _get(client, settings, col=0, headers=None, **extra):
     lon, lat = _cell(col)
     with patch("api.endpoints.identify.get_settings", return_value=settings):
         return client.get(
-            "/api/identify-point",
+            "/api/v1/point/identify",
             params={"latitude": lat, "longitude": lon, **extra},
             headers=headers or {},
         )
@@ -216,7 +216,7 @@ class TestIdentifyPoint:
         response = _get(client, settings, result_ids=["sfincs", "other", "nope"])
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         lon, lat = _cell(0)
         easting, northing = TO_PL2000.transform(X0 + CELL / 2, Y_TOP - CELL / 2)
         assert data["coordinates"] == {
@@ -263,16 +263,18 @@ class TestIdentifyPoint:
         response = _get(client, settings, col=col, result_ids=["sfincs"])
 
         assert response.status_code == 200
-        assert response.json()["water"] == [water]
+        assert response.json()["result"]["water"] == [water]
 
     def test_no_water_without_result_ids(self, client, settings, database):
-        assert _get(client, settings).json()["water"] == []
+        assert _get(client, settings).json()["result"]["water"] == []
 
     def test_lines_of_the_results_whose_water_the_card_shows(
         self, client, settings, database
     ):
         # 'other' does not hold the point, 'nope' is not in the manifest
-        data = _get(client, settings, result_ids=["sfincs", "other", "nope"]).json()
+        data = _get(client, settings, result_ids=["sfincs", "other", "nope"]).json()[
+            "result"
+        ]
 
         # The results' lines first, then G and SG of the members (DEV-20.4)
         assert data["attribution"][:3] == list(PMAXTP.attribution)
@@ -282,7 +284,7 @@ class TestIdentifyPoint:
     def test_without_water_of_a_result_only_the_data_lines(
         self, client, settings, database
     ):
-        data = _get(client, settings).json()
+        data = _get(client, settings).json()["result"]
 
         assert data["attribution"][0].startswith(
             "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, NMT"
@@ -301,7 +303,7 @@ class TestIdentifyPoint:
 
         response = _get(client, settings, **extra)
 
-        assert response.json()["subcatchment"]["threshold_m2"] == used
+        assert response.json()["result"]["subcatchment"]["threshold_m2"] == used
         assert database["subcatchment_at"].call_args.args[3] == used
         # The main channel is read on the same network
         assert database["main_channel_at"].call_args.args[1:] == (
@@ -316,7 +318,7 @@ class TestIdentifyPoint:
         response = _get(client, settings, col=1)
 
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["result"]
         assert data["elevation_m"] == 100.0
         for member in (
             "stream",
@@ -379,7 +381,7 @@ class TestIdentifyPoint:
         ids=["latitude-range", "latitude-missing", "threshold", "empty-id", "21-ids"],
     )
     def test_invalid_query_is_400(self, client, settings, database, params, pointer):
-        response = client.get("/api/identify-point", params=params)
+        response = client.get("/api/v1/point/identify", params=params)
 
         assert response.status_code == 400
         assert response.headers["content-type"] == "application/problem+json"
@@ -390,7 +392,7 @@ class TestIdentifyPoint:
 
     def test_post_is_405(self, client):
         response = client.post(
-            "/api/identify-point", json={"latitude": 51.0, "longitude": 16.0}
+            "/api/v1/point/identify", json={"latitude": 51.0, "longitude": 16.0}
         )
 
         assert response.status_code == 405

@@ -20,7 +20,7 @@
     /**
      * Send a request below the admin API (`path` such as "resources").
      *
-     * @param {string} path - the route below /api/admin/
+     * @param {string} path - the route below /api/v1/admin/
      * @param {RequestInit} [init] - what fetch takes; a `json` member is sent as the body
      * @returns {Promise<Response>} the successful answer
      * @throws {Error} with a Polish message and the HTTP `status` (0 without an answer);
