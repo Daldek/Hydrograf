@@ -1,5 +1,5 @@
 """
-„Zgłoś uwagę”, POST /api/feedback (Nogat DEV-15.12, ADR-084).
+„Zgłoś uwagę”, POST /api/v1/feedback (Nogat DEV-15.12, ADR-084).
 
 A report stores its text and the context of the view with the server's app version,
 and nothing that names its sender: a contact or another member is refused, and the
@@ -48,7 +48,7 @@ def _stored(db):
 class TestSubmitFeedback:
     def test_report_stores_its_text_and_context_with_the_app_version(self, client, db):
         response = client.post(
-            "/api/feedback",
+            "/api/v1/feedback",
             json={"message": "Nie działa hydrogram", "context": CONTEXT},
             headers={"User-Agent": "TestBrowser/1.0"},
         )
@@ -67,7 +67,7 @@ class TestSubmitFeedback:
 
     def test_station_and_parameters_may_be_left_out(self, client, db):
         response = client.post(
-            "/api/feedback", json={"message": "x", "context": {"view": "browse"}}
+            "/api/v1/feedback", json={"message": "x", "context": {"view": "browse"}}
         )
 
         assert response.status_code == 200
@@ -84,7 +84,7 @@ class TestSubmitFeedback:
     )
     def test_any_other_member_is_refused(self, client, db, member):
         response = client.post(
-            "/api/feedback",
+            "/api/v1/feedback",
             json={"message": "x", "context": CONTEXT, member: "jan@example.com"},
             headers={"Accept-Language": "pl"},
         )
@@ -100,7 +100,7 @@ class TestSubmitFeedback:
         context = {**CONTEXT, "contact": "jan@example.com"}
 
         response = client.post(
-            "/api/feedback", json={"message": "x", "context": context}
+            "/api/v1/feedback", json={"message": "x", "context": context}
         )
 
         assert response.status_code == 400
@@ -108,7 +108,7 @@ class TestSubmitFeedback:
         db.execute.assert_not_called()
 
     def test_report_without_a_context_is_refused(self, client, db):
-        response = client.post("/api/feedback", json={"message": "x"})
+        response = client.post("/api/v1/feedback", json={"message": "x"})
 
         assert response.status_code == 400
         assert response.json()["errors"][0]["pointer"] == "/body/context"
@@ -117,7 +117,7 @@ class TestSubmitFeedback:
         context = {**CONTEXT, "parameters": {"profileLine": "x" * 100_000}}
 
         response = client.post(
-            "/api/feedback", json={"message": "x", "context": context}
+            "/api/v1/feedback", json={"message": "x", "context": context}
         )
 
         assert response.status_code == 400
@@ -126,7 +126,7 @@ class TestSubmitFeedback:
     @pytest.mark.parametrize("message", ["", "x" * 5001], ids=["empty", "too-long"])
     def test_message_outside_1_to_5000_characters_is_refused(self, client, db, message):
         response = client.post(
-            "/api/feedback", json={"message": message, "context": CONTEXT}
+            "/api/v1/feedback", json={"message": message, "context": CONTEXT}
         )
 
         assert response.status_code == 400
@@ -138,7 +138,7 @@ class TestSubmitFeedback:
         app.dependency_overrides[get_db] = lambda: session
         try:
             response = client.post(
-                "/api/feedback", json={"message": "x", "context": CONTEXT}
+                "/api/v1/feedback", json={"message": "x", "context": CONTEXT}
             )
         finally:
             app.dependency_overrides.clear()

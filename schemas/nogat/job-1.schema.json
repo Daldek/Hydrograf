@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Nogat/schemas/exchange/job-1.schema.json",
+  "title": "nogat-job/1",
+  "description": "A job of a server, the run of a command that can outlast a request (AGI-6.10, ECO-095, S6 of docs/plans/2026-11-24-latarnik.md): `POST /api/v1/jobs` with the body `$defs/start` answers `202`, `Location: jobs/<id>` and this document, which `GET /api/v1/jobs/<id>` answers until the job expires; `GET /api/v1/jobs/<id>/result` answers, once it has ended, what the command's synchronous route would. On Latarnik a job is the run of a flow, its tool `latarnik` and its command `flows <name>`. Projects copy this file like schemas/agent/ (ECO-050). Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
+  "type": "object",
+  "required": ["schema", "id", "tool", "command", "state", "created_at"],
+  "properties": {
+    "schema": {"const": "nogat-job/1"},
+    "id": {
+      "description": "At least 128 random bits in URL-safe characters (32 hexadecimal digits or 22 of base64url), the only way to the job: a server lists no other client's jobs",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22,64}$"
+    },
+    "tool": {
+      "description": "The project in lower case as `<project>` of the standard, `latarnik` for a flow",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "command": {
+      "description": "The catalog command run, `<group> <verb>`; on Latarnik `flows <name>`",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]* [a-z][a-z0-9-]*$"
+    },
+    "state": {
+      "description": "`queued` and `running` are active; `succeeded`, `partial` (some units failed, AGI-4.2), `failed`, `interrupted` (a restart of the server ended it) and `cancelled` are ended",
+      "enum": ["queued", "running", "succeeded", "partial", "failed", "interrupted", "cancelled"]
+    },
+    "progress": {
+      "description": "The units done and, where known, their total",
+      "type": "object",
+      "required": ["done"],
+      "properties": {
+        "done": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "created_at": {"$ref": "#/$defs/time"},
+    "started_at": {
+      "description": "Null until the job runs; a job cancelled while queued never starts",
+      "oneOf": [{"$ref": "#/$defs/time"}, {"type": "null"}]
+    },
+    "finished_at": {
+      "description": "Null until the job ends",
+      "oneOf": [{"$ref": "#/$defs/time"}, {"type": "null"}]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "queued"}}},
+      "then": {"properties": {"started_at": {"type": "null"}, "finished_at": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "running"}}},
+      "then": {
+        "required": ["started_at"],
+        "properties": {"started_at": {"type": "string"}, "finished_at": {"type": "null"}}
+      }
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["succeeded", "partial", "failed", "interrupted", "cancelled"]}}},
+      "then": {"required": ["finished_at"], "properties": {"finished_at": {"type": "string"}}}
+    }
+  ],
+  "$defs": {
+    "time": {
+      "description": "RFC 3339 with its offset",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "start": {
+      "description": "The body of `POST /api/v1/jobs`: the catalog command and its options, as its synchronous route takes them; the tool decides access from it as for that command (AGI-6.8)",
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": {"$ref": "#/properties/command"},
+        "options": {"type": "object", "default": {}}
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema": "nogat-job/1",
+      "id": "3f9c2a7be1d04c56a8e2b7f01d9c4e6a",
+      "tool": "hydrolog",
+      "command": "commands batch",
+      "state": "running",
+      "progress": {"done": 12, "total": 40},
+      "created_at": "2027-01-04T10:15:02+01:00",
+      "started_at": "2027-01-04T10:15:03+01:00",
+      "finished_at": null
+    },
+    {
+      "schema": "nogat-job/1",
+      "id": "Zl3q0Jb9QmKkq1nB7TQx2w",
+      "tool": "latarnik",
+      "command": "flows point-design-hydrograph",
+      "state": "succeeded",
+      "progress": {"done": 4, "total": 4},
+      "created_at": "2027-01-04T10:20:00Z",
+      "started_at": "2027-01-04T10:20:00Z",
+      "finished_at": "2027-01-04T10:22:41Z"
+    }
+  ]
+}

@@ -227,7 +227,7 @@ their host paths.
   (`refuse_shared_store`, §4.1): `download_bdot10k`, `download_sheets`, `fetch_landcover` and
   steps 2 and 5 of the bootstrap's private path, so `download_dem`, `download_landcover`,
   `prepare_area`, `analyze_watershed --download` and the CN fallback refuse too; the admin panel's
-  `POST /api/admin/bootstrap/start` answers `403` before it starts a process. Unset or empty, the
+  `POST /api/v1/admin/bootstrap/start` answers `403` before it starts a process. Unset or empty, the
   private store `<cache_dir>/kartograf` downloads as before.
 - **Input:** every Kartograf input of the bootstrap is a pin of the set, read whole and checked by
   size and SHA-256 before step 1; what the run needs (the sheets of the project's area, the

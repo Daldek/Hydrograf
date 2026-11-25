@@ -6,7 +6,7 @@ ecosystem (``schemas/nogat/handoff-1.schema.json``, a verbatim copy); its payloa
 Hydrolog's ``hydrolog-network/1``. A watershed is one ``subcatchment`` (``Z1``) with its
 ``watershed`` in the keys of Hydrolog's ``WatershedParameters``, flowing to the outlet
 ``OUT``: the network that Hydrolog's „Hydrogram zlewni” writes and opens. The design
-hydrograph of POST /api/generate-hydrograph adds the runoff and the rainfall the
+hydrograph of the command ``hydrograph generate`` adds the runoff and the rainfall the
 computation used and its result, which Hydrolog recomputes and shows beside its own.
 The values are the computation's own, never rounded, so the same version of Hydrolog
 gives the same result; the provenance names where the inputs came from, and
@@ -14,7 +14,7 @@ gives the same result; the provenance names where the inputs came from, and
 data require (the rainfall's, GUGiK's and ISRIC's: ``core.attribution``), which
 Hydrolog shows and carries on (Nogat DEV-20.6, ADR-083).
 
-A network of POST /api/delineate-network (``build_network_handoff``) is its
+A network of the command ``network delineate`` (``build_network_handoff``) is its
 subcatchments, reaches, nodes and outlet ``O`` in one payload, without rainfall, time
 step, result and the sections of the reaches, which the person gives in Hydrolog's
 „Sieć i trasowanie”; its nodes are junctions named by where they lie, ``J`` at a
@@ -51,8 +51,8 @@ PRODUCER: Final = "hydrograf"
 SUBCATCHMENT_ID: Final = "Z1"
 OUTLET_ID: Final = "OUT"
 
-# What computes the result of a hand-off (`result.command`)
-HYDROGRAPH_COMMAND: Final = "POST /api/generate-hydrograph"
+# What computes the result of a hand-off (`result.command`): the catalog command
+HYDROGRAPH_COMMAND: Final = "hydrograph generate"
 
 # The method of fetch_pmaxtp (its default) that filled precipitation_data
 PMAXTP_METHOD: Final = "POT"
@@ -386,7 +386,7 @@ def hydrograph_result(
     Returns
     -------
     dict[str, Any]
-        The endpoint that computed it, Hydrolog with its version and the versions of
+        The command that computed it, Hydrolog with its version and the versions of
         its formulas, and the three values.
     """
     return {

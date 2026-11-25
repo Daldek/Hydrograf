@@ -82,7 +82,7 @@ Obserwator to biblioteka Python do:
 │                    │                                                │
 │                    ▼                                                │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  Endpoint: POST /api/generate-hydrograph                    │   │
+│  │  Endpoint: POST /api/v1/jobs (hydrograph generate)          │   │
 │  │  → Hietogram → Hydrolog → Hydrogram                        │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
@@ -125,7 +125,7 @@ from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml`.
 | `scripts/analyze_watershed.py` | `from obserwator import fetch_pmaxtp` | Skrypt CLI — fetch opadu dla pojedynczego punktu |
 | `core/precipitation.py` | (pośrednio, operuje na tabeli `precipitation_data`) | Validation, the watershed mean by Thiessen polygons, IDW at a point without a boundary |
 | `api/endpoints/hydrograph.py` | (pośrednio, przez `areal_depth()` / `point_depth()`) | Endpoint generowania hydrogramu |
-| `api/endpoints/hydrograph.py` (`GET /api/scenarios`) | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
+| `api/endpoints/hydrograph.py` (`GET /api/v1/hydrograph/scenarios`) | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
 
 ---
 
@@ -180,7 +180,7 @@ result.data.rb   # Błąd estymacji
 
 ## 7. API endpoints
 
-### 7.1 `POST /api/generate-hydrograph`
+### 7.1 The job `hydrograph generate` (`POST /api/v1/jobs`)
 
 Wewnętrznie korzysta z danych opadowych:
 1. The Thiessen cells of the watershed (`pmaxtp_grid` of the delineation, or computed from the boundary on the full path) → `areal_depth(cells, duration, probability)`; without a boundary `point_depth()` (IDW at the point)
@@ -197,7 +197,7 @@ the address of the PMAXTP page, the note that the data were processed and the mo
 the project, then the link to the PMAXTP terms (Nogat ECO-065: linked, never summarised). The response has them in `attribution` and `terms_notice`, from
 `backend/core/attribution.py`.
 
-### 7.2 `GET /api/scenarios`
+### 7.2 `GET /api/v1/hydrograph/scenarios`
 
 Zwraca dostępne kombinacje parametrów:
 - Lista duracji

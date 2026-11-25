@@ -8,22 +8,25 @@ point places none”:
   the closing section on the main river above the outlet, a point on T2 two cells
   above its mouth (within 50 m of the confluence, so the answer draws it into its
   node) and one three cells east of the main river; each request of the preview
-  (POST /api/delineate-network/preview) carries the place clicked, and once its
-  answer is shown every marker of ``describe()['points']`` stands at the place its
-  point snapped to under the id of its node, the network is drawn, and the panel
-  lists the points with their name fields and „Usuń”, a name naming the marker;
+  (POST /api/v1/network/preview, the command ``network preview``) carries the place
+  clicked, and once its answer is shown every marker of ``describe()['points']``
+  stands at the place its point snapped to under the id of its node, the network is
+  drawn, and the panel lists the points with their name fields and „Usuń”, a name
+  naming the marker;
 * dragged: the mouse drags a marker, found by its title as a pointer shows it, to a
   cell off the main river; the next preview carries the place it was dropped at, and
   the marker moves on to where that place snapped;
 * a click on the label of an element (the labels name the elements on the map)
   selects it in the panel's tree and places no point; a click on a point's marker
-  places no point either.
+  places no point either: the page sends no request of the network, neither its
+  preview nor the job of its characteristics.
 """
 
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import Locator, Page, Response, expect
@@ -43,6 +46,8 @@ SNAPPED_TOLERANCE_DEG = 1e-7
 SAME_PLACE_DEG = 1e-6
 PENDING = "Podgląd sieci…"
 TREE = "Drzewo sieci od przekroju zamykającego w górę"
+# The network's requests: its preview and the job of its characteristics
+NETWORK_REQUESTS = r"/api/v1/(network/|jobs)"
 
 Place = tuple[float, float]
 
@@ -86,8 +91,9 @@ class Click:
 
 
 def is_preview(response: Response) -> bool:
-    return response.request.method == "POST" and response.url.endswith(
-        "/api/delineate-network/preview"
+    return (
+        response.request.method == "POST"
+        and urlsplit(response.url).path == "/api/v1/network/preview"
     )
 
 
@@ -128,7 +134,7 @@ def preview_after(tab: Tab, action: Callable[[], None]) -> Preview:
     expect(page.get_by_text(PENDING, exact=True)).to_be_hidden()
     body = response.request.post_data_json
     assert isinstance(body, dict), body
-    return Preview(body, response.json())
+    return Preview(body, response.json()["result"])
 
 
 def place_at(tab: Tab, cell: tuple[int, int]) -> Click:
@@ -272,7 +278,7 @@ def test_network_label_selects_its_element_and_places_no_point(tab: Tab) -> None
         page.get_by_role("heading", name=re.compile(rf"^{element} · "))
     ).to_be_visible()
     tab.settle()
-    assert tab.sent_since(mark, r"/api/delineate-network") == []
+    assert tab.sent_since(mark, NETWORK_REQUESTS) == []
     assert_markers_snapped(page, t2.preview)
 
 
@@ -284,5 +290,5 @@ def test_network_click_on_a_point_places_no_point(tab: Tab) -> None:
     point_marker(page, t2.point["node"]).click()
 
     tab.settle()
-    assert tab.sent_since(mark, r"/api/delineate-network") == []
+    assert tab.sent_since(mark, NETWORK_REQUESTS) == []
     assert_markers_snapped(page, t2.preview)

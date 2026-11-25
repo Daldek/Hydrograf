@@ -10,7 +10,7 @@ the page offers (``basemaps``), may serve copies of them from its own addresses
 of HYDROGRAF_BASEMAPS and NOGAT_BASEMAPS, then the keys of ``[hydrograf]`` before those
 of ``[nogat]`` in the ``nogat.toml`` of NOGAT_CONFIG (DEV-18.1).
 
-The page gets the entries of ``deployment_basemaps`` from ``GET /api/basemaps`` and
+The page gets the entries of ``deployment_basemaps`` from ``GET /api/v1/basemaps`` and
 draws them with the kit's ``nogat-basemaps.js``; the regulamin keeps the blocks those
 entries name (``basemap_blocks``, ``core.terms``). A wrong setting raises
 ``InvalidSettingError`` naming the option, the value and where it was read, and the API

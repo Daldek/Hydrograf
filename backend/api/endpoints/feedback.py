@@ -4,7 +4,7 @@
 A report is its text and the context the interface adds itself (the view, the station,
 the view's parameters) with the app version the server adds; never a contact, an IP
 address or the User-Agent. The operator lists, marks and deletes the reports at
-`/api/admin/feedback[/{id}]` (X-Admin-Key, and Cloudflare Access in front of it) and
+`/api/v1/admin/feedback[/{id}]` (X-Admin-Key, and Cloudflare Access in front of it) and
 deletes each once handled.
 
 Reports sent with the form before ADR-084 keep what they were sent with (contact, page

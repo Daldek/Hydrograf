@@ -6,6 +6,8 @@
  * The number fields are checked against the limits of the API before a
  * request; an invalid field (or a server error at it) shows its message under
  * it, and the result of an earlier calculation is hidden until it is fixed.
+ * The hydrograph is a job of the API (`hydrograph generate`): a newer request
+ * and another or no watershed (cancel, js/app.js) cancel the job on its way.
  * The lines of the rainfall's provider that a result carries (PMAXTP) go to the
  * view's strip while the result is shown (attribution.js), and Hydrolog's
  * warnings about it (`notices`) stand under the section Hydrogram.
@@ -18,13 +20,15 @@
     var _debounceTimer = null;
     var _DEBOUNCE_MS = 300;
     var _requestId = 0;
+    var _run = null;    // AbortController of the job of the latest request on its way
 
     // ── Number fields ──────────────────────────────────────────────────
 
     // The limits of the API (HydrographRequest): gt is an exclusive lower
     // bound, min and max are inclusive. `key` is the request field, which is
-    // also the JSON Pointer /body/<key> of a server validation error; `part`
-    // is the element whose choice (hydrographParts) puts the field in use.
+    // also the JSON Pointer /body/options/<key> of a server validation error (the
+    // options of the job); `part` is the element whose choice (hydrographParts)
+    // puts the field in use.
     var NUMBER_FIELDS = [
         { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
@@ -178,7 +182,7 @@
 
     /**
      * Hydrolog's warnings about the hydrograph shown, under the section
-     * Hydrogram: the `notices` of the response, worded in Polish by the API
+     * Hydrogram: the `notices` of the answer, worded in Polish by the API
      * (e.g. a catchment outside the typical range of the unit hydrograph);
      * [] takes them away.
      */
@@ -222,7 +226,7 @@
         var fields = [];
         var other = [];
         errors.forEach(function (e) {
-            var field = FIELD_BY_KEY[String(e.pointer || '').replace(/^\/body\//, '')];
+            var field = FIELD_BY_KEY[String(e.pointer || '').replace(/^\/body\/options\//, '')];
             if (field) {
                 setFieldError(field, e.message);
                 fields.push(fieldName(field));
@@ -237,7 +241,7 @@
 
     async function initScenarioForm() {
         try {
-            var scenarios = await Hydrograf.api.getScenarios();
+            var scenarios = (await Hydrograf.api.getScenarios()).result;
 
             var durSelect = document.getElementById('hydro-duration');
             var probSelect = document.getElementById('hydro-probability');
@@ -278,6 +282,28 @@
         _debounceTimer = setTimeout(generateHydrograph, _DEBOUNCE_MS);
     }
 
+    /** Cancel the job of the latest request, if it is on its way. */
+    function abortRun() {
+        if (_run) {
+            _run.abort();
+            _run = null;
+        }
+    }
+
+    /**
+     * Drop the hydrograph due or on its way: the watershed it is for was replaced or
+     * cleared. Its job is cancelled, so that it no longer counts against the two jobs
+     * a client may run, and a late answer is ignored.
+     */
+    function cancel() {
+        if (_debounceTimer) {
+            clearTimeout(_debounceTimer);
+            _debounceTimer = null;
+        }
+        _requestId++;
+        abortRun();
+    }
+
     async function generateHydrograph() {
         var data = Hydrograf.app.getCurrentWatershed();
         if (!data) return;
@@ -297,6 +323,8 @@
         var fields = readNumberFields(c, rain.active);
 
         var myId = ++_requestId;
+        // A newer request replaces the one on its way
+        abortRun();
         var invalid = fields.invalid.map(fieldName);
         if (invalid.length || !rain.valid || !morph.valid) {
             hideResults();
@@ -311,6 +339,8 @@
         var duration = null;
         var probability = null;
         var values = fields.values;
+        var run = new AbortController();
+        _run = run;
 
         try {
             var opts = {
@@ -355,11 +385,12 @@
                 opts.snyder_cp = values.snyder_cp;
             }
 
-            var result = await Hydrograf.api.generateHydrograph(
-                click.lat, click.lng, duration, probability, opts
+            var answer = await Hydrograf.api.generateHydrograph(
+                click.lat, click.lng, duration, probability, opts, run.signal
             );
 
             if (myId !== _requestId) return;
+            var result = answer.result;
 
             showCalcErrors('', '');
             document.getElementById('hietogram-results').classList.remove('d-none');
@@ -419,7 +450,7 @@
             displayMetadata(result.metadata);
             // Under the sections, which hide with another watershed: only while the
             // watershed of the result is the current one
-            showNotices(Hydrograf.app.getCurrentWatershed() === data ? result.notices || [] : []);
+            showNotices(Hydrograf.app.getCurrentWatershed() === data ? answer.notices : []);
             if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
             if (myId !== _requestId) return;
@@ -427,6 +458,8 @@
             hideResults();
             var message = serverErrorMessage(err);
             showCalcErrors(message, message);
+        } finally {
+            if (_run === run) _run = null;
         }
     }
 
@@ -627,6 +660,7 @@
     window.Hydrograf.hydrograph = {
         init: init,
         generateHydrograph: generateHydrograph,
+        cancel: cancel,
         showNotices: showNotices,
     };
 })();

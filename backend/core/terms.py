@@ -5,9 +5,9 @@ A deployment that anyone uses without signing in names its operator in the table
 the kit's template ``nogat-terms.html`` (Nogat's GUI kit, copied byte for byte into
 ``frontend/nogat/``) once per process and serves it at ``/regulamin.html``; the front
 end links it at the foot of the map's rail, in the welcome window, under the guide's
-table of contents and in the app menu (``GET /api/terms``; ECO-070). Without the table,
-with a value missing, or with the template missing, there is neither page nor link: a
-local run is no service offered to others.
+table of contents and in the app menu (``GET /api/v1/terms``; ECO-070). Without the
+table, with a value missing, or with the template missing, there is neither page nor
+link: a local run is no service offered to others.
 
 Filling follows Nogat's ``design/README.md`` (its reference is ``fill`` of
 ``scripts/terms.py``): first the blocks, then the fields. The blocks kept are
@@ -72,6 +72,8 @@ _BLOCK = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# The version the regulamin carries at its start („Wersja 1.1”, Nogat's design README)
+_VERSION = re.compile(r"Wersja (\d+\.\d+)")
 
 
 @dataclass(frozen=True)
@@ -84,10 +86,14 @@ class Terms:
         The HTML page served at ``URL``.
     operator_email : str
         The operator's e-mail, which the form „Zgłoś uwagę” names (DEV-15.12).
+    version : str
+        The version the regulamin carries („Wersja 1.1”), which ``GET
+        /api/v1/server`` names (``nogat-server/1``, AGI-6.7).
     """
 
     page: str
     operator_email: str
+    version: str
 
 
 def fill(template: str, values: Mapping[str, str], listed: Iterable[str]) -> str:
@@ -175,7 +181,8 @@ def build_terms(settings: Settings, kit_dir: Path = KIT_DIR) -> Terms | None:
     Terms or None
         None without ``[nogat.operator]`` (a local run), and when the regulamin cannot
         be filled: a value missing or invalid, no address of Hydrograf in the table
-        ``gui``, no template. The cause is logged; values never are.
+        ``gui``, no template or one that names no version. The cause is logged; values
+        never are.
 
     Raises
     ------
@@ -196,12 +203,15 @@ def build_terms(settings: Settings, kit_dir: Path = KIT_DIR) -> Terms | None:
             "service_url": deployment_gui(settings).get("hydrograf", ""),
         }
         template = (kit_dir / TEMPLATE).read_text(encoding="utf-8")
+        version = _VERSION.search(template)
+        if version is None:
+            raise ValueError("the regulamin names no version")
         page = fill(template, values, kept_blocks(settings, kit_dir))
     except (OSError, TypeError, ValueError) as error:
         logger.warning("The regulamin cannot be filled, none is served: %s", error)
         return None
     logger.info("The regulamin is served at %s", URL)
-    return Terms(page=page, operator_email=values["operator_email"])
+    return Terms(page=page, operator_email=values["operator_email"], version=version[1])
 
 
 @cache

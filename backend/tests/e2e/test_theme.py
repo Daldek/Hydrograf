@@ -39,7 +39,7 @@ TOKENS = ("--tool-hydrograf", "--info", "--surface", "--surface-2")
 # On the main river between T2's mouth (row 123) and T1's (row 159): its watershed
 # ends at T1's mouth, north of the main river's lower course
 CLICK_CELL = (140, MAIN_RIVER_COL)
-DELINEATION = re.compile(r"/api/delineate-watershed(\?|$)")
+DELINEATION = re.compile(r"/api/v1/watershed/delineate\?")
 # The boundary's vertex nearest to this cell lies on the divide between T1 (column
 # 49) and the main river, far from every stream and flow path
 DIVIDE_CELL = (110, 60)
@@ -125,7 +125,7 @@ def test_theme_switch_repaints_boundary_and_stream(tab: Tab) -> None:
     page.wait_for_function(
         "() => Hydrograf.map.describe().overlays.some((o) => o.id === 'watershed')"
     )
-    boundary = answered.value.json()["watershed"]["boundary_geojson"]
+    boundary = answered.value.json()["result"]["watershed"]["boundary_geojson"]
     wait_view(page)
     zoom_out(page)
     wait_view(page)

@@ -1,5 +1,5 @@
 """
-The admin API of Hydrograf under /api/admin/ (Nogat DEV-15.13, ADR-086).
+The admin API of Hydrograf under /api/v1/admin/ (Nogat DEV-15.13, ADR-086).
 
 The core routes of every GUI's panel, `status` and `stats` (the reports are in
 `feedback.py`), then the routes of Hydrograf's own sections of the panel: resources,
@@ -174,7 +174,7 @@ def _sum_mb(sizes: Iterable[float | None]) -> float | None:
 
 
 # ---------------------------------------------------------------------------
-# Status: GET /api/admin/status of Nogat DEV-15.13, the view „Stan” of the panel
+# Status: GET /api/v1/admin/status of Nogat DEV-15.13, the view „Stan” of the panel
 # ---------------------------------------------------------------------------
 class DiskSpace(BaseModel):
     """The file system of the data directory; null where it cannot be read."""
@@ -306,7 +306,7 @@ def _grouped(number: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Statistics: GET /api/admin/stats of Nogat DEV-15.13, the view „Statystyki”
+# Statistics: GET /api/v1/admin/stats of Nogat DEV-15.13, the view „Statystyki”
 # ---------------------------------------------------------------------------
 # Days of the period when the request gives no `from`, the last one included
 STATS_DAYS = 30

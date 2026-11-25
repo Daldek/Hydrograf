@@ -1,5 +1,5 @@
 /**
- * Hydrograf admin panel: the section „Zasoby” (GET /api/admin/resources).
+ * Hydrograf admin panel: the section „Zasoby” (GET /api/v1/admin/resources).
  *
  * The API process (CPU, memory, threads), the database (size, connection pool, rows
  * of the tables), the catchment graph in memory and the size of the data on disk; a
@@ -14,7 +14,7 @@
     var status = admin.lines('resources-error', 'resources-note');
     var ticket = 0;
 
-    // The data directories of GET /api/admin/resources `disk`, in the order shown
+    // The data directories of GET /api/v1/admin/resources `disk`, in the order shown
     var DISK = [
         ['nmt_data_mb', 'NMT i rastry pochodne'],
         ['frontend_data_mb', 'Dane warstw mapy'],

@@ -21,7 +21,7 @@ def _noop_auth():
 def app():
     test_app = FastAPI()
     install_error_handlers(test_app)
-    test_app.include_router(router, prefix="/api/admin")
+    test_app.include_router(router, prefix="/api/v1/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
     test_app.dependency_overrides.clear()
@@ -73,7 +73,7 @@ class TestCleanupComponents:
 
 
 class TestCleanupEstimate:
-    """Tests for GET /api/admin/cleanup/estimate."""
+    """Tests for GET /api/v1/admin/cleanup/estimate."""
 
     @patch("api.endpoints.admin._DIR_SIZES", _sizes_of(lambda path: 10.0))
     def test_estimate_returns_all_and_cache(self, app):
@@ -82,7 +82,7 @@ class TestCleanupEstimate:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/cleanup/estimate")
+        response = client.get("/api/v1/admin/cleanup/estimate")
         assert response.status_code == 200
 
         data = response.json()
@@ -97,7 +97,7 @@ class TestCleanupEstimate:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         client = TestClient(app)
-        response = client.get("/api/admin/cleanup/estimate")
+        response = client.get("/api/v1/admin/cleanup/estimate")
         data = response.json()
 
         sizes = {target["key"]: target["size_mb"] for target in data["targets"]}
@@ -110,14 +110,14 @@ class TestCleanupEstimate:
     def test_a_target_with_a_directory_still_walked_has_no_size(self, app):
         app.dependency_overrides[get_db] = lambda: _make_mock_db()
 
-        data = TestClient(app).get("/api/admin/cleanup/estimate").json()
+        data = TestClient(app).get("/api/v1/admin/cleanup/estimate").json()
 
         sizes = {target["key"]: target["size_mb"] for target in data["targets"]}
         assert sizes == {"all": None, "cache": 5.5}
 
 
 class TestCleanupExecute:
-    """Tests for POST /api/admin/cleanup."""
+    """Tests for POST /api/v1/admin/cleanup."""
 
     def test_unknown_target_returns_400(self, app):
         """Unknown target key returns 400."""
@@ -126,7 +126,7 @@ class TestCleanupExecute:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/cleanup",
+            "/api/v1/admin/cleanup",
             json={"targets": ["nonexistent"]},
         )
         assert response.status_code == 400
@@ -140,7 +140,7 @@ class TestCleanupExecute:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/cleanup",
+            "/api/v1/admin/cleanup",
             json={"targets": ["all"]},
         )
         assert response.status_code == 200
@@ -164,7 +164,7 @@ class TestCleanupExecute:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/cleanup",
+            "/api/v1/admin/cleanup",
             json={"targets": ["cache"]},
         )
         assert response.status_code == 200
@@ -182,7 +182,7 @@ class TestCleanupExecute:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/cleanup",
+            "/api/v1/admin/cleanup",
             json={"targets": ["all"]},
         )
         assert response.status_code == 200

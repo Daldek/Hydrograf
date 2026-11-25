@@ -24,15 +24,16 @@
     <script type="module" src="../nogat/nogat-admin.js?v=19f3abe211"></script>
     <script defer src="../vendor/leaflet-1.9.4/leaflet.js?v=db49d009c8"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="></script>
-    <script defer src="admin.js?v=2b3407804e"></script>
-    <script defer src="resources.js?v=2b0f9713ab"></script>
-    <script defer src="processing.js?v=ee40a3056a"></script>
+    <script defer src="admin.js?v=8533ca9cec"></script>
+    <script defer src="resources.js?v=18d1d3fc19"></script>
+    <script defer src="processing.js?v=c7c3ea0f45"></script>
     <script defer src="cleanup.js?v=35f6e70fe6"></script>
     <script defer src="boundaries.js?v=e571d67c58"></script>
 </head>
 <body>
-<!-- „Zgłoszenia”, „Statystyki” and „Stan” are the kit's; Hydrograf's sections follow -->
-<nogat-admin app="Hydrograf" project="hydrograf" back="../" marks="../nogat/marks/">
+<!-- „Zgłoszenia”, „Statystyki” and „Stan” are the kit's; Hydrograf's sections follow. The
+     admin API is /api/v1/admin/ (`api`), for the kit's views and adminFetch alike -->
+<nogat-admin app="Hydrograf" project="hydrograf" back="../" api="../api/v1/admin/" marks="../nogat/marks/">
 
     <section class="admin-section" data-admin-section="resources" data-label="Zasoby">
         <div class="nogat-admin-head">

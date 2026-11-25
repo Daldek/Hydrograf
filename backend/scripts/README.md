@@ -1094,10 +1094,11 @@ ORDER BY threshold_m2;
    ~85 B per cell.
 2. **Coordinate system**: only EPSG:2180 (PL-1992) is processed; sheets in PUWG 2000 are reprojected
    to it before the mosaic is built.
-3. **`analyze_watershed.py` delineates sub-catchments, not cells**: step 3 runs the code of
-   `POST /api/delineate-watershed` (precomputed mode) on the catchment graph of the database, so the
-   catchments of `--threshold-m2` (default 10000, one of the thresholds of `process_dem`) must be
-   loaded (`--process` or the bootstrap) and the boundary is the merge of whole sub-catchments, not a
+3. **`analyze_watershed.py` delineates sub-catchments, not cells**: step 3 runs the command
+   `watershed delineate` (`GET /api/v1/watershed/delineate`, precomputed mode) on the catchment
+   graph of the database, so the catchments of `--threshold-m2` (default 10000, one of the
+   thresholds of `process_dem`) must be loaded (`--process` or the bootstrap) and the boundary is
+   the merge of whole sub-catchments, not a
    polygon around single cells. The cell layer of `--save-qgis` and the cell elevation histogram of
    the figures are gone (the hypsometric curve replaces the histogram). Tests:
    `tests/unit/test_analyze_watershed_delineate.py` (step 3 on a synthetic graph, offline) and

@@ -5,7 +5,8 @@ the kit's SVG chart (``nogat/nogat-chart.js``). A delineated watershed (CLICK_CE
 ``test_watershed``) draws the hypsometric curve and one bar per class of its land cover
 and soil groups; an own rainfall series of twelve 5-minute steps (``RAIN_MM``, a CSV
 given to „Importuj CSV” of „Własna seria”) draws the hietogram and the hydrograph of
-POST /api/generate-hydrograph; a line of ``test_profile`` draws the terrain profile.
+the command ``hydrograph generate``, a job of the API (POST /api/v1/jobs, its result at
+GET /api/v1/jobs/<id>/result); a line of ``test_profile`` draws the terrain profile.
 
 The tests read what a person sees: the axes' tick labels (a time axis in minutes or
 hours, by its label), the bar under a zoomable chart (a lone „Przybliż” before a zoom;
@@ -30,6 +31,8 @@ from playwright.sync_api import CDPSession, FilePayload, Locator, Page, expect
 from tests.e2e.browser import (
     Tab,
     distance,
+    job_result,
+    job_started,
     open_map,
     pixels,
     screen_point,
@@ -49,7 +52,7 @@ from tests.e2e.test_profile import (
 )
 from tests.e2e.test_watershed import CLICK_CELL, DELINEATION, js_fixed, wait_for_overlay
 
-HYDROGRAPH = re.compile(r"/api/generate-hydrograph$")
+HYDROGRAPH = job_started("hydrograph generate")
 # The own rainfall series [mm per 5 min]: a storm of an hour peaking in its fifth step
 RAIN_MM = (1, 2, 4, 8, 12, 8, 4, 2, 1, 0.5, 0.5, 0.5)
 RAIN_CSV = ("\n".join(str(depth) for depth in RAIN_MM) + "\n").encode()
@@ -253,14 +256,17 @@ def open_section(page: Page, section_id: str) -> None:
 
 
 def delineate_watershed(tab: Tab) -> dict[str, Any]:
-    """Delineate CLICK_CELL's watershed by a click (a tap on a phone); the answer."""
+    """Delineate CLICK_CELL's watershed by a click (a tap on a phone); the result."""
     page = tab.page
     open_map(tab)
     page.get_by_role("radio", name="Wybierz zlewnię", exact=True).click()
     page.get_by_role("radio", name="Jedna zlewnia", exact=True).click()
     wait_view(page)
     x, y = screen_point(page, *tab.site.cell_lnglat(*CLICK_CELL))
-    with page.expect_response(DELINEATION) as answered:
+    with (
+        page.expect_response(HYDROGRAPH) as started,
+        page.expect_response(DELINEATION) as answered,
+    ):
         if is_phone(page):
             page.touchscreen.tap(x, y)
         else:
@@ -268,9 +274,11 @@ def delineate_watershed(tab: Tab) -> dict[str, Any]:
     response = answered.value
     assert response.ok, f"delineation failed: {response.status} {response.text()}"
     wait_for_overlay(page, "watershed")
-    # The PMAXTP hydrograph the page asks for next (the site has no PMAXTP data)
+    # The PMAXTP hydrograph the page asks for next, to its end (the site has no PMAXTP
+    # data)
+    job_result(page, started.value)
     tab.settle()
-    answer: dict[str, Any] = response.json()
+    answer: dict[str, Any] = response.json()["result"]
     return answer
 
 
@@ -280,13 +288,13 @@ def rain_hydrograph(tab: Tab) -> dict[str, Any]:
     open_section(page, "acc-hietogram")
     page.get_by_role("radio", name="Własna seria", exact=True).click()
     csv: FilePayload = {"name": "opad.csv", "mimeType": "text/csv", "buffer": RAIN_CSV}
-    with page.expect_response(HYDROGRAPH) as answered:
+    with page.expect_response(HYDROGRAPH) as started:
         page.set_input_files("#custom-rain-file", files=csv)
-    response = answered.value
+    response = job_result(page, started.value)
     assert response.ok, f"hydrograph failed: {response.status} {response.text()}"
     open_section(page, "acc-hydrograph")
     expect(chart(page, HYDROGRAPH_CHART)).to_be_visible()
-    answer: dict[str, Any] = response.json()
+    answer: dict[str, Any] = response.json()["result"]
     return answer
 
 

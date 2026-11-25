@@ -2,9 +2,9 @@
  * Hydrograf Identify module.
  *
  * Mode "Identyfikuj": a click on the map puts a marker there and asks the API
- * (GET /api/identify-point) what Hydrograf knows at the point: coordinates in
- * WGS84, PL-1992 and PL-2000, terrain elevation and slope, the water of the
- * analysis results shown on the map (as the terrain profile does), the nearest
+ * (`point identify`, GET /api/v1/point/identify) what Hydrograf knows at the point:
+ * coordinates in WGS84, PL-1992 and PL-2000, terrain elevation and slope, the water
+ * of the analysis results shown on the map (as the terrain profile does), the nearest
  * BDOT10k stream (up to 5 km, with its distance) and the water body, land cover
  * with its CN for AMC I, II and III, soil group, terrain depression and the
  * sub-catchment of the flow lines with the main channel at its end and the
@@ -391,9 +391,9 @@
         showLoading();
         keepMarkerVisible();
         var ids = shown.map(function (r) { return r.id; });
-        Hydrograf.api.identifyPoint(lat, lng, t, ids).then(function (data) {
+        Hydrograf.api.identifyPoint(lat, lng, t, ids).then(function (answer) {
             if (request !== _request) return;
-            render(data, shown);
+            render(answer.result, shown);
             keepMarkerVisible();
         }).catch(function (err) {
             if (request !== _request) return;

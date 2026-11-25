@@ -62,13 +62,13 @@ def mock_db_no_depressions():
 
 
 class TestDepressionsEndpoint:
-    """Tests for GET /api/depressions."""
+    """Tests for GET /api/v1/depressions/list."""
 
     def test_success_returns_200(self, client, mock_db_with_depressions):
         """Test successful request returns 200."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
+        response = client.get("/api/v1/depressions/list")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -79,8 +79,8 @@ class TestDepressionsEndpoint:
         """Test response is a valid GeoJSON FeatureCollection."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         assert data["type"] == "FeatureCollection"
         assert "features" in data
@@ -91,8 +91,8 @@ class TestDepressionsEndpoint:
         """Test correct number of features returned."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         assert len(data["features"]) == 3
         app.dependency_overrides.clear()
@@ -101,8 +101,8 @@ class TestDepressionsEndpoint:
         """Test each feature has correct GeoJSON structure."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         for feature in data["features"]:
             assert feature["type"] == "Feature"
@@ -114,8 +114,8 @@ class TestDepressionsEndpoint:
         """Test feature properties contain required fields."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         props = data["features"][0]["properties"]
         assert "id" in props
@@ -131,8 +131,8 @@ class TestDepressionsEndpoint:
         """Test empty result returns FeatureCollection with no features."""
         app.dependency_overrides[get_db] = lambda: mock_db_no_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         assert response.status_code == 200
         assert data["type"] == "FeatureCollection"
@@ -143,7 +143,7 @@ class TestDepressionsEndpoint:
         """Test min_volume query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?min_volume=100")
+        response = client.get("/api/v1/depressions/list?min_volume=100")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -152,7 +152,7 @@ class TestDepressionsEndpoint:
         """Test max_volume query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?max_volume=1000")
+        response = client.get("/api/v1/depressions/list?max_volume=1000")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -161,7 +161,7 @@ class TestDepressionsEndpoint:
         """Test min_area query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?min_area=10")
+        response = client.get("/api/v1/depressions/list?min_area=10")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -170,7 +170,7 @@ class TestDepressionsEndpoint:
         """Test max_area query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?max_area=500")
+        response = client.get("/api/v1/depressions/list?max_area=500")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
@@ -180,7 +180,8 @@ class TestDepressionsEndpoint:
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
         response = client.get(
-            "/api/depressions?min_volume=10&max_volume=1000&min_area=5&max_area=500"
+            "/api/v1/depressions/list"
+            "?min_volume=10&max_volume=1000&min_area=5&max_area=500"
         )
 
         assert response.status_code == 200
@@ -190,20 +191,20 @@ class TestDepressionsEndpoint:
         """Test bbox query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?bbox=20.9,51.9,21.1,52.1")
+        response = client.get("/api/v1/depressions/list?bbox=20.9,51.9,21.1,52.1")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()
 
     def test_negative_min_volume_returns_400(self, client):
         """Test that negative min_volume returns 400."""
-        response = client.get("/api/depressions?min_volume=-10")
+        response = client.get("/api/v1/depressions/list?min_volume=-10")
 
         assert response.status_code == 400
 
     def test_negative_min_area_returns_400(self, client):
         """Test that negative min_area returns 400."""
-        response = client.get("/api/depressions?min_area=-5")
+        response = client.get("/api/v1/depressions/list?min_area=-5")
 
         assert response.status_code == 400
 
@@ -211,8 +212,8 @@ class TestDepressionsEndpoint:
         """Test that property values are properly rounded."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         props = data["features"][0]["properties"]
         # volume_m3 rounded to 2 decimal places
@@ -227,8 +228,8 @@ class TestDepressionsEndpoint:
         """Test that features are ordered by volume descending (via SQL)."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions")
-        data = response.json()
+        response = client.get("/api/v1/depressions/list")
+        data = response.json()["result"]
 
         volumes = [f["properties"]["volume_m3"] for f in data["features"]]
         assert volumes == sorted(volumes, reverse=True)
@@ -240,7 +241,7 @@ class TestDepressionsEndpoint:
         """Test that invalid bbox format is silently ignored."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get("/api/depressions?bbox=invalid")
+        response = client.get("/api/v1/depressions/list?bbox=invalid")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()

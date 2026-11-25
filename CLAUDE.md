@@ -64,8 +64,13 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
 - Public service (ADR-084): the client's address never reaches the front end or any log,
   not even in a traceback (DEV-15.10, DEV-12.5); it lives only in the memory of
   `api/traffic.py`. `core/nogat_logging.py` is a copy of Nogat's module, never edited here.
-  The request limit and the daily totals are per process, so the API runs one uvicorn
-  process (no `--workers`); a change that needs more processes needs a shared store first.
+  The request limit, the daily totals and the jobs are per process, so the API runs one
+  uvicorn process (no `--workers`); a change that needs more processes needs a shared
+  store first.
+- The REST API is `/api/v1` from the command catalog `api/catalog.py` (ADR-091): a new
+  operation is a command there (its model, texts in English and Polish, examples, codes),
+  answered as the envelope of `api/envelope.py`; a command that can outlast a request is
+  `long` and runs only as a job. Only the map tiles stay outside it, at `/api/tiles/`.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session (DEV-17.3).
 
@@ -97,7 +102,8 @@ deployment steps: README "Deploy" and `docs/USAGE.md`.
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, errors.py, traffic.py, endpoints/, dependencies/
+├── api/                 # FastAPI: main.py, catalog.py, envelope.py, jobs.py, errors.py,
+│                        #   traffic.py, endpoints/, dependencies/
 ├── core/                # business logic, config, database, errors, messages, _errors
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
@@ -191,10 +197,4 @@ time) and Obserwator (PMAXTP precipitation) are runtime dependencies used as lib
   from the `nogat.toml` NOGAT_CONFIG names (`[nogat.operator]`, `[nogat] gui`; `state_dir`,
   `basemaps`, `basemap_mirrors`, `basemap_extra` of `[hydrograf]` or `[nogat]`); data
   through Kartograf in the pipeline scripts.
-- AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
-  `schema` member and no result envelope; the error document alone is
-  `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`
-  schemas are unused.
-- AGI-6.1, AGI-6.2: there is no command catalog; `operationId` is the route function name
-  and the operations document `400`, the problems of their route and `500`.
 - AGI-6.3: the gateway errors of nginx are not problem documents.

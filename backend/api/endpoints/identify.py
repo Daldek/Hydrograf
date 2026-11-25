@@ -1,5 +1,5 @@
 """
-Point identification endpoint.
+The command ``point identify`` (ADR-091).
 
 Everything Hydrograf knows at one point of the map, for the mode „Identyfikuj”
 of the interface: the coordinates in WGS84, PL-1992 and PL-2000, the terrain of
@@ -13,11 +13,10 @@ the answer is partial, each source that has nothing at the point gives null.
 """
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from api.envelope import Outcome
 from core.analysis_results import provider_lines, sample_water_levels
 from core.attribution import (
     DRAINAGE,
@@ -29,7 +28,6 @@ from core.attribution import (
 )
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2
-from core.database import get_db
 from core.errors import (
     HydrografError,
     InternalError,
@@ -65,16 +63,11 @@ from utils.geometry import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 
-@router.get("/identify-point", response_model=IdentifyPointResponse)
-def identify_point(
-    request: Annotated[IdentifyPointRequest, Query()],
-    db: Session = Depends(get_db),
-) -> IdentifyPointResponse:
+def identify_point(request: IdentifyPointRequest, db: Session) -> Outcome:
     """
-    Read what Hydrograf knows at one point of the map.
+    Read what Hydrograf knows at one point of the map: ``point identify``.
 
     Parameters
     ----------
@@ -83,14 +76,14 @@ def identify_point(
         network and the analysis results whose water is read (``result_ids``
         repeated, ``?result_ids=a&result_ids=b``)
     db : Session
-        Database session (injected by FastAPI)
+        Database session
 
     Returns
     -------
-    IdentifyPointResponse
-        Coordinates, terrain elevation and slope, water of the results, stream,
-        water body, land cover, soil group, depression, sub-catchment with its
-        main channel; null where a source has nothing at the point
+    Outcome
+        ``IdentifyPointResponse``: coordinates, terrain elevation and slope, water
+        of the results, stream, water body, land cover, soil group, depression,
+        sub-catchment with its main channel; null where a source has nothing
 
     Raises
     ------
@@ -167,34 +160,42 @@ def identify_point(
             ]
         )
 
-        return IdentifyPointResponse(
-            coordinates=PointCoordinates(
-                latitude=request.latitude,
-                longitude=request.longitude,
-                easting_m=round(x, 2),
-                northing_m=round(y, 2),
-                pl2000=PointPl2000(
-                    zone=zone,
-                    epsg=PL2000_EPSG_BY_ZONE[zone],
-                    easting_m=round(easting_2000, 2),
-                    northing_m=round(northing_2000, 2),
+        return Outcome(
+            IdentifyPointResponse(
+                coordinates=PointCoordinates(
+                    latitude=request.latitude,
+                    longitude=request.longitude,
+                    easting_m=round(x, 2),
+                    northing_m=round(y, 2),
+                    pl2000=PointPl2000(
+                        zone=zone,
+                        epsg=PL2000_EPSG_BY_ZONE[zone],
+                        easting_m=round(easting_2000, 2),
+                        northing_m=round(northing_2000, 2),
+                    ),
                 ),
-            ),
-            elevation_m=round(elevation, 2),
-            slope_percent=None if slope is None else round(slope, 1),
-            water=water,
-            stream=None if stream is None else PointStream(**stream),
-            water_body=None if water_body is None else PointWaterBody(**water_body),
-            land_cover=None if land_cover is None else PointLandCover(**land_cover),
-            soil_hsg=soil_hsg,
-            depression=None if depression is None else PointDepression(**depression),
-            subcatchment=(
-                None
-                if subcatchment is None
-                else PointSubcatchment(threshold_m2=threshold, **subcatchment)
-            ),
-            attribution=list(lines.attribution),
-            terms_notice=list(lines.terms_notice),
+                elevation_m=round(elevation, 2),
+                slope_percent=None if slope is None else round(slope, 1),
+                water=water,
+                stream=None if stream is None else PointStream(**stream),
+                water_body=(
+                    None if water_body is None else PointWaterBody(**water_body)
+                ),
+                land_cover=(
+                    None if land_cover is None else PointLandCover(**land_cover)
+                ),
+                soil_hsg=soil_hsg,
+                depression=(
+                    None if depression is None else PointDepression(**depression)
+                ),
+                subcatchment=(
+                    None
+                    if subcatchment is None
+                    else PointSubcatchment(threshold_m2=threshold, **subcatchment)
+                ),
+                attribution=list(lines.attribution),
+                terms_notice=list(lines.terms_notice),
+            )
         )
 
     except HydrografError:

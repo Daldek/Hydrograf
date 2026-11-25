@@ -1,8 +1,8 @@
 """
 Tests of the hand-off of a watershed to Hydrolog's GUI (nogat-handoff/1, ADR-068).
 
-The hand-offs of POST /api/generate-hydrograph (fast path, PMAXTP lookup patched) and
-of a delineated watershed validate against the vendored envelope and against the
+The hand-offs of the job of `hydrograph generate` (fast path, PMAXTP lookup patched)
+and of a delineated watershed validate against the vendored envelope and against the
 network schema of the pinned Hydrolog, and Hydrolog's `hydrograph generate`, which
 Hydrogram zlewni runs on an opened hand-off, recomputes the payload to the hand-off's
 result: the comparison Hydrolog shows agrees. Nash by Lutz reopens as Lutz: Hydrolog's
@@ -37,6 +37,7 @@ from core.attribution import (
 from core.database import get_db
 from core.precipitation import DesignDepth
 from models.schemas import MorphometricParameters, OutletInfo, WatershedResponse
+from tests.job_runner import run_job
 
 _ROOT = Path(__file__).resolve().parents[3]
 ENVELOPE = Draft202012Validator(
@@ -114,7 +115,7 @@ def _post(client: TestClient, headers: dict[str, str] | None = None, **options: 
     }
     depth = DesignDepth(PMAXTP_MM, "idw", ())
     with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
-        return client.post("/api/generate-hydrograph", json=body, headers=headers)
+        return run_job(client, "hydrograph generate", body, headers=headers)
 
 
 def _series_of_export(name: str) -> dict[str, Any]:
@@ -138,7 +139,7 @@ def _series_of_export(name: str) -> dict[str, Any]:
 def _handoff(client: TestClient, **options: Any) -> dict[str, Any]:
     response = _post(client, **options)
     assert response.status_code == 200, response.text
-    handoff: dict[str, Any] = response.json()["handoff"]
+    handoff: dict[str, Any] = response.json()["result"]["handoff"]
     return handoff
 
 
@@ -302,6 +303,14 @@ class TestHydrographHandoff:
             watershed
         ).calculate_tc(options["tc_method"])
 
+    def test_the_result_names_the_command_that_computed_it(self, client):
+        response = _post(client, uh_model="scs", tc_method="kirpich")
+
+        envelope = response.json()
+        assert (
+            envelope["result"]["handoff"]["result"]["command"] == (envelope["command"])
+        )
+
 
 class TestLutzHandoff:
     @pytest.mark.parametrize(
@@ -323,8 +332,9 @@ class TestLutzHandoff:
         )
 
         assert response.status_code == 200, response.text
-        metadata = response.json()["metadata"]
-        doc = response.json()["handoff"]
+        result = response.json()["result"]
+        metadata = result["metadata"]
+        doc = result["handoff"]
         watershed = doc["payload"]["nodes"][0]["watershed"]
         runoff = doc["payload"]["nodes"][0]["runoff"]
         assert (metadata["nash_forest_pct"], metadata["nash_urban_pct"]) == used
@@ -373,7 +383,7 @@ class TestWatershedOrigin:
 
         assert response.status_code == 400
         (error,) = response.json()["errors"]
-        assert error["pointer"] == "/body/morphometry_origin/changed"
+        assert error["pointer"] == "/body/options/morphometry_origin/changed"
 
 
 class TestProviderLines:
@@ -404,7 +414,7 @@ class TestProviderLines:
         response = _post(client, **options)
 
         assert response.status_code == 200, response.text
-        data = response.json()
+        data = response.json()["result"]
         assert (data["attribution"], data["terms_notice"]) == (
             list(lines.attribution),
             list(lines.terms_notice),
@@ -434,7 +444,7 @@ class TestProviderLines:
         )
 
         assert response.status_code == 200, response.text
-        data = response.json()
+        data = response.json()["result"]
         assert data["precipitation"]["timestep_min"] == 1440
         # Every line of the file reaches the products (DEV-20.6), the processed
         # data's lines among them, from core/attribution.py
@@ -458,7 +468,7 @@ class TestProviderLines:
             "depths_mm": [9.5, 70.0],
             "derived_from": "imgw",
         }
-        data = _post(client, custom_precipitation=series).json()
+        data = _post(client, custom_precipitation=series).json()["result"]
 
         assert (data["attribution"], data["terms_notice"]) == (
             list(IMGW.attribution),
@@ -473,7 +483,7 @@ class TestProviderLines:
             "derived_from": "chmu",
             "attribution": [CHMU_SOURCE, old_cp],
         }
-        data = _post(client, custom_precipitation=series).json()
+        data = _post(client, custom_precipitation=series).json()["result"]
 
         assert data["attribution"] == [CHMU_SOURCE, CHMU_PROCESSED]
 
@@ -617,7 +627,7 @@ class TestHydrolog090Storms:
             amc="III",
         )
 
-        body = response.json()
+        body = response.json()["result"]
         versions = body["formula_versions"]
         assert set(versions) == {
             "euler_ii_hyetograph",

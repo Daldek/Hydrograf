@@ -5,7 +5,7 @@
  * never edited here). Hydrograf's scripts are IIFE modules on window.Hydrograf, so this
  * module, the only ES module of Hydrograf's own, imports the kit and hands it on:
  * - every <nogat-app-menu> of the page, the menu „Aplikacje” of the top bar (DEV-15.4),
- *   gets the deployment's GUIs from GET /api/gui (HYDROGRAF_GUI) as its `apps`; without
+ *   gets the deployment's GUIs from GET /api/v1/gui (HYDROGRAF_GUI) as its `apps`; without
  *   them, or without the API, the menu is not drawn;
  * - the kit's <nogat-sources> (DEV-20.5) is defined: the view's strip of provider lines
  *   (js/attribution.js), and window.Hydrograf.nogat.fillSources writes its full content
@@ -17,7 +17,7 @@
  * - the kit's <nogat-basemaps> (DEV-15.15) is defined, and window.Hydrograf.nogat.basemaps
  *   holds the kit's words (`texts`), its Leaflet adapter (`leaflet`, leafletBasemap) and
  *   the repaint of a vector base map after a change of theme (`repaint`) for js/layers.js,
- *   which gives the element the entries of GET /api/basemaps (ADR-089);
+ *   which gives the element the entries of GET /api/v1/basemaps (ADR-089);
  * - window.Hydrograf.nogat.chart is the kit's chart module (DEV-15.16) for js/charts.js:
  *   `draw` (drawChart), `toPng` and `format`, the Polish numbers and times its charts are
  *   written in (chartFormat(); ADR-090).
@@ -35,7 +35,7 @@ window.Hydrograf = window.Hydrograf || {};
 
 let addresses = new Map();
 
-fetch('/api/gui')
+fetch('/api/v1/gui')
     .then((response) => (response.ok ? response.json() : {}))
     .catch(() => ({}))
     .then((gui) => {

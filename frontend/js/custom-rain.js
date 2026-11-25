@@ -31,7 +31,7 @@
     var NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
     var LETTER_RE = /[a-ząćęłńóśźż_]/i;
 
-    var _maxSteps = 2000;               // replaced by custom_precipitation_max_steps (/api/scenarios)
+    var _maxSteps = 2000;               // replaced by custom_precipitation_max_steps (`hydrograph scenarios`)
     var _watershed = null;              // watershed response the series belongs to
     var _custom = false;                // "Własna seria" selected
     var _cells = [];                    // depth texts by step index (may outlast a shorter table)

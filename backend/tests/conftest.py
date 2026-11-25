@@ -5,8 +5,10 @@ Provides mock database sessions, sample data, and common fixtures
 used across unit and integration tests.
 """
 
+import inspect
 import json
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -39,6 +41,56 @@ def _fresh_traffic(tmp_path_factory: pytest.TempPathFactory) -> None:
 
     data_dir = tmp_path_factory.getbasetemp() / "data"
     app.state.traffic = Traffic(Settings(hydrograf_data_dir=str(data_dir)))
+
+
+@contextmanager
+def _job_session() -> Iterator[Any]:
+    """Open the database session of a job: the test's ``get_db`` override, if any.
+
+    A job runs in a thread of its own, outside FastAPI's dependencies, so it sees the
+    database a synchronous route would see only through this factory.
+    """
+    from api.main import app
+    from core.database import get_db, get_db_session
+
+    override = app.dependency_overrides.get(get_db)
+    if override is None:
+        with get_db_session() as db:
+            yield db
+        return
+    made = override()
+    if not inspect.isgenerator(made):
+        yield made
+        return
+    try:
+        yield next(made)
+    finally:
+        made.close()
+
+
+def _memory_jobs() -> None:
+    """Give the app the job store of a new process that keeps no jobs file."""
+    from api.jobs import JobStore
+    from api.main import app
+
+    app.state.jobs = JobStore(None, session=_job_session)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _no_jobs_file() -> None:
+    """Keep the jobs of the whole session out of the shell's state directory (ADR-091).
+
+    The store of ``api.main`` lists its active jobs in
+    ``<state_dir>/hydrograf/jobs.json``; a fixture of a module or a class runs before
+    the store of each test (``_fresh_jobs``) and gets this one.
+    """
+    _memory_jobs()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_jobs() -> None:
+    """Give every test the job store of a new process: in memory, on its database."""
+    _memory_jobs()
 
 
 @pytest.fixture(autouse=True, scope="session")

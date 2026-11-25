@@ -10,6 +10,13 @@
 > `/admin/` and `/api/admin/*`; `/admin.html` is gone. The panel's requests are limited but
 > counted in no daily total, and its answers carry `Cache-Control: no-store`.
 
+> **Amended by ADR-091 (2026-11-25):** the client's address is the right-most address of
+> `X-Forwarded-For` that is no loopback or private hop; nginx appends its peer
+> (`$proxy_add_x_forwarded_for`) and sends no `X-Real-IP`, and `CF-Connecting-IP` is not
+> read. A client runs at most 2 jobs (429 `job_limit`). The routes are under `/api/v1`,
+> the admin paths `/admin`, `/admin/` and `/api/v1/admin/*`; `analyses_run` counts the
+> design depths and the start of a hydrograph's or a network's job.
+
 **Date:** 2026-11-13
 **Status:** accepted; amended 2026-11-13 (kit 0.6.0 without the block `imgw-terms`: Nogat
 ECO-065; below)

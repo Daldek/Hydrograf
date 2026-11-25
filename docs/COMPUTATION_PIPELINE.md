@@ -222,7 +222,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 ## Faza 2: Wyznaczanie zlewni (runtime)
 
 **Moduł:** `backend/core/watershed_service.py` (ADR-022)
-**Endpoint:** `POST /api/delineate-watershed`
+**Endpoint:** `GET /api/v1/watershed/delineate`
 
 > **Uwaga (ADR-022, ADR-028):** Since 2026-02-14 the endpoints of the API (`watershed.py`, which took over `select_stream.py` in ADR-050, and `hydrograph.py`) use the CatchmentGraph (~44k nodes, ~0.5 MB) instead of the FlowGraph (~19.7M cells, ~1 GB). Tabela `flow_network` została usunięta, a funkcje działające na komórkach (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2` i funkcje komórkowe `core/morphometry.py`) usunięto razem z `core/watershed.py`. Skrypt `scripts/analyze_watershed.py` wywołuje tę samą funkcję trasy co endpoint.
 
@@ -516,7 +516,7 @@ NEH 630 ch. 10, p. 10-10), for P = 25 and 50 mm, AMC II, Ia = 0.2 S
 
 ### 5.6 CN at a point
 
-`GET /api/identify-point` (`core/point_info.land_cover_at`) gives the CN of the complex
+`GET /api/v1/point/identify` (`core/point_info.land_cover_at`) gives the CN of the complex
 of the land cover polygon and the soil group at the point (group B where `soil_hsg` has
 none), converted to AMC I and III as for the hydrograph.
 
@@ -524,13 +524,13 @@ none), converted to AMC I and III as for the hydrograph.
 
 ## Faza 6: Generowanie hydrogramu
 
-**Endpoint:** `POST /api/generate-hydrograph`
+**Endpoint:** the job `hydrograph generate` (`POST /api/v1/jobs`)
 **Moduł:** `backend/api/endpoints/hydrograph.py`
 
 ### 6.1 Flow procesu
 
 1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo — wymagane tylko bez `custom_precipitation`; `amc` I/II/III, domyślnie II). A PMAXTP design storm is checked before the watershed is delineated (`_design_storm`; Hydrolog ADR-0046, ADR-0042): its duration must be a whole number of steps of `timestep_min` (to 1e-9 of the duration), else 400 `storm_not_whole_steps` (`details.reason` `not_multiple`); Euler II needs a step of at least 5 min, the first PMAXTP duration (`EULER_II_SHORTEST_MIN`), else 400 `euler_ii_step_below_curve` (`details.reason` `not_covered`). The GUI sends no step: the default 5 min divides every PMAXTP duration
-2. **The watershed**: on the full path (without `morphometry`) the delineation of `POST /api/delineate-watershed` in the precomputed mode at the finest threshold, 10 000 m² (`_select_precomputed`, ADR-022): above 300 sub-catchments it merges them from the first coarser threshold of the graph that selects at most 300 (E5b-04: the merge of thousands of 1 ha sub-catchments took minutes); otherwise the fast path with `morphometry` (the advanced mode, a fractional CN)
+2. **The watershed**: on the full path (without `morphometry`) the delineation of `GET /api/v1/watershed/delineate` in the precomputed mode at the finest threshold, 10 000 m² (`_select_precomputed`, ADR-022): above 300 sub-catchments it merges them from the first coarser threshold of the graph that selects at most 300 (E5b-04: the merge of thousands of 1 ha sub-catchments took minutes); otherwise the fast path with `morphometry` (the advanced mode, a fractional CN)
 3. **The limit**: `area_km2 ≤ 250` (the SCS-CN limit), checked before anything is merged
 4. **Morphometry, CN and the PMAXTP cells**: on the full path those of the delineated watershed (`_build_watershed_response`: `build_morph_dict_from_graph`, the CN of `build_land_cover_stats`, the Thiessen cells of the grid), with the lines of its data (`watershed_lines`), as the GUI sends them on the fast path; the area for the computation is the graph's, unrounded
 5. **Opad**: projektowy PMAXTP (the watershed mean by Thiessen polygons, `areal_depth`; IDW at the point without a boundary, §4.2) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
@@ -643,7 +643,7 @@ The response also gives `hydrolog_version` and `formula_versions`: the `formula_
 
 ## Phase 7: Network delineation at control points (runtime)
 
-**Endpoint:** `POST /api/delineate-network` (`backend/api/endpoints/network.py`)
+**Endpoint:** the job `network delineate` (`POST /api/v1/jobs`; `backend/api/endpoints/network.py`)
 **Modules:** `core/network_tree.py` (the tree on the catchment graph), `core/network_delineation.py` (the rasters), `core/cell_parameters.py` (the measures), `core/handoff.py` (`build_network_handoff`)
 **Decision:** ADR-080; the details and their reasons: plans `docs/plans/2026-11-10-network-delineation.md` (D1–D15) and `docs/plans/2026-11-11-network-nodes.md` (N1–N8, which amend D3–D5, D11, D12, D14 and D15)
 
@@ -687,7 +687,7 @@ A reach shorter than `SHORT_REACH_M` (200 m) or of the minimum slope is a notice
 
 ### 7.8 The preview on the catchment graph (ADR-081)
 
-`POST /api/delineate-network/preview` (`core/network_preview.py`, plan `docs/plans/2026-11-11-network-preview.md`) composes the same network while the person places the points, without the window of 7.3: the snapping of 7.1 (the windows around the clicks) and the tree of 7.2, so the ids, the places and the errors of the composition are those of the full run.
+`POST /api/v1/network/preview` (`core/network_preview.py`, plan `docs/plans/2026-11-11-network-preview.md`) composes the same network while the person places the points, without the window of 7.3: the snapping of 7.1 (the windows around the clicks) and the tree of 7.2, so the ids, the places and the errors of the composition are those of the full run.
 
 | Value | Source |
 |---|---|

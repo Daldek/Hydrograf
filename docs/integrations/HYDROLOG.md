@@ -59,7 +59,7 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 ### The morphometry and Hydrolog's `WatershedParameters`
 
 Hydrograf gives the morphometry of a watershed as `MorphometricParameters`
-(`backend/models/schemas.py`; `morphometry` of `POST /api/delineate-watershed`; required
+(`backend/models/schemas.py`; `morphometry` of `GET /api/v1/watershed/delineate`; required
 `area_km2`, `perimeter_km`, `length_km`, `elevation_min_m`, `elevation_max_m`). Hydrolog's
 `WatershedParameters` (0.9.0) requires only `area_km2`; each method checks the fields it
 needs (the Tc table below; Lutz's estimation `flow_path_length_km`, `Lc_km`,
@@ -105,8 +105,8 @@ GUI Hydrologa („Wczytaj z Hydrografa” w „Hydrogramie zlewni”) czyta kope
 `hydrolog-network/1`: jedna zlewnia cząstkowa `Z1` (pola `WatershedParameters`,
 `length_to_centroid_km` jako `Lc_km`) i wylot `OUT`. Buduje je `backend/core/handoff.py`:
 
-- `POST /api/delineate-watershed` → `handoff`: sama zlewnia, bez opadu i wyniku;
-- `POST /api/generate-hydrograph` → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
+- `GET /api/v1/watershed/delineate` → `handoff`: sama zlewnia, bez opadu i wyniku;
+- the job `hydrograph generate` (`POST /api/v1/jobs`) → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
   `tc_min`, n i K Nasha albo L, Lc, Ct, Cp Snydera, L being `flow_path_length_km`; AMC),
   `rainfall` (opad projektowy PMAXTP z kształtem hietogramu: `alpha` and `beta` of Beta,
   the depth-duration curve `depth_duration_mm` of Euler II, no `peak_position`; albo własny
@@ -143,9 +143,9 @@ and carries them into its own products (since `9537463`, in the pinned 0.9.0).
 
 ---
 
-## The hand-off of a network (`POST /api/delineate-network`, ADR-080)
+## The hand-off of a network (the job `network delineate`, ADR-080)
 
-`POST /api/delineate-network` returns in `handoff` one `nogat-handoff/1` around one
+The job `network delineate` (`POST /api/v1/jobs`) returns in `handoff` one `nogat-handoff/1` around one
 `hydrolog-network/1` holding the whole network, for Hydrolog's „Sieć i trasowanie”
 (`build_network_handoff` in `backend/core/handoff.py`; plans
 `docs/plans/2026-11-10-network-delineation.md`, D14 and D15, and
@@ -284,7 +284,7 @@ Dodane klasy:
 - `WaterBalance` - bilans wodny (CN, retention, effective rainfall)
 - `HydrographMetadata` - metadane obliczeń (tc, metoda, model UH)
 
-### 6. Endpoint: `POST /api/generate-hydrograph`
+### 6. Endpoint: the job `hydrograph generate` (`POST /api/v1/jobs`)
 
 **Status:** ✅ Zaimplementowane
 
@@ -324,7 +324,7 @@ A refusal of Hydrolog (`InvalidParameterError`) becomes a problem document throu
 **Parametry wejściowe:**
 - `latitude`, `longitude` - współrzędne WGS84
 - `duration` - czas trwania opadu: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
-- `probability` - the exceedance probability [%], one of the 27 PMAXTP values (0.01 to 99.9; `GET /api/scenarios`)
+- `probability` - the exceedance probability [%], one of the 27 PMAXTP values (0.01 to 99.9; `GET /api/v1/hydrograph/scenarios`)
 - `timestep_min` - krok czasowy (default: 5 min, 1–60): the duration of a PMAXTP storm must be a whole number of steps, and Euler II's step at least 5 min (the GUI sends none: 5 min divides every PMAXTP duration)
 - `tc_method` - metoda tc: kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
@@ -339,7 +339,7 @@ A refusal of Hydrolog (`InvalidParameterError`) becomes a problem document throu
 **Ograniczenia:**
 - Maksymalna powierzchnia zlewni: 250 km² (limit metody SCS-CN)
 
-### 7. Endpoint: `GET /api/scenarios`
+### 7. Endpoint: `GET /api/v1/hydrograph/scenarios`
 
 **Status:** ✅ Zaimplementowane
 
@@ -349,7 +349,7 @@ Zwraca dostępne kombinacje parametrów hydrogramu (`durations`, `probabilities`
 
 **Status:** ✅ Zaimplementowane
 
-Endpoint `/api/delineate-watershed` zwraca teraz `morphometry` w odpowiedzi.
+Endpoint `/api/v1/watershed/delineate` zwraca teraz `morphometry` w odpowiedzi.
 
 ### 9. Skrypt: `scripts/analyze_watershed.py`
 
@@ -400,7 +400,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/api/endpoints/watershed.py` | Unified endpoint — tryb precomputed (snap-to-stream + BFS) i precise (pyflwdir on-the-fly), morphometry w response (ADR-050) | ✅ |
 | `backend/api/endpoints/hydrograph.py` | Endpoint hydrogramu (CatchmentGraph BFS) | ✅ |
 | `backend/api/main.py` | + router hydrograph | ✅ |
-| `backend/api/endpoints/network.py`, `backend/core/handoff.py` | `POST /api/delineate-network` and `build_network_handoff`: the hand-off of a network (ADR-080) | ✅ |
+| `backend/api/endpoints/network.py`, `backend/core/handoff.py` | the command `network delineate` and `build_network_handoff`: the hand-off of a network (ADR-080) | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
 | `backend/tests/unit/test_morphometry.py` | Testy wskaźników kształtu | ✅ |
 | `backend/tests/integration/test_hydrograph.py` | Testy integracyjne endpointu | ✅ |
@@ -523,17 +523,23 @@ Missing → 422 `snyder_parameters_missing` (reason `missing_morphometry`).
 ### Generowanie hydrogramu
 
 ```bash
-curl -X POST http://localhost:8000/api/generate-hydrograph \
+curl -X POST http://localhost:8000/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "latitude": 52.23,
-    "longitude": 21.01,
-    "duration": "1h",
-    "probability": 10,
-    "tc_method": "kirpich",
-    "hietogram_type": "beta"
+    "command": "hydrograph generate",
+    "options": {
+      "latitude": 52.23,
+      "longitude": 21.01,
+      "duration": "1h",
+      "probability": 10,
+      "tc_method": "kirpich",
+      "hietogram_type": "beta"
+    }
   }'
 ```
+
+The job answers `202`; `GET /api/v1/jobs/<id>/result` gives, once it has ended, the envelope
+`{status, result, notices}` whose `result` is the document below, with `schema` first.
 
 ### Przykładowa odpowiedź
 
@@ -621,7 +627,7 @@ the PMAXTP grid and the hyetograph of a design storm, the SCS-CN retention and r
 AMC conversion for AMC I and III, the time of concentration and the SCS unit hydrograph,
 Snyder's lag and curve or Nash's IUH with Lutz's or the urban estimation, and the
 convolution; on the full path joined by those of the delineated watershed. A watershed
-(`POST /api/delineate-watershed`, `watershed.formula_versions`) carries `tr55_cn` for a CN of
+(`GET /api/v1/watershed/delineate`, `watershed.formula_versions`) carries `tr55_cn` for a CN of
 its land cover and `equal_area_slope` for a measured Jg (`watershed_specs`). The hand-off's
 `result.computed_with` carries the same `version` and `formula_versions`.
 

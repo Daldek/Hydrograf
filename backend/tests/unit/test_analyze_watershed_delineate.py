@@ -1,6 +1,6 @@
 """Step 3 of analyze_watershed (delineation) on a small synthetic catchment, offline.
 
-Step 3 must run the code of the API (`POST /api/delineate-watershed`, precomputed
+Step 3 must run the code of the API (`watershed delineate`, precomputed
 mode) and hand steps 4 and 6 what they need. The catchment graph is real (four
 sub-catchments, 26 km2); the PostGIS queries are replaced by canned answers, as
 in the other tests of the endpoint.

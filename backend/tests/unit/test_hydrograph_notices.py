@@ -1,8 +1,9 @@
-"""Hydrolog's warnings of a hydrograph in its response, in Polish (E5b-06).
+"""Hydrolog's warnings of a hydrograph in its envelope's notices, in Polish (E5b-06).
 
 Hydrolog warns of a value outside the typical range of a method with
 ``warnings.warn``. The client runs the application's lifespan, which installs the
-hook that collects these warnings after the log starts, as the server does.
+hook that collects these warnings after the log starts, as the server does;
+``hydrograph generate`` runs as a job (ADR-091), whose thread collects them too.
 """
 
 import threading
@@ -16,8 +17,9 @@ from fastapi.testclient import TestClient
 import api.endpoints.hydrograph
 from api.main import app
 from core.database import get_db
+from tests.job_runner import run_job
 
-URL = "/api/generate-hydrograph"
+COMMAND = "hydrograph generate"
 
 
 def _request(
@@ -91,9 +93,9 @@ def _messages(response: Any) -> list[str]:
 def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
     log_records, client
 ):
-    first = client.post(URL, json=LARGE)
+    first = run_job(client, COMMAND, LARGE)
     # The same computation again: a warning is not shown only once at its place
-    again = client.post(URL, json=LARGE)
+    again = run_job(client, COMMAND, LARGE)
 
     for response in (first, again):
         assert response.status_code == 200
@@ -102,6 +104,8 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
             "code": "outside_applicability",
             "message": SCS_AREA,
         } in response.json()["notices"]
+        # The envelope carries them; the hydrograph's document does not
+        assert "notices" not in response.json()["result"]
     # The server log keeps Hydrolog's warning, in English
     logged = [
         record["message"]
@@ -112,8 +116,8 @@ def test_a_catchment_above_the_scs_area_range_gets_the_notice_in_polish(
     assert sum(scs in message for message in logged) == 2
 
 
-def test_two_requests_at_once_keep_their_own_notices(client, monkeypatch):
-    # Each request waits for the other at each of numba's compiler locks it enters,
+def test_two_jobs_at_once_keep_their_own_notices(client, monkeypatch):
+    # Each job waits for the other at each of numba's compiler locks it enters,
     # so both collect while the other computes; the lock still serialises them
     meeting = threading.Barrier(2, timeout=30)
     lock = api.endpoints.hydrograph.global_compiler_lock
@@ -129,7 +133,7 @@ def test_two_requests_at_once_keep_their_own_notices(client, monkeypatch):
     monkeypatch.setattr(api.endpoints.hydrograph, "global_compiler_lock", MeetingLock())
 
     def post(body: dict[str, Any]) -> Any:
-        return client.post(URL, json=body)
+        return run_job(client, COMMAND, body)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         large, daily = pool.map(post, [LARGE, DAILY])
@@ -184,7 +188,7 @@ RURAL_URBAN_REGRESSION = {
     ],
 )
 def test_the_ranges_hydrolog_090_checks_are_worded_in_polish(client, body, expected):
-    messages = _messages(client.post(URL, json=body))
+    messages = _messages(run_job(client, COMMAND, body))
 
     assert expected in messages
     # None keeps Hydrolog's English template

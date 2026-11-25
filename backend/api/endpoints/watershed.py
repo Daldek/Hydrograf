@@ -1,14 +1,17 @@
 """
-Watershed delineation endpoint.
+The commands ``watershed delineate`` and ``watershed preview`` (ADR-091).
 
-Unified endpoint with two modes:
+``watershed delineate`` has two modes:
 - Precomputed (threshold_m2 given): BFS on pre-computed catchment graph,
   ST_Union boundary
 - Precise (no threshold): BFS at the finest threshold (DEFAULT_THRESHOLD_M2,
   10 000 m²) + on-the-fly raster boundary via pyflwdir
 
-Preview endpoint: the sub-catchments precomputed mode will merge, without
+``watershed preview``: the sub-catchments precomputed mode will merge, without
 the slow merge, for a progress animation in the GUI.
+
+Each run takes the command's options and a database session and gives an
+``Outcome``; ``api.endpoints.commands`` serves it at the catalog's route.
 """
 
 import logging
@@ -17,18 +20,17 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter, Depends, Response
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from api.envelope import Outcome
 from core.attribution import DRAINAGE, ProviderLines, instance_lines
 from core.catchment_graph import CatchmentGraph, loaded_catchment_graph
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
-from core.database import get_db
 from core.divide_flow_path import NO_FLOW_PATHS
 from core.errors import (
     CalculationError,
@@ -67,6 +69,7 @@ from models.schemas import (
     DelineateNotice,
     DelineatePreviewRequest,
     DelineatePreviewResponse,
+    DelineateQuery,
     DelineateRequest,
     DelineateResponse,
     HypsometricPoint,
@@ -84,7 +87,6 @@ from utils.geometry import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 
 def _smooth_polygon_sql(polygon: BaseGeometry, db: Session) -> BaseGeometry:
@@ -633,14 +635,8 @@ def _outlet_notices(snap_distance_m: float) -> list[DelineateNotice]:
     ]
 
 
-@router.post("/delineate-watershed", response_model=DelineateResponse)
-def delineate_watershed(
-    request: DelineateRequest,
-    response: Response,
-    include_hypsometric_curve: bool = False,
-    db: Session = Depends(get_db),
-) -> DelineateResponse:
-    """Delineate watershed boundary for a given point.
+def delineate_watershed(request: DelineateQuery, db: Session) -> Outcome:
+    """Delineate the watershed of a point: the command ``watershed delineate``.
 
     Two modes:
     - **Precomputed** (threshold_m2 provided): uses pre-computed catchment graph
@@ -648,6 +644,20 @@ def delineate_watershed(
     - **Precise** (no threshold): BFS at the finest threshold + raster-based
       boundary via pyflwdir, precise to the exact click point, in a window of
       the rasters around the precomputed watershed (422 when it is too large).
+
+    Parameters
+    ----------
+    request : DelineateQuery
+        The point (WGS84), the threshold of the precomputed mode and whether the
+        precise mode adds the hypsometric curve.
+    db : Session
+        Database session.
+
+    Returns
+    -------
+    Outcome
+        ``DelineateResponse``, the notice of an outlet far from the point, and
+        ``Cache-Control: public, max-age=3600``.
     """
     try:
         # ---- Shared: transform + graph ----
@@ -674,17 +684,15 @@ def delineate_watershed(
                 point_2180,
                 cg,
                 db,
-                include_hypsometric_curve,
+                request.include_hypsometric_curve,
             )
-
-        response.headers["Cache-Control"] = "public, max-age=3600"
 
         watershed = result["watershed_response"]
         # One value for the field and the notice: the notice comes with a reported
         # distance above OUTLET_NOTICE_DISTANCE_M, never with one at it
         snap_distance_m = round(_snap_distance_m(point_2180, watershed.outlet), 1)
         lines = watershed_lines(watershed, get_settings().frontend_data_dir)
-        return DelineateResponse(
+        document = DelineateResponse(
             mode=mode,
             watershed=watershed,
             stream=result.get("stream_info"),
@@ -692,10 +700,14 @@ def delineate_watershed(
             display_threshold_m2=result.get("display_threshold_m2"),
             info_message=result.get("info_message"),
             snap_distance_m=snap_distance_m,
-            notices=_outlet_notices(snap_distance_m),
             handoff=_watershed_handoff(watershed, lines),
             attribution=list(lines.attribution),
             terms_notice=list(lines.terms_notice),
+        )
+        return Outcome(
+            document,
+            notices=_outlet_notices(snap_distance_m),
+            cache_control="public, max-age=3600",
         )
 
     except HydrografError:
@@ -710,33 +722,27 @@ def delineate_watershed(
         raise InternalError("delineation_failed", reason="delineation_failed") from e
 
 
-@router.post(
-    "/delineate-watershed/preview",
-    response_model=DelineatePreviewResponse,
-)
-def delineate_watershed_preview(
-    request: DelineatePreviewRequest,
-    db: Session = Depends(get_db),
-) -> DelineatePreviewResponse:
-    """Sub-catchments the precomputed delineation will merge, for animation.
+def preview_watershed(request: DelineatePreviewRequest, db: Session) -> Outcome:
+    """Sub-catchments the precomputed delineation will merge: ``watershed preview``.
 
-    Same selection as POST /delineate-watershed in precomputed mode (threshold
+    Same selection as ``watershed delineate`` in precomputed mode (threshold
     floor, sub-catchment at the point, BFS, cascade) without the merge and
     statistics: simplified polygons in BFS order from the outlet, each with
-    its depth. Precise mode has no preview: its raster boundary starts at the
-    exact click point, not at a sub-catchment.
+    its depth, for an animation. Precise mode has no preview: its raster boundary
+    starts at the exact click point, not at a sub-catchment.
 
     Parameters
     ----------
     request : DelineatePreviewRequest
         Click point (WGS84) and the threshold of the precomputed mode.
     db : Session
-        Database session (injected by FastAPI).
+        Database session.
 
     Returns
     -------
-    DelineatePreviewResponse
-        Merge threshold, number of sub-catchments and their polygons by BFS depth.
+    Outcome
+        ``DelineatePreviewResponse``: the merge threshold, the number of
+        sub-catchments and their polygons by BFS depth.
 
     Raises
     ------
@@ -762,12 +768,14 @@ def delineate_watershed_preview(
             db,
         )
         lines = instance_lines(DRAINAGE, get_settings().frontend_data_dir)
-        return DelineatePreviewResponse(
-            threshold_m2=selection.merge_threshold,
-            segment_count=len(segment_idxs),
-            catchments=catchments,
-            attribution=list(lines.attribution),
-            terms_notice=list(lines.terms_notice),
+        return Outcome(
+            DelineatePreviewResponse(
+                threshold_m2=selection.merge_threshold,
+                segment_count=len(segment_idxs),
+                catchments=catchments,
+                attribution=list(lines.attribution),
+                terms_notice=list(lines.terms_notice),
+            )
         )
 
     except HydrografError:

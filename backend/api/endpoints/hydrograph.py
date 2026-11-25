@@ -1,11 +1,10 @@
 """
-Hydrograph generation endpoint.
+The commands ``hydrograph generate`` and ``hydrograph scenarios`` (ADR-091).
 
-Provides API endpoint for generating direct runoff hydrographs
-using the Hydrolog library. Supports SCS, Snyder, and Nash unit hydrograph models.
-
-Uses CatchmentGraph (~11k nodes, ~0.5 MB) for watershed delineation
-via BFS on pre-computed sub-catchments.
+``hydrograph generate`` computes direct runoff hydrographs with the Hydrolog library
+(SCS, Snyder and Nash unit hydrographs); it is a long command, served as a job
+(``api.jobs``). The watershed is delineated with the CatchmentGraph by BFS on
+pre-computed sub-catchments, as ``watershed delineate`` does.
 """
 
 import logging
@@ -15,7 +14,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from fastapi import APIRouter, Depends
 
 # Hydrolog imports
 from hydrolog.exceptions import InvalidParameterError
@@ -37,7 +35,7 @@ from api.endpoints.watershed import (
     _loaded_catchment_graph,
     _select_precomputed,
 )
-from api.errors import problem_responses
+from api.envelope import Outcome
 from core import hydrolog_notices
 from core.attribution import (
     CATCHMENT,
@@ -51,7 +49,6 @@ from core.attribution import (
 )
 from core.config import get_settings
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
-from core.database import get_db
 from core.errors import (
     CalculationError,
     HydrografError,
@@ -106,8 +103,10 @@ from models.schemas import (
     HydrographRequest,
     HydrographResponse,
     MorphometricParameters,
+    NoOptions,
     PmaxtpPoint,
     PrecipitationInfo,
+    ScenariosResponse,
     WaterBalance,
     WatershedResponse,
 )
@@ -117,7 +116,6 @@ from utils.geometry import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 # Manning's n of the channel in Lutz's estimation of Nash's n and K
 LUTZ_MANNING_N = 0.035
@@ -152,7 +150,8 @@ def _require_area_within_limit(area_km2: float) -> None:
     ------
     UnsupportedError
         ``unsupported`` (422, ``catchment_too_large``) above
-        ``HYDROGRAPH_AREA_LIMIT_KM2``, the ``area_limit_km2`` of ``GET /api/scenarios``.
+        ``HYDROGRAPH_AREA_LIMIT_KM2``, the ``area_limit_km2`` of
+        ``hydrograph scenarios``.
     """
     if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
         raise UnsupportedError(
@@ -206,7 +205,7 @@ def _series_lines(custom: CustomPrecipitation) -> ProviderLines:
 def _compute_watershed(
     point_2180: Point, db: Session
 ) -> tuple[WatershedResponse, MorphometricParameters, float, ProviderLines]:
-    """Delineate the watershed of the point as ``POST /api/delineate-watershed`` does.
+    """Delineate the watershed of the point as ``watershed delineate`` does.
 
     The precomputed delineation at the finest threshold: its sub-catchments
     (``_select_precomputed``), merged from a coarser threshold above 300 of them, which
@@ -371,7 +370,7 @@ def _depth_duration_mm(
     }
 
 
-def _pmaxtp_points(depth: DesignDepth) -> list[PmaxtpPoint]:
+def pmaxtp_points(depth: DesignDepth) -> list[PmaxtpPoint]:
     """Return the grid points of a design depth with their WGS84 coordinates."""
     points = []
     for point in depth.points:
@@ -898,17 +897,9 @@ def _handoff_runoff(
     }
 
 
-@router.post(
-    "/generate-hydrograph",
-    response_model=HydrographResponse,
-    responses=problem_responses(404, 422, 503),
-)
-def generate_hydrograph(
-    request: HydrographRequest,
-    db: Session = Depends(get_db),
-) -> HydrographResponse:
+def generate_hydrograph(request: HydrographRequest, db: Session) -> Outcome:
     """
-    Generate direct runoff hydrograph for a given point.
+    Generate the direct runoff hydrograph of a point: ``hydrograph generate``.
 
     Uses SCS-CN method (CN adjusted for the requested AMC) with either a
     PMAXTP design storm distributed by a hietogram or a user-supplied
@@ -921,13 +912,13 @@ def generate_hydrograph(
         Request with coordinates, rainfall (duration + probability or
         custom_precipitation), AMC and options
     db : Session
-        Database session (injected by FastAPI)
+        Database session (of the job that runs it)
 
     Returns
     -------
-    HydrographResponse
-        Complete hydrograph with watershed info, precipitation, and results;
-        Hydrolog's warnings about the computation as Polish ``notices``
+    Outcome
+        ``HydrographResponse``: the hydrograph with the watershed, precipitation and
+        results; Hydrolog's warnings about the computation as Polish notices
 
     Raises
     ------
@@ -1234,7 +1225,7 @@ def generate_hydrograph(
                     None if custom is not None else request.areal_reduction_factor
                 ),
                 interpolation=None if depth is None else depth.interpolation,
-                pmaxtp_points=[] if depth is None else _pmaxtp_points(depth),
+                pmaxtp_points=[] if depth is None else pmaxtp_points(depth),
             ),
             hydrograph=HydrographInfo(
                 times_min=hydro_result.hydrograph.times_min.tolist(),
@@ -1271,7 +1262,6 @@ def generate_hydrograph(
             handoff=handoff,
             attribution=list(lines.attribution),
             terms_notice=list(lines.terms_notice),
-            notices=hydrolog_notices.notices(caught),
             hydrolog_version=hydrolog_version(),
             formula_versions=versions,
         )
@@ -1282,7 +1272,7 @@ def generate_hydrograph(
             f"V={hydro_result.total_volume_m3:.0f} m3"
         )
 
-        return response
+        return Outcome(response, notices=hydrolog_notices.notices(caught))
 
     except HydrografError:
         raise
@@ -1299,28 +1289,33 @@ def generate_hydrograph(
         raise InternalError("hydrograph_failed", reason="hydrograph_failed") from e
 
 
-@router.get("/scenarios")
-def list_scenarios() -> dict[str, Any]:
+def list_scenarios(options: NoOptions, db: Session) -> Outcome:
     """
-    List available hydrograph generation scenarios.
-
-    Returns the valid combinations of duration and probability values
-    that can be used for hydrograph generation.
+    List what ``hydrograph generate`` accepts: ``hydrograph scenarios``.
 
     Returns
     -------
-    dict
-        Available durations, probabilities, tc_methods, and hietogram_types
+    Outcome
+        ``ScenariosResponse``: the durations, probabilities, methods and limits.
     """
-    return {
-        "durations": sorted(VALID_DURATIONS_STR, key=lambda d: DURATION_STR_TO_MIN[d]),
-        "probabilities": sorted(VALID_PROBABILITIES),
-        "tc_methods": ["nrcs", "kirpich", "giandotti", "faa", "kerby", "kerby_kirpich"],
-        "hietogram_types": ["beta", "block", "euler_ii"],
-        "uh_models": ["scs", "nash", "snyder"],
-        "snyder_defaults": {"ct": 1.5, "cp": 0.6},
-        "nash_estimation_methods": ["from_lutz", "from_urban_regression"],
-        "amc": list(AMC_BY_CODE),
-        "custom_precipitation_max_steps": CUSTOM_PRECIPITATION_MAX_STEPS,
-        "area_limit_km2": HYDROGRAPH_AREA_LIMIT_KM2,
-    }
+    return Outcome(
+        ScenariosResponse(
+            durations=sorted(VALID_DURATIONS_STR, key=lambda d: DURATION_STR_TO_MIN[d]),
+            probabilities=sorted(VALID_PROBABILITIES),
+            tc_methods=[
+                "nrcs",
+                "kirpich",
+                "giandotti",
+                "faa",
+                "kerby",
+                "kerby_kirpich",
+            ],
+            hietogram_types=["beta", "block", "euler_ii"],
+            uh_models=["scs", "nash", "snyder"],
+            snyder_defaults={"ct": 1.5, "cp": 0.6},
+            nash_estimation_methods=["from_lutz", "from_urban_regression"],
+            amc=list(AMC_BY_CODE),
+            custom_precipitation_max_steps=CUSTOM_PRECIPITATION_MAX_STEPS,
+            area_limit_km2=HYDROGRAPH_AREA_LIMIT_KM2,
+        )
+    )

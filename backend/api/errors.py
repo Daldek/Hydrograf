@@ -3,8 +3,10 @@
 Every error of the API is ``application/problem+json`` (RFC 9457): ``type`` (the entry
 of the code on the registry page), ``title``, ``status`` (the HTTP status of the code),
 ``detail``, ``instance`` (the request path), ``code``, ``hint`` when a fix is known,
-``details`` (its ``reason`` is the project's own cause, ERR-1) and, for invalid request
-values, ``errors[]`` with a JSON Pointer, the type and the message of each value.
+``details`` (its ``reason`` is the project's own cause, ERR-1), ``command`` on the
+route of a command and in a job's result (the catalog's name, as ``hydrograf-error/1``
+names it) and, for invalid request values, ``errors[]`` with a JSON Pointer, the type
+and the message of each value.
 
 The texts follow ``Accept-Language``: English without the header, Polish for ``pl``
 (the interface sends it); ``Content-Language`` names the language. So do the messages
@@ -14,9 +16,11 @@ raises is a ``HydrografError``; the framework's own errors (an unknown route, a 
 method, invalid values) and every unexpected exception are mapped to registry codes
 here.
 
-The OpenAPI document (``install_openapi``) names every operation after its route
-function, documents the problem of each status a route answers with, and shows
-FastAPI's 422 as the 400 ``validation_error`` that the API sends.
+The OpenAPI document (``install_openapi``) is the API's, at ``/api/v1/openapi.json``:
+its paths relative to the API's base and its ``servers`` URL relative to the
+document, so that it reads right behind a prefix (AGI-6.2). It documents the problem
+of each status an operation answers with and shows FastAPI's 422 as the 400
+``validation_error`` that the API sends.
 """
 
 import logging
@@ -30,6 +34,8 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api import API_BASE
+from api.envelope import TOOL
 from core._errors import BY_CODE
 from core.errors import HydrografError
 from core.messages import MESSAGES, Language, render
@@ -41,6 +47,17 @@ PROBLEM_MEDIA_TYPE: Final = "application/problem+json"
 REGISTRY_PAGE: Final = (
     "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md"
 )
+# The start of the operationId of a command's route (api.catalog)
+COMMAND_PREFIX: Final = f"{TOOL}_"
+# The `servers` URL of the OpenAPI document, relative to the document at
+# <base>/openapi.json: the base itself, /api/v1 here and /hydrograf/v1 behind Latarnik
+SERVERS: Final = [
+    {
+        "url": "../v1",
+        "description": "The API's base, relative to this document: /api/v1 on "
+        "Hydrograf's own server, the base of its proxy behind one",
+    }
+]
 # Codes of the framework's own HTTP errors; other 4xx are `validation_error`, 5xx
 # `internal_error`.
 _HTTP_CODES: Final = {
@@ -79,6 +96,11 @@ class Problem(BaseModel):
     hint: str | None = Field(None, description="How to fix it, when known")
     details: dict[str, Any] = Field(
         ..., description="`reason` (the project's cause) and the context of the error"
+    )
+    command: str | None = Field(
+        None,
+        description="The catalog name of the command, on a command's route and in "
+        "a job's result",
     )
     errors: list[ProblemError] | None = Field(
         None, description="Invalid request values, for `validation_error`"
@@ -140,6 +162,7 @@ def problem_body(
     hint: str | None = None,
     details: Mapping[str, Any] | None = None,
     errors: Iterable[Mapping[str, str]] = (),
+    command: str | None = None,
 ) -> dict[str, Any]:
     """Return the members of a problem document (RFC 9457, AGI-6.3).
 
@@ -159,11 +182,14 @@ def problem_body(
         ``reason`` and the context of the error.
     errors : Iterable[Mapping[str, str]], optional
         Invalid values: ``pointer``, ``type``, ``message``.
+    command : str or None, optional
+        The catalog name of the command that failed.
 
     Returns
     -------
     dict[str, Any]
-        The document; ``hint`` and ``errors`` appear only when there are any.
+        The document; ``hint``, ``command`` and ``errors`` appear only when there are
+        any.
     """
     entry = BY_CODE[code]
     body: dict[str, Any] = {
@@ -177,10 +203,24 @@ def problem_body(
     if hint:
         body["hint"] = hint
     body["details"] = dict(details or {})
+    if command:
+        body["command"] = command
     listed = list(errors)
     if listed:
         body["errors"] = listed
     return body
+
+
+def command_of(request: Request) -> str | None:
+    """Return the catalog name of the command whose route ``request`` matched.
+
+    The ``operationId`` of a command's route is ``hydrograf_<group>_<verb>``
+    (``api.catalog``); no other route's starts with ``hydrograf_``.
+    """
+    operation = getattr(request.scope.get("route"), "operation_id", None) or ""
+    if not operation.startswith(COMMAND_PREFIX):
+        return None
+    return operation.removeprefix(COMMAND_PREFIX).replace("_", " ", 1)
 
 
 def problem_response(
@@ -191,6 +231,7 @@ def problem_response(
     details: Mapping[str, Any],
     errors: Iterable[Mapping[str, str]] = (),
     headers: Mapping[str, str] | None = None,
+    command: str | None = None,
 ) -> JSONResponse:
     """Return the ``application/problem+json`` response for a catalogued message.
 
@@ -210,6 +251,9 @@ def problem_response(
         Invalid values of the request.
     headers : Mapping[str, str] or None, optional
         Further headers, e.g. ``Allow``.
+    command : str or None, optional
+        The command that failed; the command of the route ``request`` matched when
+        omitted (``command_of``).
     """
     lang = language_of(request.headers.get("accept-language"))
     message = MESSAGES[message_id]
@@ -222,6 +266,7 @@ def problem_response(
         hint=None if hint is None else render(hint, details),
         details=details,
         errors=errors,
+        command=command or command_of(request),
     )
     return JSONResponse(
         body,
@@ -232,10 +277,31 @@ def problem_response(
 
 
 async def _hydrograf_error(request: Request, error: HydrografError) -> JSONResponse:
+    return hydrograf_problem(request, error)
+
+
+def hydrograf_problem(
+    request: Request, error: HydrografError, *, command: str | None = None
+) -> JSONResponse:
+    """Return the problem response of ``error`` in the language of ``request``.
+
+    Parameters
+    ----------
+    request : Request
+        The request that answers it (the language, the path).
+    error : HydrografError
+        The error.
+    command : str or None, optional
+        The command that raised it, when not that of the route of ``request``.
+    """
     if error.http_status >= 500:
         logger.error("%s: %s", error.code, error.message, exc_info=error)
     return problem_response(
-        request, error.code, message_id=error.message_id, details=error.details
+        request,
+        error.code,
+        message_id=error.message_id,
+        details=error.details,
+        command=command,
     )
 
 
@@ -437,7 +503,7 @@ _EXAMPLES: Final[dict[int, Example]] = {
         {
             "reason": "method_not_supported",
             "method": "GET",
-            "path": "/api/example",
+            "path": "/api/v1/example",
             "allowed": ["POST"],
         },
     ),
@@ -462,6 +528,26 @@ _EXAMPLES: Final[dict[int, Example]] = {
 # Statuses that two codes share get a description of their own.
 _DESCRIPTIONS: Final = {
     422: "Unsupported request (`unsupported`) or no result (`calculation_error`)"
+}
+# The example of each code a command's route answers (api.catalog); a long command's
+# `conflict` is its refusal to run outside a job, named in `command_responses`
+_CODE_EXAMPLES: Final[dict[str, Example]] = {
+    "validation_error": _EXAMPLES[400],
+    "not_found": _EXAMPLES[404],
+    "no_data": (
+        "no_data",
+        "no_precipitation_data",
+        {"reason": "no_precipitation_data", "latitude": 51.0192, "longitude": 15.885},
+    ),
+    "unsupported": _EXAMPLES[422],
+    "calculation_error": (
+        "calculation_error",
+        "boundary_build_failed",
+        {"reason": "boundary_build_failed"},
+    ),
+    "store_unavailable": _EXAMPLES[503],
+    "rate_limited": _EXAMPLES[429],
+    "internal_error": _EXAMPLES[500],
 }
 
 
@@ -490,7 +576,7 @@ def problem_responses(*problems: int | Example) -> dict[int | str, dict[str, Any
         example = problem_body(
             code,
             detail=render(MESSAGES[message_id].text("en"), details),
-            instance="/api/example",
+            instance="/api/v1/example",
             hint=None if hint_en is None else render(hint_en, details),
             details=details,
         )
@@ -506,18 +592,67 @@ def problem_responses(*problems: int | Example) -> dict[int | str, dict[str, Any
     return responses
 
 
+def command_responses(
+    command: str, codes: Iterable[str]
+) -> dict[int | str, dict[str, Any]]:
+    """Return the OpenAPI ``responses`` of the registry codes a command answers.
+
+    One response per HTTP status, with the example of its first code; a status that
+    several codes share names each of them. ``conflict`` is the refusal of the long
+    command ``command`` to run outside a job (``run_as_job``).
+    """
+    examples = {
+        **_CODE_EXAMPLES,
+        "conflict": (
+            "conflict",
+            "run_as_job",
+            {"reason": "run_as_job", "command": command},
+        ),
+    }
+    by_status: dict[int, list[str]] = {}
+    for code in codes:
+        status = BY_CODE[code].http_status
+        if status is None:
+            raise ValueError(f"{code!r} is not a registry code with an HTTP status")
+        by_status.setdefault(status, []).append(code)
+    responses: dict[int | str, dict[str, Any]] = {}
+    for status, shared in sorted(by_status.items()):
+        response = problem_responses(examples[shared[0]])[status]
+        if len(shared) > 1:
+            response["description"] = " or ".join(
+                f"{BY_CODE[code].title} (`{code}`)" for code in shared
+            )
+        responses[status] = response
+    return responses
+
+
 def operation_id(route: APIRoute) -> str:
-    """Name an operation after its route function, e.g. ``delineate_watershed``."""
+    """Name an operation after its route function, e.g. ``start_job``.
+
+    A command's route is named by the catalog (``hydrograf_<group>_<verb>``).
+    """
     return route.name
 
 
 def install_openapi(app: FastAPI) -> None:
-    """Document the problems of the API in its OpenAPI document (AGI-6.2)."""
+    """Make the app's OpenAPI document the API's (AGI-6.2).
+
+    The paths become relative to ``API_BASE`` (a route outside it is no part of the
+    API and left out), ``servers`` names the base relative to the document, and the
+    problems are documented.
+    """
     build = app.openapi
 
     def document() -> dict[str, Any]:
         if app.openapi_schema is None:
-            _document_problems(build())
+            schema = build()
+            schema["paths"] = {
+                path.removeprefix(API_BASE): item
+                for path, item in schema.get("paths", {}).items()
+                if path.startswith(f"{API_BASE}/")
+            }
+            schema["servers"] = SERVERS
+            _document_problems(schema)
         return app.openapi_schema or {}
 
     app.openapi = document  # type: ignore[method-assign]
@@ -527,8 +662,8 @@ def _document_problems(schema: dict[str, Any]) -> None:
     """Add the problem schema and the problem responses to an OpenAPI document.
 
     FastAPI's 422 and its validation schemas are replaced by the 400 ``Problem`` that
-    the API sends, every operation documents ``500``, and every operation under
-    ``/api/`` the ``429`` of the request limit (``api/traffic.py``).
+    the API sends, and every operation documents ``500`` and the ``429`` of the
+    request limit (``api/traffic.py``).
     """
     schemas: dict[str, Any] = schema.setdefault("components", {}).setdefault(
         "schemas", {}
@@ -538,7 +673,7 @@ def _document_problems(schema: dict[str, Any]) -> None:
     definitions = Problem.model_json_schema(ref_template="#/components/schemas/{model}")
     schemas.update(definitions.pop("$defs", {}))
     schemas["Problem"] = definitions
-    for path, operations in schema.get("paths", {}).items():
+    for operations in schema.get("paths", {}).values():
         for operation in operations.values():
             responses: dict[str, Any] = operation.setdefault("responses", {})
             default = responses.get("422")
@@ -546,6 +681,5 @@ def _document_problems(schema: dict[str, Any]) -> None:
                 del responses["422"]
             if operation.get("requestBody") or operation.get("parameters"):
                 responses.setdefault("400", problem_responses(400)[400])
-            if path.startswith("/api/"):
-                responses.setdefault("429", problem_responses(429)[429])
+            responses.setdefault("429", problem_responses(429)[429])
             responses.setdefault("500", problem_responses(500)[500])

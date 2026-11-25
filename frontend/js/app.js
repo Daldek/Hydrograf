@@ -362,6 +362,8 @@
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
         state.currentStream = null;
+        // The hydrograph of the cleared watershed: its job is cancelled
+        if (Hydrograf.hydrograph) Hydrograf.hydrograph.cancel();
         showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
         els.results.classList.add('d-none');
@@ -535,6 +537,8 @@
         setLoading(true);
         state.currentWatershed = null;
         state.currentStream = null;
+        // The hydrograph of the previous watershed: its job is cancelled
+        if (Hydrograf.hydrograph) Hydrograf.hydrograph.cancel();
         showWatershedLines();
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
 
@@ -554,13 +558,14 @@
 
         Hydrograf.api.previewWatershed(lat, lng, threshold)
             .then(function (preview) {
-                if (isCurrent() && !settled) Hydrograf.map.showDelineatePreview(preview.catchments);
+                if (isCurrent() && !settled) Hydrograf.map.showDelineatePreview(preview.result.catchments);
             })
             .catch(function () { /* no preview; the delineation reports errors */ });
 
         try {
-            var data = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
+            var answer = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
             if (!isCurrent()) return;
+            var data = answer.result;
             settled = true;
             Hydrograf.map.clearDelineatePreview();
 
@@ -579,7 +584,7 @@
                 }
                 if (autoInfo) autoInfo.classList.remove('d-none');
             }
-            showDelineationNotices(data.notices || []);
+            showDelineationNotices(answer.notices);
 
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
@@ -670,7 +675,7 @@
     };
 
     /**
-     * The delineation's notices above the sections: the `notices` of the response,
+     * The delineation's notices above the sections: the `notices` of the answer,
      * worded in Polish by the API (e.g. an outlet more than 500 m from the clicked
      * point, E7-GAP-04); [] takes them away.
      */

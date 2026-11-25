@@ -1,7 +1,7 @@
 """
 A preview of a network on the catchment graph (ADR-081).
 
-``POST /api/delineate-network/preview`` composes the network of a closing section and
+The command ``network preview`` composes the network of a closing section and
 its points while the person places them, in a fraction of a second. The points snap as
 for the full run (``core.network_delineation.snap_point``: the windows of the rasters
 within some 160 m of each click) and ``core.network_tree`` builds the same tree, so the

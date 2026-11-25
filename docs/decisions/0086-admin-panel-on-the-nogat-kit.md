@@ -5,6 +5,10 @@
 > `nogat-basemaps.js`, and the page's `img-src` admits `data:` beside its origin (Leaflet's
 > empty image of a removed tile).
 
+> **Amended by ADR-091 (2026-11-25):** the admin API is at `/api/v1/admin/*` (the page's
+> `api="../api/v1/admin/"`), and Cloudflare Access protects `/admin`, `/admin/*` and
+> `/api/v1/admin/*`.
+
 **Date:** 2026-11-14
 **Status:** accepted
 

@@ -112,7 +112,7 @@ TOPOGRAPHY: Final = frozenset({BDOT10K})
 SOILS: Final = frozenset({SOILGRIDS, BDOT10K})
 # A catchment with its parameters: morphometry, land cover, soil groups and CN
 CATCHMENT: Final = DRAINAGE | TOPOGRAPHY | SOILS
-# The kinds of the map's layers by the names the front end asks for (GET /api/terms)
+# The kinds of the map's layers by the names the front end asks for (GET /api/v1/terms)
 LAYER_KINDS: Final = {
     "elevation": ELEVATION,
     "drainage": DRAINAGE,

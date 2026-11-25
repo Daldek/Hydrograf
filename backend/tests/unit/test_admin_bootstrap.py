@@ -24,7 +24,7 @@ def _noop_auth():
 def app():
     test_app = FastAPI()
     install_error_handlers(test_app)
-    test_app.include_router(router, prefix="/api/admin")
+    test_app.include_router(router, prefix="/api/v1/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
     test_app.dependency_overrides.clear()
@@ -84,12 +84,12 @@ class TestValidateBbox:
 
 
 class TestBootstrapStatus:
-    """Tests for GET /api/admin/bootstrap/status."""
+    """Tests for GET /api/v1/admin/bootstrap/status."""
 
     def test_idle_status(self, app):
         """Returns idle status when no process is running."""
         client = TestClient(app)
-        response = client.get("/api/admin/bootstrap/status")
+        response = client.get("/api/v1/admin/bootstrap/status")
         assert response.status_code == 200
 
         data = response.json()
@@ -106,7 +106,7 @@ class TestBootstrapStatus:
         _bootstrap_state["started_at"] = time.time()
 
         client = TestClient(app)
-        response = client.get("/api/admin/bootstrap/status")
+        response = client.get("/api/v1/admin/bootstrap/status")
         data = response.json()
 
         assert data["status"] == "running"
@@ -116,13 +116,13 @@ class TestBootstrapStatus:
 
 
 class TestBootstrapStart:
-    """Tests for POST /api/admin/bootstrap/start."""
+    """Tests for POST /api/v1/admin/bootstrap/start."""
 
     def test_start_requires_bbox_or_sheets(self, app):
         """Start without bbox or sheets returns 400."""
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={},
         )
         assert response.status_code == 400
@@ -133,7 +133,7 @@ class TestBootstrapStart:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={"bbox": "20.8,52.1,21.2,52.4"},
         )
         assert response.status_code == 409
@@ -147,7 +147,7 @@ class TestBootstrapStart:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={"bbox": "20.8,52.1,21.2,52.4"},
         )
 
@@ -169,7 +169,7 @@ class TestBootstrapStart:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={"bbox": "20.8,52.1,21.2,52.4"},
         )
         assert response.status_code == 200
@@ -193,7 +193,7 @@ class TestBootstrapStart:
 
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={"sheets": ["N-34-131-C-c-2-1"]},
         )
         assert response.status_code == 200
@@ -206,19 +206,19 @@ class TestBootstrapStart:
         """Start with invalid bbox returns 400."""
         client = TestClient(app)
         response = client.post(
-            "/api/admin/bootstrap/start",
+            "/api/v1/admin/bootstrap/start",
             json={"bbox": "invalid"},
         )
         assert response.status_code == 400
 
 
 class TestBootstrapCancel:
-    """Tests for POST /api/admin/bootstrap/cancel."""
+    """Tests for POST /api/v1/admin/bootstrap/cancel."""
 
     def test_cancel_when_idle(self, app):
         """Cancel when no process running returns 409."""
         client = TestClient(app)
-        response = client.post("/api/admin/bootstrap/cancel")
+        response = client.post("/api/v1/admin/bootstrap/cancel")
         assert response.status_code == 409
 
     def test_cancel_running_process(self, app):
@@ -229,7 +229,7 @@ class TestBootstrapCancel:
         _bootstrap_state["status"] = "running"
 
         client = TestClient(app)
-        response = client.post("/api/admin/bootstrap/cancel")
+        response = client.post("/api/v1/admin/bootstrap/cancel")
         assert response.status_code == 200
 
         data = response.json()
@@ -240,7 +240,7 @@ class TestBootstrapCancel:
 
 
 class TestBootstrapStream:
-    """Tests for GET /api/admin/bootstrap/stream."""
+    """Tests for GET /api/v1/admin/bootstrap/stream."""
 
     def test_stream_returns_event_stream(self, app):
         """Stream endpoint returns text/event-stream content type."""
@@ -248,7 +248,7 @@ class TestBootstrapStream:
         _bootstrap_state["status"] = "idle"
 
         client = TestClient(app)
-        response = client.get("/api/admin/bootstrap/stream")
+        response = client.get("/api/v1/admin/bootstrap/stream")
         assert response.status_code == 200
         assert "text/event-stream" in response.headers["content-type"]
 
@@ -258,7 +258,7 @@ class TestBootstrapStream:
         _bootstrap_state["log_lines"] = ["line1", "line2"]
 
         client = TestClient(app)
-        response = client.get("/api/admin/bootstrap/stream")
+        response = client.get("/api/v1/admin/bootstrap/stream")
         body = response.text
 
         assert "data: line1" in body

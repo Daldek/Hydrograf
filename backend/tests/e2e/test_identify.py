@@ -5,9 +5,9 @@ stays above the sheet at 390 px”: on a phone a tap low on the map, where the p
 card opens as a bottom sheet, puts the marker on the place tapped and the map moves so
 that the marker shows above the sheet's top edge (``keepMarkerVisible``); on a desktop
 the marker shows on the place clicked, beside the card. The card is found by its role
-and name, its answer by GET /api/identify-point; the marker is the overlay
-``identify-marker`` of ``Hydrograf.map.describe()``, its page pixel read by
-``screen_point`` once the view is still.
+and name, its answer by GET /api/v1/point/identify (the command ``point identify``);
+the marker is the overlay ``identify-marker`` of ``Hydrograf.map.describe()``, its
+page pixel read by ``screen_point`` once the view is still.
 """
 
 from collections.abc import Callable
@@ -40,11 +40,11 @@ Place = tuple[float, float]
 
 
 def is_identify(response: Response) -> bool:
-    return urlsplit(response.url).path == "/api/identify-point"
+    return urlsplit(response.url).path == "/api/v1/point/identify"
 
 
 def asked_place(response: Response) -> Place:
-    """(longitude, latitude) GET /api/identify-point asked about."""
+    """(longitude, latitude) GET /api/v1/point/identify asked about."""
     query = parse_qs(urlsplit(response.url).query)
     return float(query["longitude"][0]), float(query["latitude"][0])
 

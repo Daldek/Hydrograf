@@ -1,8 +1,10 @@
 """
-Tile endpoints for stream and catchment vector layers (MVT).
+The map tiles of the stream and catchment vector layers (MVT), ``/api/tiles/``.
 
 Serves stream network and sub-catchment tiles as Mapbox Vector Tiles
-(MVT/protobuf) from PostGIS tables.
+(MVT/protobuf) from PostGIS tables. They are no command and not part of the API:
+the GUI's map asks for them through nginx's tile proxy on the GUI's own host, under
+their own limit (``api.traffic``), the one path left below ``/api/`` (ADR-091).
 
 Geometry is pre-simplified at 1m (cellsize) during pipeline processing.
 No additional simplification is applied at query time — ST_AsMVTGeom
@@ -12,7 +14,6 @@ jumps between zoom levels.
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
@@ -310,66 +311,3 @@ def get_sewer_mvt(
         media_type="application/x-protobuf",
         headers=_CACHE_HIT if has_data else _CACHE_MISS,
     )
-
-
-@router.get("/layers")
-def get_layer_availability(db: Session = Depends(get_db)) -> dict[str, bool]:
-    """
-    Report which optional map layers have data in the database.
-
-    Public, read-only; lets the layers panel hide entries whose tiles
-    would always be empty.
-
-    Parameters
-    ----------
-    db : Session
-        Database session (injected by FastAPI)
-
-    Returns
-    -------
-    dict
-        ``{"sewer": bool}`` — True when the sewer network or its nodes
-        hold at least one row.
-    """
-    try:
-        sewer = bool(
-            db.execute(
-                text(
-                    "SELECT EXISTS (SELECT 1 FROM sewer_network)"
-                    " OR EXISTS (SELECT 1 FROM sewer_nodes)"
-                )
-            ).scalar()
-        )
-    except Exception as e:
-        logger.warning(f"Sewer availability check failed: {e}")
-        db.rollback()
-        sewer = False
-    return {"sewer": sewer}
-
-
-@router.get("/tiles/thresholds")
-def get_available_thresholds(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """
-    Return available FA threshold values from the database.
-
-    Queries distinct threshold_m2 from stream_network and stream_catchments
-    so the frontend can build dropdown options dynamically.
-    """
-    streams_rows = db.execute(
-        text("SELECT DISTINCT threshold_m2 FROM stream_network ORDER BY threshold_m2")
-    ).fetchall()
-    streams = [row[0] for row in streams_rows]
-
-    # stream_catchments may not exist yet
-    try:
-        catchments_rows = db.execute(
-            text(
-                "SELECT DISTINCT threshold_m2"
-                " FROM stream_catchments ORDER BY threshold_m2"
-            )
-        ).fetchall()
-        catchments = [row[0] for row in catchments_rows]
-    except Exception:
-        catchments = []
-
-    return {"streams": streams, "catchments": catchments}

@@ -1,7 +1,11 @@
 """
 FastAPI application entry point.
 
-Configures the API with routers, middleware, and exception handlers.
+The API is ``/api/v1`` (ADR-091): one route per command of the catalog
+(``api.endpoints.commands``), the server document, the jobs of the long commands, the
+OpenAPI document and the GUI's own routes (regulamin, feedback, downloads, the
+deployment's GUIs and base maps) and admin routes. The map tiles stay at
+``/api/tiles/`` (nginx's tile proxy of the GUI), the pages and ``/health`` at the root.
 """
 
 import asyncio
@@ -16,20 +20,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from api import API_BASE
 from api.endpoints import (
     admin,
     basemaps,
-    depressions,
+    commands,
     feedback,
     gui,
     health,
-    hydrograph,
-    identify,
-    network,
-    profile,
+    jobs,
+    server,
     site,
     tiles,
-    watershed,
 )
 from api.errors import (
     install_error_handlers,
@@ -37,6 +39,7 @@ from api.errors import (
     operation_id,
     problem_responses,
 )
+from api.jobs import JobStore
 from api.traffic import Traffic, keep_traffic, limit_and_count
 from core import hydrolog_notices
 from core.basemaps import current_basemaps
@@ -65,9 +68,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     key, database URL or operator's details), then reads the base maps of the
     deployment (ADR-089): a wrong setting stops the start, its error document, which
     names the option and the value, the last line of standard error. It installs the
-    hook that turns Hydrolog's warnings into the hydrograph's notices, starts loading
-    the in-memory catchment graph, fills the regulamin of the deployment and keeps
-    the request limit and the daily totals (ADR-084), whose last totals it stores at
+    hook that turns Hydrolog's warnings into the hydrograph's notices, ends the jobs a
+    previous process left active (``interrupted``, ADR-091), starts loading the
+    in-memory catchment graph, fills the regulamin of the deployment and keeps the
+    request limit and the daily totals (ADR-084), whose last totals it stores at
     shutdown, before the logs stop.
     """
     # First: from here the warnings and errors of the process go to the app log. The
@@ -95,6 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # (E5b-06): the hook goes in after the log, whose captureWarnings replaces
     # warnings.showwarning, and passes every warning on to it
     hydrolog_notices.install()
+    app.state.jobs.interrupt_previous()
 
     # Start loading the catchment graph now rather than at the first request. It
     # loads in a thread of its own, and until it is loaded the requests that need it
@@ -120,13 +125,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Hydrograf API",
     description=(
-        "Hydrological analysis system: watershed delineation, catchment parameters "
-        "and design hydrographs in Poland. Errors are `application/problem+json` "
-        "with a code of the shared Nogat error registry; texts follow "
-        "`Accept-Language` (English by default, `pl` for Polish)."
+        "Hydrological analysis system: watershed delineation, catchment parameters, "
+        "design depths and design hydrographs in Poland. Every command answers the "
+        "envelope `hydrograf-result/1`; a long one runs as a job (`POST /jobs`, "
+        "`nogat-job/1`). The catalog is `GET /commands/list` and `GET "
+        "/commands/schema`, the server's description `GET /server`. Errors are "
+        "`application/problem+json` with a code of the shared Nogat error registry; "
+        "texts follow `Accept-Language` (English by default, `pl` for Polish)."
     ),
     version=get_version(),
     lifespan=lifespan,
+    openapi_url=f"{API_BASE}/openapi.json",
     generate_unique_id_function=operation_id,
 )
 install_error_handlers(app)
@@ -146,65 +155,45 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 # The request limit and the daily totals of this process (ADR-084)
 app.state.traffic = Traffic(settings)
 app.middleware("http")(limit_and_count)
+# The jobs of the long commands, the active ones listed in the state directory
+app.state.jobs = JobStore(state_dir(settings) / "hydrograf" / "jobs.json")
 # Outermost, so the refusals of the limit are logged too (DEV-12.8); map tiles, the
 # same for every client, only when they fail (DEV-12.5)
 app.add_middleware(AccessLog, log=log, quiet=r"^/api/tiles/")
 
 
-# Include routers
-app.include_router(health.router, tags=["Health"])
-app.include_router(
-    watershed.router,
-    prefix="/api",
-    tags=["Watershed"],
-    responses=problem_responses(404, 422, 503),
-)
-app.include_router(
-    network.router,
-    prefix="/api",
-    tags=["Network"],
-    # The window cap (422) is the full run's alone: the route documents it
-    responses=problem_responses(404, 503),
-)
-app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
-app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
-app.include_router(
-    profile.router,
-    prefix="/api",
-    tags=["Profile"],
-    responses=problem_responses(404, 503),
-)
-app.include_router(
-    identify.router,
-    prefix="/api",
-    tags=["Identify"],
-    responses=problem_responses(404, 503),
-)
-app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
-app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
-app.include_router(gui.router, prefix="/api", tags=["Ecosystem"])
-app.include_router(basemaps.router, prefix="/api", tags=["Ecosystem"])
-app.include_router(site.router, prefix="/api", tags=["Public service"])
+# The commands at their catalog routes; the rest of the API below API_BASE; the map
+# tiles, the pages and the health check outside the API
+app.include_router(health.router, include_in_schema=False)
+app.include_router(commands.router)
+app.include_router(server.router, prefix=API_BASE, tags=["server"])
+app.include_router(jobs.router, prefix=API_BASE, tags=["jobs"])
+app.include_router(tiles.router, prefix="/api", include_in_schema=False)
+app.include_router(feedback.router, prefix=API_BASE, tags=["Feedback"])
+app.include_router(gui.router, prefix=API_BASE, tags=["Ecosystem"])
+app.include_router(basemaps.router, prefix=API_BASE, tags=["Ecosystem"])
+app.include_router(site.router, prefix=API_BASE, tags=["Public service"])
 app.include_router(site.pages_router)
 app.include_router(
     feedback.admin_router,
-    prefix="/api/admin",
+    prefix=f"{API_BASE}/admin",
     tags=["Admin"],
     responses=problem_responses(401),
 )
 app.include_router(
     admin.router,
-    prefix="/api/admin",
+    prefix=f"{API_BASE}/admin",
     tags=["Admin"],
     responses=problem_responses(401),
 )
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root() -> dict[str, str]:
-    """Root endpoint - redirect info."""
+    """Root endpoint: where the API and its description are."""
     return {
         "message": "Hydrograf API",
-        "docs": "/docs",
+        "api": API_BASE,
+        "openapi": f"{API_BASE}/openapi.json",
         "health": "/health",
     }

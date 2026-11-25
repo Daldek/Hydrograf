@@ -63,13 +63,23 @@ def _pmaxtp_lines(db: Session) -> ProviderLines:
     """PMAXTP's lines when the instance holds PMAXTP data (``has_pmaxtp``).
 
     When the database cannot tell, the lines stay: a product of PMAXTP data must
-    carry them, and ``GET /api/terms`` answers without the database otherwise.
+    carry them, and ``GET /api/v1/terms`` answers without the database otherwise.
     """
     try:
         return PMAXTP if has_pmaxtp(db) else NO_PROVIDER
     except SQLAlchemyError as e:
         logger.warning("Cannot tell whether the instance holds PMAXTP data: %s", e)
         return PMAXTP
+
+
+def service_lines(db: Session) -> ProviderLines:
+    """Return every line of the service's data (core/attribution.py, DEV-20.5).
+
+    Those of the PMAXTP data every design storm is made with, when the instance holds
+    them, then G and SG of the GUGiK and SoilGrids data of the instance.
+    """
+    dates = read_data_sources(get_settings().frontend_data_dir)
+    return merge([_pmaxtp_lines(db), data_lines(CATCHMENT, dates)])
 
 
 @router.get("/terms", response_model=TermsInfo)
@@ -88,7 +98,7 @@ def terms_info(db: Session = Depends(get_db)) -> TermsInfo:
     """
     terms = current_terms()
     dates = read_data_sources(get_settings().frontend_data_dir)
-    lines = merge([_pmaxtp_lines(db), data_lines(CATCHMENT, dates)])
+    lines = service_lines(db)
     layers = {}
     for kind, uses in LAYER_KINDS.items():
         layer = data_lines(uses, dates)

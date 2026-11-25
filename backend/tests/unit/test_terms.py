@@ -9,6 +9,7 @@ at all.
 
 import logging
 import re
+import shutil
 
 import pytest
 
@@ -110,6 +111,7 @@ class TestBuildTerms:
 
         assert terms is not None
         assert terms.operator_email == "kontakt@example.pl"
+        assert terms.version == "1.1"
         page = terms.page
         # Every field is filled: the project's, the operator's and the address
         assert "<h1>Regulamin serwisu Hydrograf</h1>" in page
@@ -179,6 +181,32 @@ class TestBuildTerms:
         assert terms is not None
         assert "https://hydroni.example/" in terms.page
         assert "https://hydrograf.example/" not in terms.page
+
+    def test_the_version_is_the_templates(self, deployment, tmp_path):
+        kit = shutil.copytree(KIT_DIR, tmp_path / "kit")
+        template = (kit / TEMPLATE).read_text(encoding="utf-8")
+        (kit / TEMPLATE).write_text(
+            template.replace("Wersja 1.1,", "Wersja 2.3,"), encoding="utf-8"
+        )
+
+        terms = build_terms(deployment(OPERATOR), kit)
+
+        assert terms is not None
+        assert terms.version == "2.3"
+
+    def test_a_template_without_a_version_means_no_page(
+        self, deployment, tmp_path, caplog
+    ):
+        kit = shutil.copytree(KIT_DIR, tmp_path / "kit")
+        template = (kit / TEMPLATE).read_text(encoding="utf-8")
+        (kit / TEMPLATE).write_text(
+            re.sub(r"Wersja \d+\.\d+", "Wersja", template), encoding="utf-8"
+        )
+
+        with caplog.at_level(logging.WARNING, logger="core.terms"):
+            assert build_terms(deployment(OPERATOR), kit) is None
+
+        assert "names no version" in caplog.text
 
     @pytest.mark.parametrize(
         ("value", "served"),

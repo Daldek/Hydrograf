@@ -3,7 +3,7 @@
 Nogat's plan 2026-11-24-hydrograf-maplibre, step 1, the bullet „feedback's context
 (feedback.js:55-62, DEV-15.12): params.map holds the map's centre and the base map,
 and zoom is a number (its value changes in step 2, which the changelog says)”. A
-report is sent through the dialog and the body of POST /api/feedback is read as the
+report is sent through the dialog and the body of POST /api/v1/feedback is read as the
 page sent it: ``context.parameters.map`` holds the centre of
 ``Hydrograf.map.describe()`` and the name of the chosen base map, its ``zoom`` is a
 number whose value the tests leave alone, and the API answers that the report is
@@ -25,7 +25,9 @@ SAVED = "Dziękujemy! Zgłoszenie zostało zapisane."
 
 
 def is_feedback(response: Response) -> bool:
-    return response.request.method == "POST" and response.url.endswith("/api/feedback")
+    return response.request.method == "POST" and response.url.endswith(
+        "/api/v1/feedback"
+    )
 
 
 def send_report(page: Page, message: str) -> dict[str, Any]:

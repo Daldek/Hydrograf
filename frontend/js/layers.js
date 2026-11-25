@@ -17,7 +17,7 @@
 
     // ===== Base maps (Nogat DEV-15.15, ADR-089) =====
     //
-    // GET /api/basemaps gives the entries of the kit's catalogue that the deployment
+    // GET /api/v1/basemaps gives the entries of the kit's catalogue that the deployment
     // allows (its setting `basemaps`, a copy of its own in a provider's place), then its
     // own base maps, in the catalogue's shape. The kit's <nogat-basemaps> lists them and
     // „bez podkładu”, opens on the choice the browser keeps (`nogat-basemap`) while it is
@@ -63,7 +63,7 @@
 
     /**
      * Put the kit's base-map switcher at the end of the group and give it the entries
-     * of GET /api/basemaps; without the kit's module or the answer no base map is drawn.
+     * of GET /api/v1/basemaps; without the kit's module or the answer no base map is drawn.
      */
     function createBaseMapSwitcher(group) {
         if (!basemapKit()) return;
@@ -168,7 +168,7 @@
     /**
      * Register an overlay for #zoom-extent and, with `kind`, for the view's strip: a
      * layer of Hydrograf's data (`elevation`, `drainage`, `topography`, `soils`: the
-     * kinds of `layers` of GET /api/terms) puts the lines of its GUGiK and SoilGrids
+     * kinds of `layers` of GET /api/v1/terms) puts the lines of its GUGiK and SoilGrids
      * data into the strip while it is on (Nogat DEV §20; showDataLines, after every
      * change in the panel).
      */
@@ -706,14 +706,14 @@
         );
 
         // Sewer network overlay (MVT, no known extent): only when the server
-        // holds sewer data (GET /api/layers). A placeholder keeps the row's
+        // holds sewer data (`layers availability`). A placeholder keeps the row's
         // place in the group while the answer is pending.
         if (window.Hydrograf.sewer) {
             var sewerSlot = document.createComment('sewer');
             overlayGroup.appendChild(sewerSlot);
             Hydrograf.api.getLayers()
-                .then(function (available) {
-                    if (!available.sewer) {
+                .then(function (answer) {
+                    if (!answer.result.sewer) {
                         sewerSlot.remove();
                         return;
                     }
@@ -749,12 +749,12 @@
             streamsSlot.replaceWith(rows);
         }
 
-        // Fetch available thresholds, then build streams entry
-        fetch('/api/tiles/thresholds')
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                var streamsThresholds = data.streams && data.streams.length > 0
-                    ? data.streams : FALLBACK_THRESHOLDS;
+        // Fetch available thresholds (`layers thresholds`), then build streams entry
+        Hydrograf.api.getThresholds()
+            .then(function (answer) {
+                var streams = answer.result.streams;
+                var streamsThresholds = streams && streams.length > 0
+                    ? streams : FALLBACK_THRESHOLDS;
                 placeStreamsEntry(streamsThresholds);
             })
             .catch(function () {

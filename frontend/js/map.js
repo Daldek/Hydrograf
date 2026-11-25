@@ -486,7 +486,7 @@
     // ===== Delineation preview =====
     //
     // While the server merges the boundary, the sub-catchments it merges fill
-    // the network up from the outlet (POST /api/delineate-watershed/preview,
+    // the network up from the outlet (`watershed preview`, GET /api/v1/watershed/preview,
     // one feature per BFS depth). The map first moves to the watershed, as
     // paths added during a zoom animation are drawn out of place; then depth
     // d appears at d / maxDepth of PREVIEW_DURATION_MS, as many levels per
