@@ -61,11 +61,9 @@ dependencies = [
     # producer's release (REL-5.6): Hydrolog 0.9.0 builds Euler II from a depth-duration
     # curve and gives the equal-area slope, and Hydrolog's range is the minor of its 0.10.0
     # in Nogat's release set candidate-16 (REL-5.2); the pin is in `[tool.uv.sources]`.
-    # While Hydrolog's commit is pinned its range admits the development versions of
-    # 0.10.0 (`>=0.10.0.dev0`); the commit that pins its tag narrows it to `>=0.10.0,<0.11`.
     "obserwator>=3.1.0,<4",
     "kartograf>=0.9.0,<0.10",
-    "hydrolog>=0.10.0.dev0,<0.11",
+    "hydrolog>=0.10.0,<0.11",
     "requests>=2.31",
     # Process monitoring, utilities, caching
     "psutil>=5.9",
@@ -102,14 +100,11 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# Nogat's release set candidate-16 (the release round of 2026-11-25, REL-5.3): Kartograf
-# by its tag v0.9.0, which the round keeps, and the commits of the release branches not
-# tagged yet: Obserwator 2637350 of `chore/release-3.3.0` (3.3.0) and Hydrolog d65472b of
-# `chore/release-0.10.0` (0.10.0). Once they are released, the tags v3.3.0 and v0.10.0
-# replace the commits. The commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "2637350d009896d4554b3b252a725c7613897f5d" }
+# The tags of Nogat's release set candidate-16 (the release round of 2026-11-25, REL-5.3):
+# Kartograf v0.9.0, which the round keeps, Obserwator v3.3.0 and Hydrolog v0.10.0.
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", tag = "v3.3.0" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", tag = "v0.9.0" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "d65472b5cdb54e0e9810728a5ef4f3350e67fd35" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", tag = "v0.10.0" }
 
 [tool.ruff]
 target-version = "py312"
