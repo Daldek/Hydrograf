@@ -217,10 +217,11 @@ keeping the choice; the flood hazard map (MZP) of Wody
 Polskie is an overlay from their WMS service. The results of external analyses (for
 example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
-vanilla JS with Leaflet, MapLibre GL and Chart.js, vendored in `frontend/vendor/` (no page
+vanilla JS with Leaflet and MapLibre GL, vendored in `frontend/vendor/` (no page
 loads a script, style or font from another site), in the Nogat visual identity
 (`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje”,
-the hand-off, the strip of sources, the base maps, the regulamin template and the admin panel). Hydrograf uses
+the hand-off, the strip of sources, the base maps, the charts with their zoom and PNG, the
+regulamin template and the admin panel). Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its

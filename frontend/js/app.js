@@ -162,8 +162,9 @@
      * Fill the parameter sections and the key figures with a watershed: the
      * delineated one, or an element of the network (js/network.js).
      * @param {Object} w - a WatershedResponse
+     * @param {Object} source - the response with its provider lines, for the PNGs of the charts
      */
-    function renderParameters(w) {
+    function renderParameters(w, source) {
         var m = w.morphometry || {};
         var o = w.outlet;
 
@@ -224,9 +225,9 @@
                 : '—', 'bdot_coverage'],
         ]);
 
-        // Charts: land cover donut
+        // Charts: land cover and soil groups, one bar per class with its share
         if (w.land_cover_stats && w.land_cover_stats.categories && w.land_cover_stats.categories.length > 0) {
-            Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories);
+            Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories, source);
         } else {
             Hydrograf.charts.destroyChart('chart-landcover');
         }
@@ -235,7 +236,7 @@
         var accHsg = document.getElementById('acc-hsg');
         if (w.hsg_stats && w.hsg_stats.categories && w.hsg_stats.categories.length > 0) {
             if (accHsg) accHsg.classList.remove('d-none');
-            Hydrograf.charts.renderHsgChart('chart-hsg', w.hsg_stats.categories);
+            Hydrograf.charts.renderHsgChart('chart-hsg', w.hsg_stats.categories, source);
         } else {
             if (accHsg) accHsg.classList.add('d-none');
             Hydrograf.charts.destroyChart('chart-hsg');
@@ -246,7 +247,7 @@
             m.elevation_min_m != null && m.elevation_max_m != null) {
             Hydrograf.charts.renderHypsometricChart(
                 'chart-hypsometric', w.hypsometric_curve,
-                m.elevation_min_m, m.elevation_max_m
+                m.elevation_min_m, m.elevation_max_m, source
             );
         } else {
             Hydrograf.charts.destroyChart('chart-hypsometric');
@@ -269,7 +270,7 @@
      * context („Zlewnia … km²”, its outlet).
      */
     function displayParameters(data) {
-        renderParameters(data.watershed);
+        renderParameters(data.watershed, data);
         state.sectionsShowWatershed = true;
         displayParametersContext(data);
     }
@@ -462,10 +463,11 @@
      * zlewnię” (without the hietogram and the hydrograph, which the network view
      * hides); null hides the sections.
      * @param {Object|null} watershed - the element's WatershedResponse
+     * @param {Object} [source] - the network's response with its provider lines
      */
-    function showElementParameters(watershed) {
+    function showElementParameters(watershed, source) {
         if (watershed) {
-            renderParameters(watershed);
+            renderParameters(watershed, source);
             state.sectionsShowWatershed = false;
             els.panel.dataset.element = '';
         } else {

@@ -50,9 +50,9 @@ Introduction: [README.md](README.md). The Nogat standard 1.1 is in
   `slope_percent`, `precipitation_mm`, `length_km` (DEV-8.2).
 - Front end: colours, fonts, radii and shadows come only from the variables of
   `frontend/css/tokens.css` (ADR-065). That file and `frontend/nogat/` (Nogat's GUI kit and
-  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the base maps, the
-  regulamin template, the admin page's shell; ADR-082, ADR-089) are copies of Nogat's, never
-  edited here: change them in Nogat, then copy them again byte for byte (DEV-15.6).
+  marks: the menu „Aplikacje”, the hand-off, the strip of sources, the base maps, the charts,
+  the regulamin template, the admin page's shell; ADR-082, ADR-089, ADR-090) are copies of
+  Nogat's, never edited here: change them in Nogat, then copy them again byte for byte (DEV-15.6).
   Third-party scripts, styles and fonts are vendored in `frontend/vendor/<package>-<version>/`
   as published (`-text` in `.gitattributes`), with their licence files and their `integrity`,
   never loaded from another origin (DEV-15.7; `tests/contract/test_frontend_vendor.py`).

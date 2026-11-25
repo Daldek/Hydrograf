@@ -17,12 +17,17 @@
  * - the kit's <nogat-basemaps> (DEV-15.15) is defined, and window.Hydrograf.nogat.basemaps
  *   holds the kit's words (`texts`), its Leaflet adapter (`leaflet`, leafletBasemap) and
  *   the repaint of a vector base map after a change of theme (`repaint`) for js/layers.js,
- *   which gives the element the entries of GET /api/basemaps (ADR-089).
+ *   which gives the element the entries of GET /api/basemaps (ADR-089);
+ * - window.Hydrograf.nogat.chart is the kit's chart module (DEV-15.16) for js/charts.js:
+ *   `draw` (drawChart), `toPng` and `format`, the Polish numbers and times its charts are
+ *   written in (chartFormat(); ADR-090).
  * A <script type="module"> runs in document order with the deferred scripts, so the
- * kit is on window.Hydrograf before the scripts after it run.
+ * kit is on window.Hydrograf before the scripts after it run; js/charts.js, before this
+ * module, reaches it only when it draws.
  */
 import { entries } from '../nogat/nogat-app-menu.js?v=951a2798ee';
 import { BASEMAP_TEXTS, leafletBasemap, repaintMaplibreBasemap } from '../nogat/nogat-basemaps.js?v=20f6db6ae1';
+import { chartFormat, drawChart, toPng } from '../nogat/nogat-chart.js?v=f4a3724044';
 import * as handoff from '../nogat/nogat-handoff.js?v=ee555c209f';
 import { fillSources } from '../nogat/nogat-sources.js?v=47514bf6ce';
 
@@ -48,5 +53,10 @@ window.Hydrograf.nogat = {
         texts: BASEMAP_TEXTS,
         leaflet: leafletBasemap,
         repaint: repaintMaplibreBasemap,
+    },
+    chart: {
+        draw: drawChart,
+        toPng: toPng,
+        format: chartFormat(),
     },
 };

@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.29
+**Version:** 2.30
 **Date:** 2026-11-25
 **Status:** Approved
 
@@ -35,7 +35,7 @@
 │      (FastAPI)           │    │  (Static HTML/CSS/JS)         │
 │                          │    │                               │
 │  - REST API Endpoints    │    │  - Leaflet.js (Map)          │
-│  - Request Validation    │    │  - Chart.js (Plots)          │
+│  - Request Validation    │    │  - Nogat kit charts (SVG)    │
 │  - Business Logic        │    │  - Nogat tokens (UI)         │
 │  - Error Handling        │    │  - Vanilla JavaScript        │
 │  - Request Limit, Stats  │    │                              │
@@ -1250,7 +1250,7 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (vendor/), no Bootstrap
+├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL (vendor/), the kit's charts, no Bootstrap
 ├── admin/                   # Admin panel at /admin/ (ADR-086): index.html is Nogat's <nogat-admin> shell with the sections
 │                            #   „Zasoby”, „Przetwarzanie NMT”, „Czyszczenie”, „Granice i kanalizacja” (admin.css, admin.js shared,
 │                            #   resources.js, processing.js with the Leaflet area map over the kit's first raster base map, cleanup.js, boundaries.js; IIFE scripts)
@@ -1264,8 +1264,8 @@ frontend/
 │   ├── nogat-basemaps.json   # The catalogue of the shared base maps (Nogat DEV-15.15): ids, labels, tiles, origins, bounds, credits, the regulamin's blocks; read by core/basemaps.py (ADR-089)
 │   ├── nogat-basemaps.js     # <nogat-basemaps> (the switcher, the choice kept as nogat-basemap), BASEMAP_TEXTS, leafletBasemap (Hydrograf's adapter) and maplibreBasemap, the kit's grey style and its repaint (ES module)
 │   ├── nogat-basemaps.css    # The switcher, the credit in the map's attribution control (12 px, folded behind „i” up to 860 px), the grey style's colours
-│   ├── nogat-chart.js        # The kit's chart module (Nogat DEV-15.16), not used by Hydrograf yet (ES module)
-│   ├── nogat-chart.css       # Its styles, in the tokens
+│   ├── nogat-chart.js        # The kit's chart module (Nogat DEV-15.16, ADR-090): every chart of js/charts.js (ES module, through nogat.js)
+│   ├── nogat-chart.css       # Its styles, in the tokens (Hydrograf's series classes in css/app.css)
 │   ├── nogat-command-form.js # The kit's command form (Nogat DEV-15.17), not used by Hydrograf yet (ES module)
 │   ├── nogat-command-form.css # Its styles, in the tokens
 │   ├── nogat-sources.js      # <nogat-sources>: the view's strip of provider lines and its dialog, fillSources() for the welcome window (ES module)
@@ -1286,7 +1286,6 @@ frontend/
 │   ├── leaflet-1.9.4/        # leaflet.css, leaflet.js, images/ (main page and the area map of /admin/)
 │   ├── maplibre-gl-4.7.1/    # maplibre-gl.css, maplibre-gl.js (the vector base map, through the kit's Leaflet adapter)
 │   ├── maplibre-gl-leaflet-0.0.22/ # leaflet-maplibre-gl.js
-│   ├── chart.js-4.4.7/       # chart.umd.js
 │   ├── openmaptiles-fonts-2.0/ # noto-sans-regular/: the glyph ranges 0-255, 256-511, 512-767, 1024-1279, 8192-8447 (.pbf) of openmaptiles/fonts v2.0 with LICENSE (OFL-1.1), the names of the kit's grey style
 │   └── leaflet.vectorgrid-1.3.0/ # Leaflet.VectorGrid.bundled.min.js, with the licences of the libraries it bundles
 ├── css/
@@ -1300,7 +1299,7 @@ frontend/
     ├── api.js                # API calls (fetch wrappers)
     ├── map.js                # Leaflet map, drawing, MVT; wheel zoom without the tail of a gesture or late input
     ├── coords.js             # Cursor coordinates (bottom left): WGS84, PL-1992 or PL-2000 by Gauss–Krüger in the browser; not on touch screens
-    ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
+    ├── charts.js             # The kit's charts (ADR-090): hypsometry, land cover/HSG bars, profile (its readout moves the map marker), hietogram, hydrograph; their „PNG”
     ├── attribution.js        # The providers' lines of a response or a manifest entry (ADR-083): their union over the view's surfaces in the strip #view-sources, the trailing CSV columns and the JSON/GeoJSON fields of the exports
     ├── layers.js             # „Warstwy” panel: the flood hazard map overlay (WMS of Wody Polskie) and the kit's <nogat-basemaps> fed by GET /api/basemaps, drawn by leafletBasemap with the failure notice #basemap-notice (ADR-089), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
@@ -2351,11 +2350,12 @@ The actions are pinned by commit SHA and updated by Dependabot (`.github/dependa
 
 ---
 
-**Document version:** 2.29
+**Document version:** 2.30
 **Date of the last update:** 2026-11-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.30 (2026-11-25): the charts on Nogat's kit (ADR-090, Nogat's plan `2026-11-24-unified-charts`, step 5): §1 the frontend's box; §4.1 `nogat-chart.*` used by `charts.js` through `nogat.js`, `vendor/chart.js-4.4.7/` removed
 - 2.29 (2026-11-25): the base maps from Nogat's kit 1.3.0 (ADR-089, Nogat's plan `2026-11-24-shared-base-maps`, step 4): §1.2 ADR-089 (ADR-065 amended); §2.1 `api/endpoints/basemaps.py`, `core/basemaps.py`, `KIT_DIR` and the base maps' variables of `core/config.py`, the start refused in `api/main.py`, `kept_blocks` of `core/terms.py`, `tests/contract/test_nginx_csp.py`; §2.2.1b the regulamin's blocks; §2.2.1c `GET /api/basemaps` and the settings `basemaps`, `basemap_mirrors`, `basemap_extra`; §4.1 kit 1.3.0 (`nogat-basemaps`, `nogat-chart`, `nogat-command-form`), `vendor/openmaptiles-fonts-2.0/`, `layers.js`, `nogat.js`, `admin/processing.js`; §4.2.0 the panel „Warstwy”; §4.2.1 the base maps, the excerpt of `map.js`; §5.2 the CSP of nginx with the catalogue's origins and the admin page's `data:`, the versions of a dynamic import; §11.1 the contract tests; the header and the footer 2.29
 - 2.28 (2026-11-25): the browser tests (Nogat's plan `2026-11-24-hydrograf-maplibre`, step 1): §2.1 `tests/e2e`; §4.2.1 `Hydrograf.map.describe()` and `nameOverlay()`; §11.1 the marker `e2e`; §11.2 the job `e2e`; the header and the footer 2.28
 - 2.27 (2026-11-25): §2.4.7 Hydrolog pinned by its tag `v0.9.1` (Hydrograf 0.6.1); the header and the footer 2.27

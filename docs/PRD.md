@@ -477,7 +477,7 @@ Launch:                                                            🚀
 - ☑ Leaflet map with point selection (polygon drawing mode, object selection mode)
 - ☑ Rainfall scenario form
 - ☑ API calls with error handling
-- ☑ Chart.js charts (hydrograph, histogram)
+- ☑ Chart.js charts (hydrograph, histogram) (REPLACED by the charts of Nogat's kit, with their zoom and PNG, ADR-090)
 - ☑ CSV/GeoJSON export (today, with the file names of Nogat DEV-19.21: the hyetograph as CSV and JSON, `hydrograf_hyetograph_<duration>_p<probability>[_arf<factor>]` or `hydrograf_hyetograph_custom`, its PMAXTP points as GeoJSON, `hydrograf_pmaxtp-points_<…>.geojson`, and the hand-off file to Hydrolog, `hydrograf_handoff_<subject>.json`)
 - ☑ Glassmorphism UI with a draggable side panel (REPLACED by the Nogat visual identity and the Archiwista shell, ADR-065)
 - ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic) (REPLACED: today OpenFreeMap grey, OSM GUGiK grey, „Ortofotomapa GUGiK” and none; ADR-065, ADR-085)
@@ -552,11 +552,12 @@ Launch:                                                            🚀
 
 ---
 
-**Document version:** 1.4
-**Date of the last update:** 2026-11-22
+**Document version:** 1.5
+**Date of the last update:** 2026-11-25
 **Status:** Approved — the project is in active development (CP4 finished, CP5 MVP in preparation)
 
 **Change history:**
+- 1.5 (2026-11-25): the charts of Nogat's kit instead of Chart.js in Phase 3 (ADR-090)
 - 1.4 (2026-11-22): the release state of Hydrograf 0.6.0: the export file names of Nogat DEV-19.21 in Phase 3 and Nogat's GUI kit 1.1.0 of the admin panel in Phase 3b
 - 1.3 (2026-11-14): audit against the code of 2026-11-14: a public service (1.1, NFR-04) and no personal data stored; the data sources (BDOT10k without CORINE, SoilGrids, streams from the DEM; PMAXTP with 16 durations and 27 probabilities, also in US-03); the default base layer; notes on the milestones replaced since: `/api/select-stream`, the export, the shell, the base layers, the modules and the admin panel of ADR-086
 - 1.2 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
