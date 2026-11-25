@@ -17,8 +17,7 @@ point places none”:
   the marker moves on to where that place snapped;
 * a click on the label of an element (the labels name the elements on the map)
   selects it in the panel's tree and places no point; a click on a point's marker
-  places no point either, which today's map breaks (that test is an expected failure
-  that names the defect).
+  places no point either.
 """
 
 import re
@@ -277,16 +276,6 @@ def test_network_label_selects_its_element_and_places_no_point(tab: Tab) -> None
     assert_markers_snapped(page, t2.preview)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "product defect: network.js's point markers listen to dragstart and dragend "
-        "only, never to click, so Leaflet 1.9.4 hands a click on one to the map "
-        "(Map._findEventTargets stops only at a layer that listens to it): "
-        "app.onMapClick → network.addPoint places a second point there, and the "
-        "preview answers that both points fall on one node"
-    ),
-)
 def test_network_click_on_a_point_places_no_point(tab: Tab) -> None:
     page = tab.page
     t2 = closing_section_and_t2(tab)
