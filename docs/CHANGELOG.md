@@ -5,6 +5,11 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-28
+
+### Changed
+- **Obserwator 3.3.1 of Nogat's release set candidate-17, pinned by tag** (`backend/pyproject.toml`, `backend/uv.lock`; the release round of 2026-11-28, REL-5.3, REL-6.4): Obserwator `v3.3.1` (3.3.1, was `v3.3.0`) within the unchanged `obserwator>=3.1.0,<4`; Kartograf `v0.9.0` and Hydrolog `v0.10.0` stay. What Hydrograf calls does not change: `fetch_pmaxtp` and the `Obserwator*Error` exceptions it catches are those of 3.3.0 (3.3.1 changes the source classes of Obserwator's stations, `nmhs` to `state`, and its GUI).
+
 ## [0.7.0] - 2026-11-25
 
 ### Added
@@ -1288,6 +1293,7 @@ Changes since 0.5.0, to be released as 0.5.1: defect fixes only.
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
+[0.7.1]: https://github.com/Daldek/Hydrograf/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/Daldek/Hydrograf/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/Daldek/Hydrograf/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Daldek/Hydrograf/compare/v0.5.2...v0.6.0
